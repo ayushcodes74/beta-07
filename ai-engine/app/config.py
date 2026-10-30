@@ -69,7 +69,7 @@ def get_settings(reload: bool = False) -> Settings:
     """
     global _SETTINGS_INSTANCE
     if reload or _SETTINGS_INSTANCE is None:
-        load_dotenv(_BASE_DIR / ".env", override=reload)
+        load_dotenv(_BASE_DIR / ".env", override=False)
         _SETTINGS_INSTANCE = Settings()
     return _SETTINGS_INSTANCE
 
