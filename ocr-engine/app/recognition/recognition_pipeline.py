@@ -28,8 +28,33 @@ from app.recognition.text_normalizer import TextNormalizer
 
 logger = logging.getLogger(__name__)
 
-# Pattern to detect mathematical notation symbols
+# Pattern to detect mathematical notation symbols in transcribed text
 MATH_SYMBOLS_PATTERN = re.compile(r"[=+\-*/^\\_∑∫√∂πθλ]|x_\d|f\(x\)")
+
+
+def _detect_math_notation(text: str, crop: np.ndarray) -> bool:
+    """Detect presence of mathematical notation from text or visual stroke geometry.
+
+    Exposes candidate mathematical regions for downstream Module 4 without guessing or rewriting equations.
+    """
+    if text and MATH_SYMBOLS_PATTERN.search(text):
+        return True
+
+    if crop is not None and crop.size > 0:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+        # Search for parallel horizontal bars (equal signs or fraction bars)
+        for i in range(1, num_labels):
+            w1, h1 = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
+            x1, y1 = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP]
+            if 6 <= w1 <= 60 and 1 <= h1 <= 10:
+                for j in range(i + 1, num_labels):
+                    w2, h2 = stats[j, cv2.CC_STAT_WIDTH], stats[j, cv2.CC_STAT_HEIGHT]
+                    x2, y2 = stats[j, cv2.CC_STAT_LEFT], stats[j, cv2.CC_STAT_TOP]
+                    if abs(w1 - w2) <= 5 and abs(x1 - x2) <= 5 and 3 <= abs(y1 - y2) <= 24:
+                        return True
+    return False
 
 
 def recognize_page(
@@ -45,9 +70,9 @@ def recognize_page(
     2. Detect candidate text regions and line bounding boxes.
     3. Reconstruct human reading order (including multi-column support).
     4. Classify regions as 'printed', 'handwritten', or 'unknown'.
-    5. Route regions to the appropriate OCR recognition engine.
+    5. Route regions to the appropriate OCR recognition engine (TrOCR / PaddleOCR).
     6. Perform safe text normalization (preserving student phrasing and math).
-    7. Generate structured TextBlocks with honest confidence scores and warnings.
+    7. Generate structured TextBlocks with genuine confidence/quality scores and warnings.
     8. Assemble unified reading-order full text.
 
     Args:
@@ -57,7 +82,7 @@ def recognize_page(
         config: Optional RecognitionConfig override.
 
     Returns:
-        PageRecognitionResult containing ordered text_blocks, full_text, and diagnostics.
+        PageRecognitionResult containing ordered text_blocks, full_text, and honest diagnostics.
 
     Raises:
         RecognitionPipelineError: If image loading or recognition encounters an unrecoverable failure.
@@ -97,6 +122,13 @@ def recognize_page(
             text_blocks=[],
             full_text="",
             warnings=page_warnings,
+            metadata={
+                "total_blocks": 0,
+                "engine_used": ["none"],
+                "is_fallback": False,
+                "recognition_mode": "empty_page",
+                "recognition_available": True,
+            },
         )
 
     # 2. Reconstruct Reading Order
@@ -119,39 +151,51 @@ def recognize_page(
             block_warnings: List[str] = []
 
             if is_diag:
-                # Illustration or diagram detected: do not treat as ordinary text
                 block_type = "unknown"
                 raw_text = ""
-                conf = 0.50
+                conf = None
+                quality_score = 0.50
+                block_meta = {
+                    "engine_used": "none",
+                    "is_fallback": True,
+                    "recognition_mode": "diagram_region",
+                    "recognition_available": False,
+                    "model_version": None,
+                }
                 block_warnings.append("Illustration or diagram detected; coordinates preserved for Module 4.")
             else:
-                # Classify printed vs. handwritten
                 block_type, class_conf = TextClassifier.classify_region(crop)
 
-                # Recognize based on classification
                 if block_type == "printed":
-                    raw_text, conf = printed_recognizer.recognize(crop, page_number, block_id)
+                    raw_text, conf, quality_score, block_meta = printed_recognizer.recognize(crop, page_number, block_id)
                 elif block_type == "handwritten":
-                    raw_text, conf = handwriting_recognizer.recognize(crop, page_number, block_id)
+                    raw_text, conf, quality_score, block_meta = handwriting_recognizer.recognize(crop, page_number, block_id)
                 else:
-                    # Unknown: try handwriting recognizer as fallback, but flag uncertainty
-                    raw_text, conf = handwriting_recognizer.recognize(crop, page_number, block_id)
+                    raw_text, conf, quality_score, block_meta = handwriting_recognizer.recognize(crop, page_number, block_id)
                     block_warnings.append("Ambiguous text classification ('unknown'); confidence represents uncertainty.")
 
-            # Check for mathematical symbols
-            if MATH_SYMBOLS_PATTERN.search(raw_text):
+            # Check for mathematical symbols/notation
+            if _detect_math_notation(raw_text, crop):
                 block_warnings.append(
                     "Mathematical notation detected; bounding box preserved for specialized Module 4 processing."
                 )
 
-            # Check confidence thresholds
-            if conf < cfg.medium_confidence_threshold and not is_diag:
-                block_warnings.append(
-                    f"Low recognition confidence ({conf:.2f}). Manual teacher verification recommended."
-                )
+            # Check genuine confidence thresholds
+            if conf is not None:
+                if conf < cfg.medium_confidence_threshold and not is_diag:
+                    block_warnings.append(
+                        f"Low recognition confidence ({conf:.2f}). Manual teacher verification recommended."
+                    )
+            else:
+                if not is_diag:
+                    block_warnings.append("Model confidence unavailable; text extraction in degraded layout mode.")
 
-            if not raw_text.strip() and not is_diag:
-                block_warnings.append("Unreadable or faint text region.")
+            # Check quality heuristics
+            if quality_score is not None and quality_score < 0.40 and not is_diag:
+                block_warnings.append("Faint or low-contrast text strokes detected.")
+
+            if not raw_text.strip() and not is_diag and not block_meta.get("is_fallback"):
+                block_warnings.append("Unreadable text region.")
 
             # Safe Normalization
             clean_text = TextNormalizer.normalize_block_text(raw_text)
@@ -162,11 +206,14 @@ def recognize_page(
                     sequence=seq,
                     type=block_type,
                     text=clean_text,
-                    confidence=round(conf, 2),
+                    confidence=round(conf, 4) if conf is not None else None,
+                    quality_score=round(quality_score, 2) if quality_score is not None else None,
                     bounding_box=box,
                     warnings=block_warnings,
+                    metadata=block_meta,
                 )
             )
+
     except Exception as e:
         if isinstance(e, RecognitionPipelineError):
             raise
@@ -177,14 +224,38 @@ def recognize_page(
     # 4. Assemble Full Text in Reading Order
     full_text = TextNormalizer.assemble_full_text([b.text for b in text_blocks])
 
+    # 5. Determine Overall Page Metadata & Status
+    total_blocks = len(text_blocks)
+    distinct_engines = sorted(list({b.metadata.get("engine_used", "none") for b in text_blocks}))
+    all_fallback = all(b.metadata.get("is_fallback", True) for b in text_blocks) if text_blocks else True
+    any_fallback = any(b.metadata.get("is_fallback", True) for b in text_blocks) if text_blocks else True
+
+    if all_fallback:
+        page_status = "degraded"
+        page_warnings.append("No genuine OCR engine was available; page processed in degraded layout-only mode.")
+    else:
+        page_status = "completed"
+
+    page_metadata = {
+        "total_blocks": total_blocks,
+        "engine_used": distinct_engines if distinct_engines else ["none"],
+        "is_fallback": any_fallback,
+        "recognition_mode": "degraded_layout_only" if all_fallback else ("hybrid" if any_fallback else "deep_learning_inference"),
+        "recognition_available": not all_fallback,
+        "model_version": {
+            "handwriting": model_mgr.handwriting_model_version,
+            "printed": model_mgr.printed_model_version,
+        },
+    }
+
     return PageRecognitionResult(
         submission_id=submission_id,
         page_number=page_number,
-        status="completed",
+        status=page_status,
         text_blocks=text_blocks,
         full_text=full_text,
         warnings=page_warnings,
-        metadata={"total_blocks": len(text_blocks)},
+        metadata=page_metadata,
     )
 
 
@@ -237,7 +308,6 @@ def recognize_pages(
             results.append(res)
         except Exception as e:
             logger.error("Failed to recognize page %d in batch: %s", page_num, e)
-            # Create graceful failed page result preserving other pages
             results.append(
                 PageRecognitionResult(
                     submission_id=submission_id,
@@ -246,6 +316,13 @@ def recognize_pages(
                     text_blocks=[],
                     full_text="",
                     warnings=[f"Recognition failed on page {page_num}: {e}"],
+                    metadata={
+                        "total_blocks": 0,
+                        "engine_used": ["none"],
+                        "is_fallback": True,
+                        "recognition_mode": "failed",
+                        "recognition_available": False,
+                    },
                 )
             )
 

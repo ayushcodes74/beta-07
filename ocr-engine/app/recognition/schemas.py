@@ -47,10 +47,25 @@ class TextBlock(BaseModel):
     block_id: str = Field(..., description="Unique block identifier (e.g. page-1-block-1)")
     sequence: int = Field(..., ge=1, description="1-based natural reading order sequence")
     type: str = Field(..., description="Classification: 'printed', 'handwritten', or 'unknown'")
-    text: str = Field(..., description="Safely normalized transcribed text")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Recognition confidence score (0.0 to 1.0)")
+    text: str = Field(default="", description="Safely normalized transcribed text (empty string if degraded/unavailable)")
+    confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Model-derived recognition confidence score (0.0 to 1.0) or None if uncalibrated/unavailable",
+    )
+    quality_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Heuristic image contrast/stroke quality estimate (0.0 to 1.0)",
+    )
     bounding_box: BoundingBox = Field(..., description="Pixel coordinates of the text region")
     warnings: List[str] = Field(default_factory=list, description="Quality, uncertainty, or mathematical warnings")
+    metadata: dict = Field(
+        default_factory=dict,
+        description="Diagnostic metrics per block (engine_used, is_fallback, recognition_mode, model_version)",
+    )
 
 
 class PageRecognitionResult(BaseModel):
@@ -58,9 +73,12 @@ class PageRecognitionResult(BaseModel):
 
     submission_id: str = Field(..., description="Unique assignment submission identifier")
     page_number: int = Field(..., ge=1, description="1-based page number")
-    status: str = Field(default="completed", description="Recognition status (completed, failed, review)")
+    status: str = Field(default="completed", description="Recognition status (completed, degraded, failed, review)")
     text_blocks: List[TextBlock] = Field(default_factory=list, description="Ordered text blocks")
     full_text: str = Field(default="", description="Aggregated full page text in reading order")
     warnings: List[str] = Field(default_factory=list, description="Page-level warnings or review notifications")
-    metadata: Optional[dict] = Field(default=None, description="Optional diagnostic metrics (model info, timing)")
+    metadata: dict = Field(
+        default_factory=dict,
+        description="Diagnostic metrics (engine_used, is_fallback, model_version, recognition_mode, recognition_available)",
+    )
 

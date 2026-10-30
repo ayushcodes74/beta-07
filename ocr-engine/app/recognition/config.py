@@ -67,7 +67,7 @@ class RecognitionConfig(BaseModel):
     # Model & Engine Management
     backend: str = Field(
         default="auto",
-        description="OCR execution engine ('auto', 'trocr', 'paddleocr', 'heuristic')",
+        description="OCR execution engine ('auto', 'trocr', 'paddleocr', 'degraded')",
     )
     device: str = Field(
         default="cpu",
@@ -80,6 +80,15 @@ class RecognitionConfig(BaseModel):
     printed_model_name: str = Field(
         default="paddleocr-en",
         description="Model identifier for printed text recognition",
+    )
+    max_target_tokens: int = Field(
+        default=64,
+        description="Maximum generated tokens for autoregressive sequence models",
+        ge=1,
+    )
+    allow_degraded_fallback: bool = Field(
+        default=True,
+        description="Gracefully degrade to layout-only mode if genuine models cannot be loaded",
     )
     preserve_math_regions: bool = Field(
         default=True,

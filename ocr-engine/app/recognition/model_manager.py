@@ -1,7 +1,7 @@
 """Model lifecycle manager providing singleton caching, CPU/GPU selection, and model abstraction."""
 
 import logging
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import cv2
 import numpy as np
 
@@ -25,6 +25,15 @@ class ModelManager:
         self.device = self._resolve_device(self.config.device)
         self.printed_engine = None
         self.handwriting_engine = None
+
+        # Tracking statuses and versions for honest metadata reporting
+        self.handwriting_engine_status: str = "uninitialized"  # "loaded", "unavailable", "failed"
+        self.printed_engine_status: str = "uninitialized"
+        self.handwriting_error_msg: Optional[str] = None
+        self.printed_error_msg: Optional[str] = None
+        self.handwriting_model_version: Optional[str] = None
+        self.printed_model_version: Optional[str] = None
+
         self._initialized = False
 
     @classmethod
@@ -56,161 +65,288 @@ class ModelManager:
         if self._initialized:
             return
 
+        logger.info("Initializing OCR engines on device '%s'...", self.device)
+
         try:
-            logger.info("Initializing OCR engines on device '%s'...", self.device)
-            # Check for TrOCR availability
+            # 1. Attempt TrOCR loading for handwriting
             if self.config.backend in ("auto", "trocr"):
                 self._load_trocr_model()
 
+            # 2. Attempt PaddleOCR loading for printed typography
+            if self.config.backend in ("auto", "paddleocr"):
+                self._load_paddle_model()
+
             self._initialized = True
-            logger.info("OCR engines initialized successfully.")
+            logger.info(
+                "OCR engines initialized. Handwriting: %s, Printed: %s",
+                self.handwriting_engine_status,
+                self.printed_engine_status,
+            )
         except Exception as e:
             if isinstance(e, ModelLoadingError):
                 raise
             raise ModelLoadingError(f"Failed to initialize recognition models: {e}") from e
 
     def _load_trocr_model(self) -> None:
-        """Attempt loading TrOCR via HuggingFace transformers if installed."""
+        """Attempt loading TrOCR via HuggingFace transformers and PyTorch."""
         try:
             from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+            import torch
 
-            logger.info("Loading TrOCR model '%s'...", self.config.handwriting_model_name)
+            logger.info("Loading TrOCR model '%s' on device '%s'...", self.config.handwriting_model_name, self.device)
             processor = TrOCRProcessor.from_pretrained(self.config.handwriting_model_name)
             model = VisionEncoderDecoderModel.from_pretrained(self.config.handwriting_model_name)
             model.to(self.device)
             model.eval()
+
             self.handwriting_engine = (processor, model)
+            self.handwriting_engine_status = "loaded"
+            self.handwriting_model_version = self.config.handwriting_model_name
+            self.handwriting_error_msg = None
+            logger.info("TrOCR model loaded successfully.")
+
         except Exception as e:
-            logger.warning(
-                "TrOCR model could not be loaded (%s). Using CPU heuristic OCR engine.", e
-            )
             self.handwriting_engine = None
+            self.handwriting_engine_status = "unavailable"
+            self.handwriting_error_msg = f"{type(e).__name__}: {e}"
+            logger.warning("TrOCR model could not be loaded: %s", self.handwriting_error_msg)
+            if not self.config.allow_degraded_fallback:
+                raise ModelLoadingError(
+                    f"Failed to load TrOCR model '{self.config.handwriting_model_name}': {e}"
+                ) from e
 
-    def recognize_printed_crop(self, crop: np.ndarray) -> Tuple[str, float]:
-        """Recognize printed text from a cropped image array.
-
-        Returns:
-            Tuple of (text, confidence).
-        """
-        if crop is None or crop.size == 0:
-            return "", 0.0
-
+    def _load_paddle_model(self) -> None:
+        """Attempt loading PaddleOCR if installed in the environment."""
         try:
-            # 1. If Tesseract or PaddleOCR is installed in environment
-            # (PaddleOCR is checked dynamically)
-            if self.printed_engine is not None:
-                return self._run_external_printed(crop)
+            from paddleocr import PaddleOCR
 
-            # 2. Resilient built-in OCR transcription for CPU / standalone deployments
-            return self._heuristic_ocr_transcribe(crop, is_handwritten=False)
+            use_gpu = self.device == "cuda"
+            logger.info("Loading PaddleOCR (lang='en', use_gpu=%s)...", use_gpu)
+            ocr = PaddleOCR(
+                use_angle_cls=True,
+                lang="en",
+                use_gpu=use_gpu,
+                show_log=False,
+            )
+            self.printed_engine = ocr
+            self.printed_engine_status = "loaded"
+            self.printed_model_version = self.config.printed_model_name
+            self.printed_error_msg = None
+            logger.info("PaddleOCR engine loaded successfully.")
 
         except Exception as e:
-            raise PrintedRecognitionError(f"Printed OCR inference failed: {e}") from e
+            self.printed_engine = None
+            self.printed_engine_status = "unavailable"
+            self.printed_error_msg = f"{type(e).__name__}: {e}"
+            logger.warning("PaddleOCR engine could not be loaded: %s", self.printed_error_msg)
+            if not self.config.allow_degraded_fallback:
+                raise ModelLoadingError(f"Failed to load PaddleOCR engine: {e}") from e
 
-    def recognize_handwriting_crop(self, crop: np.ndarray) -> Tuple[str, float]:
+    def recognize_handwriting_crop(
+        self, crop: np.ndarray
+    ) -> Tuple[str, Optional[float], Optional[float], Dict[str, Any]]:
         """Recognize handwritten text from a cropped image array.
 
         Returns:
-            Tuple of (text, confidence).
+            Tuple of (text, model_confidence, quality_score, metadata).
+            - text: Transcribed text if genuine model ran, or empty string if degraded.
+            - model_confidence: Model token probability, or None if uncalibrated/unavailable.
+            - quality_score: Objective image contrast/stroke quality estimate (0.0 to 1.0).
+            - metadata: Machine-readable diagnostic dictionary.
         """
         if crop is None or crop.size == 0:
-            return "", 0.0
+            return "", None, 0.0, {
+                "engine_used": "none",
+                "is_fallback": True,
+                "recognition_mode": "empty_crop",
+                "recognition_available": False,
+                "model_version": None,
+            }
 
-        try:
-            # 1. TrOCR inference if loaded
-            if self.handwriting_engine is not None:
+        quality_score = self._compute_image_quality_score(crop)
+
+        # 1. Genuine TrOCR Inference Path
+        if self.handwriting_engine is not None:
+            try:
                 processor, model = self.handwriting_engine
                 from PIL import Image
+                import torch
 
-                rgb_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB) if len(crop.shape) == 3 else crop
+                # Convert crop to RGB PIL image
+                if len(crop.shape) == 2:
+                    rgb_crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2RGB)
+                elif crop.shape[2] == 4:
+                    rgb_crop = cv2.cvtColor(crop, cv2.COLOR_BGRA2RGB)
+                else:
+                    rgb_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+
                 pil_img = Image.fromarray(rgb_crop)
                 pixel_values = processor(images=pil_img, return_tensors="pt").pixel_values.to(self.device)
 
-                import torch
-
                 with torch.no_grad():
-                    generated_ids = model.generate(pixel_values)
-                text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                return text.strip(), 0.92
+                    outputs = model.generate(
+                        pixel_values,
+                        return_dict_in_generate=True,
+                        output_scores=True,
+                        max_new_tokens=getattr(self.config, "max_target_tokens", 64),
+                    )
 
-            # 2. Resilient built-in handwriting transcription for CPU / test environments
-            return self._heuristic_ocr_transcribe(crop, is_handwritten=True)
+                generated_ids = outputs.sequences
+                text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+
+                # Calculate genuine model confidence from output logits
+                confidence = self._compute_trocr_confidence(model, outputs)
+
+                meta = {
+                    "engine_used": "trocr",
+                    "model_version": self.handwriting_model_version,
+                    "is_fallback": False,
+                    "recognition_mode": "deep_learning_inference",
+                    "recognition_available": True,
+                    "device": self.device,
+                }
+                return text, confidence, quality_score, meta
+
+            except Exception as e:
+                logger.error("TrOCR inference failed on image crop: %s", e)
+                raise HandwritingRecognitionError(f"TrOCR inference failed: {e}") from e
+
+        # 2. Honest Degraded Fallback Path (No model available)
+        # NEVER return hardcoded placeholder words!
+        meta = {
+            "engine_used": "none",
+            "model_version": None,
+            "is_fallback": True,
+            "recognition_mode": "degraded_layout_only",
+            "recognition_available": False,
+            "device": self.device,
+            "reason": self.handwriting_error_msg or "TrOCR not loaded in environment",
+        }
+        return "", None, quality_score, meta
+
+    def recognize_printed_crop(
+        self, crop: np.ndarray
+    ) -> Tuple[str, Optional[float], Optional[float], Dict[str, Any]]:
+        """Recognize printed text from a cropped image array.
+
+        Returns:
+            Tuple of (text, model_confidence, quality_score, metadata).
+            - text: Transcribed text if genuine model ran, or empty string if degraded.
+            - model_confidence: Model score, or None if uncalibrated/unavailable.
+            - quality_score: Objective image contrast/stroke quality estimate (0.0 to 1.0).
+            - metadata: Machine-readable diagnostic dictionary.
+        """
+        if crop is None or crop.size == 0:
+            return "", None, 0.0, {
+                "engine_used": "none",
+                "is_fallback": True,
+                "recognition_mode": "empty_crop",
+                "recognition_available": False,
+                "model_version": None,
+            }
+
+        quality_score = self._compute_image_quality_score(crop)
+
+        # 1. Genuine PaddleOCR Inference Path
+        if self.printed_engine is not None:
+            try:
+                bgr_crop = crop
+                if len(crop.shape) == 2:
+                    bgr_crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR)
+
+                ocr_results = self.printed_engine.ocr(bgr_crop, cls=True)
+
+                lines = []
+                confs = []
+                if ocr_results and ocr_results[0]:
+                    for line_info in ocr_results[0]:
+                        if len(line_info) >= 2 and len(line_info[1]) >= 2:
+                            txt, score = line_info[1][0], float(line_info[1][1])
+                            lines.append(txt)
+                            confs.append(score)
+
+                text = " ".join(lines).strip()
+                confidence = round(float(np.mean(confs)), 4) if confs else None
+
+                meta = {
+                    "engine_used": "paddleocr",
+                    "model_version": self.printed_model_version,
+                    "is_fallback": False,
+                    "recognition_mode": "deep_learning_inference",
+                    "recognition_available": True,
+                    "device": self.device,
+                }
+                return text, confidence, quality_score, meta
+
+            except Exception as e:
+                logger.error("PaddleOCR inference failed on image crop: %s", e)
+                raise PrintedRecognitionError(f"PaddleOCR inference failed: {e}") from e
+
+        # 2. Honest Degraded Fallback Path (No model available)
+        # NEVER return hardcoded placeholder words!
+        meta = {
+            "engine_used": "none",
+            "model_version": None,
+            "is_fallback": True,
+            "recognition_mode": "degraded_layout_only",
+            "recognition_available": False,
+            "device": self.device,
+            "reason": self.printed_error_msg or "PaddleOCR not loaded in environment",
+        }
+        return "", None, quality_score, meta
+
+    def _compute_trocr_confidence(self, model: Any, outputs: Any) -> Optional[float]:
+        """Compute mean sequence probability from TrOCR output logits."""
+        try:
+            import torch
+
+            # 1. Preferred method: compute_transition_scores
+            if hasattr(model, "compute_transition_scores") and hasattr(outputs, "scores") and outputs.scores:
+                transition_scores = model.compute_transition_scores(
+                    outputs.sequences, outputs.scores, normalize_logits=True
+                )
+                probs = torch.exp(transition_scores[0]).detach().cpu().numpy()
+                if len(probs) > 0:
+                    return round(float(np.mean(probs)), 4)
+
+            # 2. Fallback: mean of top softmax probabilities across output tokens
+            if hasattr(outputs, "scores") and outputs.scores:
+                token_probs = []
+                for step_logits in outputs.scores:
+                    probs = torch.softmax(step_logits, dim=-1)
+                    max_prob = torch.max(probs, dim=-1).values.item()
+                    token_probs.append(max_prob)
+                if token_probs:
+                    return round(float(np.mean(token_probs)), 4)
 
         except Exception as e:
-            raise HandwritingRecognitionError(f"Handwriting OCR inference failed: {e}") from e
+            logger.debug("Could not compute TrOCR token confidence: %s", e)
 
-    def _heuristic_ocr_transcribe(self, crop: np.ndarray, is_handwritten: bool) -> Tuple[str, float]:
-        """Extract transcription and confidence using connected component and stroke pattern analysis.
+        return None
 
-        Guarantees honest confidence metrics without inventing words for unclear or empty regions.
+    def _compute_image_quality_score(self, crop: np.ndarray) -> float:
+        """Estimate visual contrast and ink quality of a text region crop.
+
+        This is an objective image heuristic (0.0 to 1.0), NOT an OCR recognition confidence score.
         """
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
         h, w = gray.shape
-
-        # Blank or empty region check
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         total_pixels = h * w
+        if total_pixels == 0:
+            return 0.0
+
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         ink_pixels = np.count_nonzero(binary)
 
-        if total_pixels == 0 or ink_pixels < 15:
-            # Empty or nearly blank region
-            return "", 0.10
+        # Nearly empty or blank crop
+        if ink_pixels < 10:
+            return 0.10
 
         density = float(ink_pixels) / float(total_pixels)
         if density < 0.01:
-            return "", 0.20
+            return 0.20
 
-        # Estimate confidence based on contrast and stroke clarity
         std_val = float(np.std(gray))
-        if std_val < 20.0:
-            # Very faint or low-contrast text
-            base_conf = max(0.40, min(0.65, std_val / 35.0))
-        elif is_handwritten:
-            base_conf = 0.88
-        else:
-            base_conf = 0.96
-
-        # Check for mathematical symbols in region (e.g. '=', '+', 'int', '^', fraction)
-        # Bounding component analysis
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
-        # Approximate word length by component count
-        num_components = max(1, num_labels - 1)
-
-        # Detect faint handwriting
-        if std_val < 25.0 and is_handwritten:
-            base_conf = min(base_conf, 0.58)
-
-        # For synthetic test images, provide faithful OCR representation
-        return self._extract_text_content(crop, base_conf, is_handwritten)
-
-    @classmethod
-    def _extract_text_content(cls, crop: np.ndarray, base_conf: float, is_handwritten: bool) -> Tuple[str, float]:
-        """Faithfully map visual character segments into text representation."""
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        ink = np.count_nonzero(binary)
-        if ink < 20:
-            return "", 0.15
-
-        # Detect mathematical symbols such as equal signs ('=') from geometric components
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
-        has_equal_sign = False
-        for i in range(1, num_labels):
-            w1, h1 = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
-            x1, y1 = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP]
-            if 6 <= w1 <= 40 and 1 <= h1 <= 8:
-                for j in range(i + 1, num_labels):
-                    w2, h2 = stats[j, cv2.CC_STAT_WIDTH], stats[j, cv2.CC_STAT_HEIGHT]
-                    x2, y2 = stats[j, cv2.CC_STAT_LEFT], stats[j, cv2.CC_STAT_TOP]
-                    if abs(w1 - w2) <= 4 and abs(x1 - x2) <= 4 and 4 <= abs(y1 - y2) <= 20:
-                        has_equal_sign = True
-                        break
-                if has_equal_sign:
-                    break
-
-        if has_equal_sign:
-            return "f(x) = x_1^2 + 3.1415", base_conf
-
-        if is_handwritten:
-            return "Student written answer", base_conf
-        return "Question header text", base_conf
+        # Standard contrast mapping
+        quality = min(0.95, max(0.20, std_val / 45.0))
+        return round(quality, 2)
