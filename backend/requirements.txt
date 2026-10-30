@@ -1,9 +1,10 @@
 
 fastapi
-uvicorn[standard]
+uvicorn
 supabase
 python-dotenv
 pydantic[email]
+pydantic-settings
 python-multipart
 httpx
 PyJWT
