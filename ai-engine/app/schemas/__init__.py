@@ -34,6 +34,18 @@ from app.schemas.grading import (
     QuestionGrade,
     GradingResult,
 )
+from app.schemas.trust import (
+    InjectionRiskLevel,
+    ConfidenceLevel,
+    ReviewStatusEnum,
+    ReviewSeverity,
+    ReferenceExampleApprovalStatus,
+    InjectionDetectionResult,
+    ConfidenceBreakdown,
+    HumanReviewItem,
+    ReferenceExample,
+    TrustAssessmentResult,
+)
 
 __all__ = [
     "BaseSchema",
@@ -62,4 +74,14 @@ __all__ = [
     "CriterionEvaluation",
     "QuestionGrade",
     "GradingResult",
+    "InjectionRiskLevel",
+    "ConfidenceLevel",
+    "ReviewStatusEnum",
+    "ReviewSeverity",
+    "ReferenceExampleApprovalStatus",
+    "InjectionDetectionResult",
+    "ConfidenceBreakdown",
+    "HumanReviewItem",
+    "ReferenceExample",
+    "TrustAssessmentResult",
 ]
