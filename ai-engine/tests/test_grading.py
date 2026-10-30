@@ -7,6 +7,7 @@ from app.grading.evidence_retriever import GradingEvidenceRetriever, EvidenceRet
 from app.grading.feedback_generator import FeedbackGenerator
 from app.grading.evaluator import AnswerEvaluator, _LLMQuestionGradeResponse, _LLMCriterionEvaluation
 from app.schemas.assignment import ModelAnswer, Rubric, RubricCriterion
+from app.schemas.common import SourceReference
 from app.schemas.grading import (
     CriterionEvaluation,
     GradingRequest,
@@ -331,7 +332,7 @@ def test_grade_multi_question_submission(sample_grading_request):
     mock_ev.retrieve_evidence_for_grading.return_value = EvidenceRetrievalResult(
         course_context="Context",
         evidence_snippets=["Snippet"],
-        source_references=[],
+        source_references=[SourceReference(document_id="d1", snippet="Snippet", similarity_score=0.92)],
         has_sufficient_evidence=True,
         retrieved_chunks=[],
     )

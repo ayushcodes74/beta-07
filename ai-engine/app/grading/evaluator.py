@@ -15,6 +15,7 @@ from app.llm.gemini_client import GeminiClient, get_gemini_client
 from app.llm import prompts
 from app.grading.evidence_retriever import GradingEvidenceRetriever
 from app.grading.feedback_generator import FeedbackGenerator
+from app.trust.service import TrustService
 from app.schemas.common import ReviewReasonCategory, SourceReference
 from app.schemas.grading import (
     CriterionEvaluation,
@@ -64,21 +65,25 @@ class AnswerEvaluator:
         self,
         gemini_client: Optional[GeminiClient] = None,
         evidence_retriever: Optional[GradingEvidenceRetriever] = None,
+        trust_service: Optional[TrustService] = None,
     ):
         """Initialize AnswerEvaluator.
 
         Args:
             gemini_client: Gemini API client instance.
             evidence_retriever: Evidence retrieval helper for course grounding.
+            trust_service: Trust, confidence, and human review orchestrator.
         """
         self.gemini_client = gemini_client or get_gemini_client()
         self.evidence_retriever = evidence_retriever or GradingEvidenceRetriever()
+        self.trust_service = trust_service or TrustService(gemini_client=self.gemini_client)
 
     def evaluate_question(
         self,
         request: GradingRequest,
         retrieved_evidence: Optional[List[str]] = None,
         source_references: Optional[List[SourceReference]] = None,
+        ocr_confidence: Optional[float] = None,
     ) -> QuestionGrade:
         """Evaluate a single question response against its rubric and course material.
 
@@ -86,6 +91,7 @@ class AnswerEvaluator:
             request: GradingRequest containing question, answer, and rubric.
             retrieved_evidence: Optional pre-retrieved text snippets.
             source_references: Optional pre-retrieved SourceReference objects.
+            ocr_confidence: Optional OCR extraction score.
 
         Returns:
             QuestionGrade with criterion breakdowns, citations, and review flags.
@@ -111,7 +117,13 @@ class AnswerEvaluator:
             refs = ev_result.source_references
             has_sufficient_evidence = ev_result.has_sufficient_evidence
 
-        # 3. Format rubric text for prompt
+        # 3. Retrieve approved teacher corrections as reference examples if available
+        teacher_examples = self.trust_service.get_approved_reference_snippets(
+            course_id=request.course_id,
+            question_id=request.question_id,
+        )
+
+        # 4. Format rubric text for prompt
         rubric_lines = [f"Total Question Marks: {request.question_max_marks}"]
         for c in request.rubric.criteria:
             crit_name = c.description
@@ -120,33 +132,33 @@ class AnswerEvaluator:
             rubric_lines.append(f"- Criterion [{c.criterion_id}] ({c.max_marks} marks): {crit_name}. {exp}. {alt}")
         formatted_rubric = "\n".join(rubric_lines)
 
-        # 4. Construct grounded prompt
+        # 5. Construct grounded prompt
         prompt = prompts.build_grading_prompt(
             question=request.question_text,
             student_answer=student_text,
             max_marks=request.question_max_marks,
             rubric_text=formatted_rubric,
             retrieved_evidence=evidence_snippets,
+            teacher_examples=teacher_examples if teacher_examples else None,
         )
 
         if request.model_answer:
             prompt += f"\n### TEACHER MODEL ANSWER REFERENCE (Guidance only; do not demand exact wording):\n{request.model_answer.text}\n"
 
-        # 5. Invoke Gemini for semantic grading
+        # 6. Invoke Gemini for semantic grading
         llm_response = self.gemini_client.generate_structured(
             prompt=prompt,
             response_schema=_LLMQuestionGradeResponse,
             system_instruction=prompts.SYSTEM_ACADEMIC_EVALUATOR,
         )
 
-        # 6. Reconcile criteria marks with rubric and clamp
+        # 7. Reconcile criteria marks with rubric and clamp
         evaluations: List[CriterionEvaluation] = []
         rubric_crit_map = {c.criterion_id: c for c in request.rubric.criteria}
 
         for llm_c in llm_response.criterion_evaluations:
             rubric_c = rubric_crit_map.get(llm_c.criterion_id)
             c_max = rubric_c.max_marks if rubric_c else llm_c.max_marks
-            # Ensure awarded marks is bounded [0, c_max]
             c_awarded = max(0.0, min(llm_c.awarded_marks, c_max))
 
             evaluations.append(
@@ -163,19 +175,10 @@ class AnswerEvaluator:
                 )
             )
 
-        # Reconcile question total marks
         total_awarded = sum(c.awarded_marks for c in evaluations)
         clamped_total = max(0.0, min(total_awarded, request.question_max_marks))
 
-        # Check review flags
-        review_required = llm_response.review_required
-        review_reasons = list(llm_response.review_reasons)
-
-        if not has_sufficient_evidence:
-            review_required = True
-            review_reasons.append("Course evidence is insufficient to authoritatively verify all claims.")
-
-        return QuestionGrade(
+        initial_grade = QuestionGrade(
             question_id=request.question_id,
             max_marks=request.question_max_marks,
             awarded_marks=round(clamped_total, 2),
@@ -184,9 +187,36 @@ class AnswerEvaluator:
             strengths=llm_response.strengths,
             areas_for_improvement=llm_response.areas_for_improvement,
             confidence=llm_response.confidence,
-            review_required=review_required,
-            review_reasons=review_reasons,
+            review_required=llm_response.review_required,
+            review_reasons=list(llm_response.review_reasons),
         )
+
+        # 8. Run unified Trust & Confidence assessment
+        trust_res = self.trust_service.assess_submission(
+            submission_id=request.submission_id,
+            assignment_id=request.assignment_id,
+            student_answer=student_text,
+            question_grade=initial_grade,
+            rubric=request.rubric,
+            source_references=refs,
+            has_sufficient_evidence=has_sufficient_evidence,
+            ocr_confidence=ocr_confidence,
+            question_context=request.question_text,
+        )
+
+        # Merge review requirements and reasons
+        all_reasons = list(initial_grade.review_reasons)
+        for rev_item in trust_res.review_items:
+            if rev_item.reason not in all_reasons:
+                all_reasons.append(rev_item.reason)
+
+        final_review_required = initial_grade.review_required or trust_res.review_required
+
+        object.__setattr__(initial_grade, "confidence", trust_res.confidence_breakdown.overall)
+        object.__setattr__(initial_grade, "review_required", final_review_required)
+        object.__setattr__(initial_grade, "review_reasons", all_reasons)
+
+        return initial_grade
 
     def grade_submission(
         self,
