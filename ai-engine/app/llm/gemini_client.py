@@ -305,7 +305,8 @@ class GeminiClient:
 
         # 3. Validate JSON with Pydantic
         try:
-            return response_schema.model_validate_json(clean_text)
+            parsed_data = json.loads(clean_text)
+            return response_schema.model_validate(parsed_data)
         except ValidationError as val_err:
             raise LLMResponseValidationError(
                 f"Failed to validate response against schema {response_schema.__name__}: {val_err}",

@@ -84,9 +84,152 @@ print(result.score, result.feedback)
 
 ---
 
-## Running Tests
+## Module 2: RAG & Knowledge Retrieval
 
-```bash
-pytest tests/test_llm.py -v
+### RAG Architecture
+
+```
+OCR Extracted Text (Teammate)
+              │
+              ▼
+   ┌────────────────────┐
+   │    TextChunker     │  Sliding window with sentence-break awareness
+   └──────────┬─────────┘  Preserves document_id, page_number, course_id
+              │ DocumentChunk
+              ▼
+   ┌────────────────────┐
+   │ EmbeddingGenerator │  SentenceTransformers (all-MiniLM-L6-v2)
+   └──────────┬─────────┘  Lazy-loaded, L2 normalized, 384 dimensions
+              │ Chunks with dense vectors
+              ▼
+   ┌────────────────────┐
+   │    VectorStore     │  InMemoryVectorStore (Local / Testing)
+   │     (Interface)    │  SupabaseVectorStore (pgvector RPC Adapter)
+   └──────────┬─────────┘
+              │ Cosine similarity query (course-isolated)
+              ▼
+   ┌────────────────────┐
+   │   ContextBuilder   │  Formats citations & enforces token character budget
+   └──────────┬─────────┘
+              │ Verified course evidence snippets
+              ▼
+   Passed to Gemini Grading & Syllabus Services
 ```
 
+---
+
+## Module 3: Syllabus & Assignment Intelligence
+
+### 1. Syllabus Detection (`SyllabusDetector`)
+
+Verifies question alignment strictly against retrieved course documents and syllabus outlines.
+
+```python
+from app.syllabus import SyllabusDetector
+from app.rag import CourseMaterialRetriever
+
+detector = SyllabusDetector(retriever=CourseMaterialRetriever())
+
+result = detector.detect_coverage(
+    question="Explain Dijkstra's shortest path algorithm.",
+    course_id="CS101",
+    syllabus_text="Unit 4: Graph Algorithms and Shortest Paths."
+)
+
+print(result.status)            # SyllabusCoverageStatus.IN_SYLLABUS
+print(result.covered_concepts)  # ["Dijkstra's Algorithm", "Shortest Path"]
+```
+
+### 2. Assignment Generation (`AssignmentGenerator`)
+
+Generates draft assignments with full teacher oversight:
+- **Strict Draft Status**: All generated assignments have `status="DRAFT"`.
+- **Question Types**: Multiple Choice Questions (MCQ), Subjective, or Mixed.
+- **Auto Model Answers & Rubrics**: Complete model answers, key points, and objective rubrics.
+
+---
+
+## Module 4: AI Grading and Feedback
+
+### Semantic Grading Architecture
+
+```
+Student Answer (OCR Teammate) + Question + Rubric + Model Answer
+                           │
+                           ▼
+              ┌───────────────────────────┐
+              │ GradingEvidenceRetriever  │ (RAG course grounding, course-isolated)
+              └────────────┬──────────────┘
+                           │
+                           ▼
+              ┌───────────────────────────┐
+              │      AnswerEvaluator      │ (Gemini semantic rubric evaluator)
+              └────────────┬──────────────┘
+                           │
+                           ▼
+              ┌───────────────────────────┐
+              │     FeedbackGenerator     │ (Constructive deduction & concept summary)
+              └────────────┬──────────────┘
+                           │
+                           ▼
+                     GradingResult
+             (Pydantic output with citations,
+          awarded marks, and review flags)
+```
+
+### Example Usage: Semantic Grading
+
+```python
+from app.grading import AnswerEvaluator
+from app.schemas.grading import GradingRequest
+from app.schemas.assignment import Rubric, RubricCriterion
+
+evaluator = AnswerEvaluator()
+
+rubric = Rubric(
+    total_marks=5.0,
+    criteria=[
+        RubricCriterion(
+            criterion_id="c1",
+            description="Define Photosynthesis and light absorption.",
+            max_marks=5.0,
+            expected_concepts=["Chlorophyll", "Light energy to chemical energy"],
+            acceptable_alternatives=["Solar energy conversion"],
+        )
+    ],
+)
+
+request = GradingRequest(
+    course_id="BIO101",
+    assignment_id="asgn_1",
+    submission_id="sub_456",
+    question_id="q1",
+    question_text="Explain the process of photosynthesis.",
+    question_max_marks=5.0,
+    student_answer="Plants use solar energy captured by chlorophyll to synthesize sugars.",
+    rubric=rubric,
+)
+
+grade = evaluator.evaluate_question(request)
+print(f"Awarded: {grade.awarded_marks}/{grade.max_marks}")
+print(f"Explanation: {grade.overall_explanation}")
+print(f"Review Required: {grade.review_required}")
+```
+
+---
+
+## Running Tests
+
+Run all unit tests across all modules:
+```bash
+pytest tests/ -v
+```
+
+Run specific module tests:
+```bash
+pytest tests/test_llm.py -v
+pytest tests/test_rag.py -v
+pytest tests/test_syllabus.py -v
+pytest tests/test_assignment.py -v
+pytest tests/test_grading.py -v
+```
