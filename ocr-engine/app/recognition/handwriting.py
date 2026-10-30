@@ -1,7 +1,7 @@
 """Handwriting recognition service."""
 
 import logging
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from app.recognition.config import RecognitionConfig, DEFAULT_RECOGNITION_CONFIG
@@ -12,13 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 class HandwritingRecognizer:
-    """Extracts handwritten student answers from cropped regions using TrOCR or fallback engine."""
+    """Extracts handwritten student answers from cropped regions using TrOCR or degraded fallback."""
 
     def __init__(self, config: Optional[RecognitionConfig] = None) -> None:
         self.config = config or DEFAULT_RECOGNITION_CONFIG
         self.model_manager = ModelManager.get_instance(self.config)
 
-    def recognize(self, crop: np.ndarray, page_number: int, block_id: str) -> Tuple[str, float]:
+    def recognize(
+        self, crop: np.ndarray, page_number: int, block_id: str
+    ) -> Tuple[str, Optional[float], Optional[float], Dict[str, Any]]:
         """Recognize handwritten student text from a region crop.
 
         Args:
@@ -27,22 +29,27 @@ class HandwritingRecognizer:
             block_id: Block identifier for error context.
 
         Returns:
-            Tuple of (transcribed_text, confidence_score).
+            Tuple of (transcribed_text, confidence_score, quality_score, metadata).
 
         Raises:
-            HandwritingRecognitionError: If recognition inference fails.
+            HandwritingRecognitionError: If recognition inference encounters an unrecoverable failure.
         """
         if crop is None or crop.size == 0:
-            return "", 0.0
+            return "", None, 0.0, {
+                "engine_used": "none",
+                "is_fallback": True,
+                "recognition_mode": "empty_crop",
+                "recognition_available": False,
+            }
 
         try:
-            text, conf = self.model_manager.recognize_handwriting_crop(crop)
-            return text, conf
+            return self.model_manager.recognize_handwriting_crop(crop)
         except Exception as e:
+            if isinstance(e, HandwritingRecognitionError):
+                raise
             logger.error("Handwriting recognition failed for block %s on page %d: %s", block_id, page_number, e)
             raise HandwritingRecognitionError(
                 f"Handwriting recognition failed on {block_id}: {e}",
                 page_number=page_number,
                 region_id=block_id,
             ) from e
-
