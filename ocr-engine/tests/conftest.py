@@ -270,3 +270,84 @@ def math_symbols_page(tmp_path: Path) -> Path:
     cv2.putText(img, "y = 0.05", (220, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (20, 20, 20), 1)
     cv2.imwrite(str(path), img)
     return path
+
+
+# -------------------------------------------------------------
+# Module 3 Fixtures (Text & Handwriting Recognition)
+# -------------------------------------------------------------
+@pytest.fixture
+def printed_doc_page(tmp_path: Path) -> Path:
+    """Creates a page containing printed typography."""
+    path = tmp_path / "printed_page.png"
+    img = np.full((800, 1000, 3), 255, dtype=np.uint8)
+    cv2.putText(img, "TRUSTGRADE UNIVERSITY MIDTERM EXAM", (80, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (15, 15, 15), 2)
+    cv2.putText(img, "Question 1: Explain the law of thermodynamics.", (80, 200), cv2.FONT_HERSHEY_TRIPLEX, 0.8, (25, 25, 25), 2)
+    cv2.putText(img, "Question 2: State Newton's third law of motion.", (80, 300), cv2.FONT_HERSHEY_TRIPLEX, 0.8, (25, 25, 25), 2)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+@pytest.fixture
+def handwritten_doc_page(tmp_path: Path) -> Path:
+    """Creates a page containing handwritten student text."""
+    path = tmp_path / "handwritten_page.png"
+    img = np.full((800, 1000, 3), 255, dtype=np.uint8)
+    # Cursive / wavy handwritten student lines
+    for line_idx, y_base in enumerate([150, 280, 410]):
+        pts = [np.array([[80 + x * 15, y_base + int(8 * np.sin(x * 0.7))] for x in range(40)], np.int32)]
+        cv2.polylines(img, pts, False, (30, 30, 30), 2)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+@pytest.fixture
+def mixed_assignment_page(tmp_path: Path) -> Path:
+    """Creates a page with printed question header and handwritten student answer."""
+    path = tmp_path / "mixed_page.png"
+    img = np.full((900, 1000, 3), 255, dtype=np.uint8)
+    # Printed question
+    cv2.putText(img, "Question 1: What is the capital of France?", (80, 120), cv2.FONT_HERSHEY_TRIPLEX, 0.9, (20, 20, 20), 2)
+    # Handwritten answer
+    pts = [np.array([[80 + x * 18, 260 + int(6 * np.sin(x * 0.6))] for x in range(30)], np.int32)]
+    cv2.polylines(img, pts, False, (35, 35, 35), 2)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+@pytest.fixture
+def multi_column_assignment_page(tmp_path: Path) -> Path:
+    """Creates a 2-column layout assignment page."""
+    path = tmp_path / "multi_col.png"
+    img = np.full((900, 1000, 3), 255, dtype=np.uint8)
+    # Spanning header
+    cv2.putText(img, "PHYSICS FINAL EXAM - SECTION A & B", (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
+    # Column 1 (Left: x in [50, 420])
+    cv2.putText(img, "Col 1 Line 1: Left column entry", (60, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (20, 20, 20), 2)
+    cv2.putText(img, "Col 1 Line 2: Second left row", (60, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (20, 20, 20), 2)
+    # Column 2 (Right: x in [540, 920])
+    cv2.putText(img, "Col 2 Line 1: Right column entry", (550, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (20, 20, 20), 2)
+    cv2.putText(img, "Col 2 Line 2: Second right row", (550, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (20, 20, 20), 2)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+@pytest.fixture
+def math_assignment_page(tmp_path: Path) -> Path:
+    """Creates an assignment page with mathematical equations and symbols."""
+    path = tmp_path / "math_page.png"
+    img = np.full((800, 1000, 3), 255, dtype=np.uint8)
+    cv2.putText(img, "Integral Solution: f(x) = x_1^2 + 3.1415", (80, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (20, 20, 20), 2)
+    cv2.putText(img, "Summation: sum_{i=1}^n x_i = 100", (80, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (20, 20, 20), 2)
+    cv2.imwrite(str(path), img)
+    return path
+
+
+@pytest.fixture
+def faint_handwriting_page(tmp_path: Path) -> Path:
+    """Creates a page with faint low-contrast handwriting."""
+    path = tmp_path / "faint_page.png"
+    img = np.full((800, 1000, 3), 245, dtype=np.uint8)
+    # Faint text (215 on 245)
+    cv2.putText(img, "Faint student answer text", (80, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (215, 215, 215), 1)
+    cv2.imwrite(str(path), img)
+    return path
