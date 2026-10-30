@@ -83,6 +83,7 @@
     courseQuery: "",
     search: "",
     reviewStudent: null,
+    selectedCourse: null,
     questions: [
       { title: "Explain how a balanced binary search tree maintains O(log n) operations.", type: "Subjective", marks: 10, answer: "A balanced tree keeps height proportional to log n by..." },
       { title: "Which traversal visits nodes in ascending order in a BST?", type: "MCQ", marks: 5, answer: "In-order traversal" },
@@ -209,7 +210,15 @@
     const filtered = courses.filter((course) => `${course[0]} ${course[1]} ${course[2]}`.toLowerCase().includes(query));
     return `${heading("Your courses", "Every class, thoughtfully brought together.", button("Create course", "create-course", "primary", "plus"))}
       <div class="toolbar"><div class="toolbar-left"><label class="inline-search">${icon("search")}<input id="course-search" type="search" value="${escapeHtml(state.courseQuery)}" placeholder="Search courses..." aria-label="Search courses"></label><select class="filter-select" aria-label="Course term"><option>Spring term 2026</option><option>Fall term 2026</option></select></div><div class="toolbar-right"><button class="button button-secondary button-sm" data-action="course-filter">${icon("filter")}All courses${icon("down",12)}</button></div></div>
-      <div class="course-grid">${filtered.length ? filtered.map(([name, code, instructor, count, assignments, activity]) => `<article class="card course-card"><div class="course-top"><span class="course-icon">${icon("courses",18)}</span><span class="course-code">${code}</span></div><h3>${name}</h3><div class="course-instructor">${instructor}</div><div class="course-stats"><div class="course-stat"><strong>${count}</strong><span>Students</span></div><div class="course-stat"><strong>${assignments}</strong><span>Assignments</span></div><div class="course-stat"><strong>${Math.round(count * .75)}</strong><span>Active this week</span></div></div><div class="course-activity"><span>Course activity</span><span style="display:flex;align-items:center;gap:7px"><span class="activity-bar"><span style="width:${activity}%"></span></span>${activity}%</span></div><button class="text-link" style="margin-top:12px" data-action="open-course" data-course="${escapeHtml(name)}">Open course ${icon("arrow",13)}</button></article>`).join("") : `<div class="card empty-state">No courses match “${escapeHtml(state.courseQuery)}”.</div>`}</div>`;
+      <div class="course-grid">${filtered.length ? filtered.map(([name, code, instructor, count, assignments, activity]) => `<article class="card course-card"><div class="course-top"><span class="course-icon">${icon("courses",18)}</span><span class="course-code">${escapeHtml(code)}</span></div><h3>${escapeHtml(name)}</h3><div class="course-instructor">${escapeHtml(instructor)}</div><div class="course-stats"><div class="course-stat"><strong>${count}</strong><span>Students</span></div><div class="course-stat"><strong>${assignments}</strong><span>Assignments</span></div><div class="course-stat"><strong>${Math.round(count * .75)}</strong><span>Active this week</span></div></div><div class="course-activity"><span>Course activity</span><span style="display:flex;align-items:center;gap:7px"><span class="activity-bar"><span style="width:${activity}%"></span></span>${activity}%</span></div><button class="text-link" style="margin-top:12px" data-action="open-course" data-course="${escapeHtml(name)}">Open course ${icon("arrow",13)}</button></article>`).join("") : `<div class="card empty-state">No courses match “${escapeHtml(state.courseQuery)}”.</div>`}</div>`;
+  }
+  function courseDetailPage() {
+    const course = courses.find((item) => item[0] === state.selectedCourse) || courses[0];
+    return `${heading(escapeHtml(course[0]), `${course[1]} · ${course[2]} · Spring term 2026`, `${button("Course materials", "open-course-materials", "secondary", "materials")}${button("Create assignment", "create-assignment", "primary", "plus")}`)}
+      <div class="metric-strip">${[["Enrolled students", course[3], "Active this term"],["Assignments", course[4], "Across this course"],["Course activity", `${course[5]}%`, "Active this week"],["Average mark","84.2","↑ 2.4 this term"]].map(([label,value,note]) => `<article class="card result-card"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`).join("")}</div>
+      <div class="toolbar"><div class="toolbar-left"><div class="segmented">${["Overview","Students","Assignments","Materials"].map((item,index)=>`<button class="segment ${index===0?"active":""}" data-course-tab="${item}">${item}</button>`).join("")}</div></div><span class="status status-ready">Active course</span></div>
+      <div class="dashboard-grid"><article class="card recent-card">${sectionHeader("Course assignments","Recent work and grading progress")}<div class="table-wrap"><table class="data-table"><thead><tr><th>Assignment</th><th>Due</th><th>Submissions</th><th>Reviewed</th><th>State</th></tr></thead><tbody>${[["Assignment 03 — Binary Search Trees","Oct 31","38 / 42","72 / 96","Published"],["Quiz 03 — Traversals","Oct 28","42 / 42","42 / 42","Published"],["Assignment 02 — Linked Lists","Oct 19","40 / 42","40 / 42","Published"]].map((row)=>`<tr><td><span class="student-cell">${icon("assignments",14)}${row[0]}</span></td><td>${row[1]}, 2026</td><td>${row[2]}</td><td>${row[3]}</td><td>${badge(row[4])}</td></tr>`).join("")}</tbody></table></div></article>
+        <aside class="card recent-card"><div class="section-heading"><div><h2>Course activity</h2><p>Recent moments from your classroom</p></div></div><div class="timeline">${[["New submissions received","8 students submitted Assignment 03","Today, 9:42 AM",false],["Course material added","Week 07: Trees & Graphs","Oct 29, 2:18 PM",false],["Assignment published","Quiz 03 — Traversals","Oct 25, 10:00 AM",false]].map(([title,detail,time])=>`<div class="timeline-item"><p class="timeline-title">${title}</p><div class="timeline-sub"><span>${detail}</span><span>${time}</span></div></div>`).join("")}</div></aside></div>`;
   }
   function materialsPage() {
     return `${heading("Course materials", "Keep the knowledge behind every assignment in one place.", button("Add materials", "upload-trigger", "primary", "plus"))}
@@ -288,6 +297,7 @@
     switch (state.page) {
       case "Overview": return dashboard();
       case "Courses": return coursesPage();
+      case "Course detail": return courseDetailPage();
       case "Course Materials": return materialsPage();
       case "Assignments": return assignmentsPage();
       case "Create Assignment": return assignmentPage();
@@ -468,7 +478,8 @@
     else if (action === "export-submissions") exportRows();
     else if (action === "save-settings") toast("Your preferences have been saved in this prototype.");
     else if (action === "toggle-switch") { target.classList.toggle("on"); target.setAttribute("aria-checked", String(target.classList.contains("on"))); }
-    else if (action === "open-course") toast(`Opening ${target.dataset.course} course overview.`);
+    else if (action === "open-course") { state.selectedCourse = target.dataset.course; navigate("Course detail"); }
+    else if (action === "open-course-materials") navigate("Course Materials");
     else if (action === "student-action") toast("Assignment details are available in this prototype.");
     else if (action === "student-feedback") toast("Published feedback opened in this prototype.");
     else if (action === "manage-visibility") toast("Visibility settings are managed per course in this prototype.");
