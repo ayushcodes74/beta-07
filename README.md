@@ -1,15 +1,27 @@
 # TrustGrade
 
-TrustGrade is a teacher-led academic grading workspace. The current frontend is a dependency-free browser prototype with responsive teacher and student views.
+TrustGrade is a teacher-led academic grading workspace for assignments, course materials, student submissions, OCR verification, AI-assisted grading, and teacher-approved feedback.
 
-## Run the frontend
+## Frontend
 
-Open [`frontend/index.html`](./frontend/index.html) in a browser. No build step or package installation is required.
+The React, TypeScript, and Vite application lives in `frontend/`.
 
-The prototype includes the classroom overview, courses, course materials, assignment authoring, submissions, OCR review, AI grading review, results, leaderboard, settings, and a student workspace preview. Navigation, filters, question editing, mock file uploads, grade review, and CSV export are interactive.
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-## Prototype data
+Create a production build with `npm run build`, or run `npm run typecheck` to check TypeScript without bundling. The local demo supports teacher and student previews; select a workspace on the sign-in screen. Demo changes are held in memory for the current session.
 
-The frontend currently uses in-memory sample data. AI question generation, OCR status, grading suggestions, course actions, publishing, and upload processing are demonstrations only; they do not call the TrustGrade API or persist changes. Refreshing the page resets the sample state.
+### Authentication and API configuration
 
-The FastAPI backend is in [`backend/`](./backend). Connecting frontend actions to API endpoints is a separate integration step.
+Copy `frontend/.env.example` to `frontend/.env` and configure:
+
+- `VITE_USE_API_AUTH=true` to use Supabase Auth instead of the local demo sign-in.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the public Supabase client configuration.
+- `VITE_API_BASE_URL` for the FastAPI API base URL.
+
+The frontend does not contain service-role keys or other server secrets. With real authentication enabled, the application obtains the user's role from the trusted `/api/v1/auth/me` profile endpoint; it does not use a client-selected role as authorization.
+
+AI question generation, OCR, file handling, grading, and course workflows are demonstration experiences unless connected to their backend services. The FastAPI backend is in `backend/`.
