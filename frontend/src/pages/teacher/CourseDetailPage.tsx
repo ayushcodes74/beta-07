@@ -3,10 +3,12 @@ import { ArrowLeft, FileCheck2, Plus } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
+import { isDemoSession } from "../../services/demo-session";
 import type { Course } from "../../types/models";
 
 export function CourseDetailPage({ courses: courseList }: { courses: Course[] }) {
   const { assignments: assignmentList } = useAppState();
+  const demoSession = isDemoSession();
   const { courseId } = useParams();
   const navigate = useNavigate();
   const course = courseList.find((item) => item.id === courseId);
@@ -26,9 +28,7 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
     );
   }
 
-  const courseAssignments = assignmentList.filter(
-    (item) => item.courseId === course.id || !item.courseId
-  );
+  const courseAssignments = assignmentList.filter((item) => item.courseId === course.id);
 
   return (
     <>
@@ -37,15 +37,15 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
           <div className="eyebrow">COURSE DETAILS</div>
           <h1>{course.name}</h1>
           <p className="page-subtitle">
-            {course.code} · {course.instructor} · Spring term 2026
+            {course.code} · {course.instructor}
           </p>
         </div>
         <div className="heading-actions">
-          <Button variant="secondary" onClick={() => navigate("/app/materials")}>
+          <Button variant="secondary" disabled={!demoSession} onClick={() => navigate("/app/materials")}>
             <FileCheck2 size={15} />
-            Course materials
+            {demoSession ? "Demo materials" : "Materials unavailable"}
           </Button>
-          <Button onClick={() => navigate("/app/assignment/new")}>
+          <Button onClick={() => navigate(`/app/assignment/new?courseId=${encodeURIComponent(course.id)}`)}>
             <Plus size={15} />
             Create assignment
           </Button>
@@ -54,8 +54,8 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
 
       <div className="metric-strip">
         {[
-          ["Enrolled students", course.students, "Active this term"],
-          ["Course assignments", courseAssignments.length, "Scheduled for this class"],
+          ["Course enrollments", course.students, "Current roster"],
+          ["Course assignments", courseAssignments.length, "Assigned to this class"],
         ].map(([label, value, note]) => (
           <Panel className="metric-card" key={label.toString()}>
             <span>{label}</span>
@@ -114,4 +114,3 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
     </>
   );
 }
-

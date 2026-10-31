@@ -1,10 +1,12 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
+import { extractErrorMessage, submissionService } from "../../services/api";
+import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function GradingReviewPage({
@@ -18,17 +20,49 @@ export function GradingReviewPage({
   const navigate = useNavigate();
   const toast = useToast();
   const { assignments: assignmentList, people } = useAppState();
+  const demoSession = isDemoSession();
 
   const submission = rows.find((item) => item.id === submissionId);
   const assignment = submission ? assignmentList.find((a) => a.id === submission.assignmentId) : undefined;
   const student = submission ? people.find((p) => p.id === submission.studentId) : undefined;
 
-  const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? 18);
+  const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? (demoSession ? 18 : 0));
   const [feedback, setFeedback] = useState<string>(
-    submission?.grading?.feedback?.comment ??
-    "Strong conceptual grasp demonstrated. Arguments are well structured with clear references to course topics."
+    submission?.grading?.feedback?.comment ?? (demoSession ? "Demo feedback; not a persisted grade." : "")
   );
   const [approving, setApproving] = useState(false);
+  const [integrityReport, setIntegrityReport] = useState<Awaited<ReturnType<typeof submissionService.getIntegrity>> | null>(null);
+  const [integrityError, setIntegrityError] = useState("");
+  const [integrityLoading, setIntegrityLoading] = useState(false);
+
+  useEffect(() => {
+    if (!submission || demoSession) {
+      setIntegrityReport(null);
+      setIntegrityError("");
+      return;
+    }
+
+    let active = true;
+    setIntegrityLoading(true);
+    setIntegrityError("");
+    submissionService
+      .getIntegrity(submission.id)
+      .then((report) => {
+        if (active) setIntegrityReport(report);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setIntegrityError(extractErrorMessage(error, "Could not load integrity evidence."));
+        }
+      })
+      .finally(() => {
+        if (active) setIntegrityLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [demoSession, submission?.id]);
 
   if (!submission) {
     return (
@@ -46,6 +80,7 @@ export function GradingReviewPage({
   }
 
   const approveGrade = () => {
+    if (!demoSession) return;
     setApproving(true);
     setSubmissions((current) =>
       current.map((item) =>
@@ -111,17 +146,27 @@ export function GradingReviewPage({
           </div>
 
           <div style={{ display: "flex", gap: "10px", margin: "10px 0" }}>
-            <Badge tone="sage">
-              OCR Confidence: {Math.round((submission.ocr.confidence || 0.95) * 100)}%
-            </Badge>
+            {submission.ocr.confidence !== null && (
+              <Badge tone="sage">
+                OCR Confidence: {Math.round(submission.ocr.confidence * 100)}%
+              </Badge>
+            )}
             {submission.fileName && <Badge tone="ink">{submission.fileName}</Badge>}
           </div>
 
           <div className="ocr-box">
             {submission.ocr.extractedText ||
               submission.answer ||
-              "No extracted text found for this submission. The PDF document was queued for OCR analysis."}
+              "OCR text is not loaded on this screen. Open OCR review to inspect the service result."}
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            style={{ marginTop: "10px" }}
+            onClick={() => navigate(`/app/ocr/${submission.id}`)}
+          >
+            Review OCR regions
+          </Button>
 
           {submission.ocr.expressions && submission.ocr.expressions.length > 0 && (
             <div style={{ marginTop: "14px" }}>
@@ -143,6 +188,51 @@ export function GradingReviewPage({
               </div>
             </div>
           )}
+
+          {!demoSession && (
+            <div style={{ marginTop: "18px" }}>
+              <h3 style={{ fontSize: "13px" }}>Integrity review</h3>
+              {integrityLoading && <p role="status">Loading authorized comparison evidence…</p>}
+              {integrityError && <p role="alert">{integrityError}</p>}
+              {integrityReport && (
+                <>
+                  <p>
+                    Status: {integrityReport.review_status.replaceAll("_", " ")} · compared{" "}
+                    {integrityReport.comparisons_completed} of{" "}
+                    {integrityReport.comparisons_completed + integrityReport.comparisons_skipped} submissions
+                  </p>
+                  <p>
+                    Exact matching compares OCR text within this assignment. Semantic similarity and handwriting
+                    analysis are unavailable; matches are review signals, not findings of misconduct.
+                  </p>
+                  {integrityReport.notes.map((note, index) => <p key={`note-${index}`}>{note}</p>)}
+                  {integrityReport.evidence.map((evidence, index) => (
+                    <div className="integration-notice-card" key={`${evidence.source_submission_id}-${index}`}>
+                      <div className="integration-notice-content">
+                        <h4>Potential text overlap · {Math.round(evidence.exact_match_score * 100)}% token match</h4>
+                        <p>Source reference: {evidence.source_reference}</p>
+                        <div style={{ display: "grid", gap: "8px", marginTop: "8px" }}>
+                          <div><strong>Current passage</strong><p>{evidence.current_passage}</p></div>
+                          <div><strong>Comparison passage</strong><p>{evidence.source_passage}</p></div>
+                        </div>
+                        {evidence.ocr_uncertain && <p>OCR uncertainty applies to this evidence.</p>}
+                        {evidence.context_note && <p>{evidence.context_note}</p>}
+                      </div>
+                    </div>
+                  ))}
+                  {!integrityReport.evidence.length && integrityReport.comparison_complete && (
+                    <p>No matching passage was found in the authorized same-assignment comparison set.</p>
+                  )}
+                  {!integrityReport.comparison_complete && (
+                    <p>Comparison is incomplete; skipped submissions prevent a conclusive no-match result.</p>
+                  )}
+                  {integrityReport.ocr_quality.low_confidence_regions.length > 0 && (
+                    <p>{integrityReport.ocr_quality.low_confidence_regions.length} OCR region(s) require review.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </Panel>
 
         {/* RIGHT COLUMN: TEACHER GRADING & RUBRIC SCORING */}
@@ -154,13 +244,20 @@ export function GradingReviewPage({
             </div>
           </div>
 
+          {!demoSession ? (
+            <IntegrationNotice
+              title="Grade review and publication are not connected"
+              description="No grading-result, teacher-review, or publication API is mounted. No score or feedback has been generated, and this screen cannot publish a real grade."
+              endpoint="No grading or publication endpoint is currently available"
+              tone="warning"
+            />
+          ) : (
+            <>
           <IntegrationNotice
-            title="AI Grading Backend Status"
-            description="Automated AI grading route (POST /api/v1/submissions/:id/grade) is awaiting router mount. You maintain complete human authority to evaluate, score, and publish results."
-            endpoint="POST /api/v1/submissions/{id}/grade"
+            title="Demo-only grading preview"
+            description="This sample score and approval exist only in the demo session. They are not a real evaluation and are not persisted."
             tone="info"
           />
-
           <div className="rubric-criteria-list">
             <div className="rubric-item-card">
               <div className="rubric-item-top">
@@ -206,6 +303,8 @@ export function GradingReviewPage({
               {approving ? "Publishing…" : "Approve & Publish Grade"}
             </Button>
           </div>
+            </>
+          )}
         </Panel>
       </div>
     </>

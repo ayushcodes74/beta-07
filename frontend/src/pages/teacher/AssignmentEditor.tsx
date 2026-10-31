@@ -1,8 +1,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, FileText, Plus, Sparkles, Upload, X } from "lucide-react";
 import { assignmentService, extractErrorMessage } from "../../services/api";
-import { rubrics } from "../../lib/mock-data";
 import { Badge, Button, Panel, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import type { Assignment, Course, Question } from "../../types/models";
@@ -116,6 +115,7 @@ export function AssignmentEditor({
   setAssignments: Dispatch<SetStateAction<Assignment[]>>;
 }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
   const [questions, setQuestions] = useState<Question[]>([
     { id: crypto.randomUUID(), prompt: "", type: "Subjective", marks: 5, expectedAnswer: "" },
@@ -123,12 +123,11 @@ export function AssignmentEditor({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueAt, setDueAt] = useState("2026-11-15T23:59");
-  const [rubricId, setRubricId] = useState(rubrics[0]?.id ?? "default");
   const [difficulty, setDifficulty] = useState("Mixed");
   const [count, setCount] = useState("3");
   const [type, setType] = useState<"Subjective" | "MCQ" | "Mixed">("Mixed");
   const [saving, setSaving] = useState(false);
-  const [courseId, setCourseId] = useState(courseList[0]?.id ?? "");
+  const [courseId, setCourseId] = useState(searchParams.get("courseId") ?? courseList[0]?.id ?? "");
   const total = questions.reduce((sum, item) => sum + item.marks, 0);
 
   const updateQuestion = (id: string, patch: Partial<Question>) =>
@@ -160,6 +159,7 @@ export function AssignmentEditor({
     setSaving(true);
     try {
       let created = await assignmentService.createAssignment({
+        courseId: courseId || courseList[0]?.id,
         title: cleanTitle,
         description: description.trim(),
         dueAt: deadline.toISOString(),
@@ -170,7 +170,6 @@ export function AssignmentEditor({
       if (state === "Published") {
         created = await assignmentService.publishAssignment(created.id);
       }
-      created.courseId = courseId;
       setAssignments((current) => [created, ...current]);
       toast(
         state === "Published"
@@ -356,7 +355,7 @@ export function AssignmentEditor({
               <select
                 id="course-select"
                 className="field-select"
-                value={courseId}
+                value={courseId || courseList[0]?.id || ""}
                 onChange={(event) => setCourseId(event.target.value)}
               >
                 {courseList.map((course) => (
@@ -387,25 +386,13 @@ export function AssignmentEditor({
                 readOnly
               />
             </div>
-            <div className="field-block">
-              <label htmlFor="rubric-select">Rubric template</label>
-              <select
-                id="rubric-select"
-                className="field-select"
-                value={rubricId}
-                onChange={(event) => setRubricId(event.target.value)}
-              >
-                {rubrics.map((rubric) => (
-                  <option value={rubric.id} key={rubric.id}>
-                    {rubric.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <p className="modal-description">
+              Rubric templates are not persisted by the current assignment API. Question marks and teacher-provided
+              expected answers are stored with the assignment.
+            </p>
           </Panel>
         </aside>
       </div>
     </>
   );
 }
-

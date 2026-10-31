@@ -45,7 +45,7 @@ from app.database.submission_repository import (
     SubmissionAnswerRecord,
     SupabaseSubmissionRepository,
 )
-from app.schemas.assignment import AssignmentStatus
+from app.schemas.assignment import AssignmentCreate, AssignmentStatus
 
 
 def _mock_execute(data):
@@ -61,6 +61,46 @@ def _mock_execute(data):
 
 class TestAssignmentRepository:
     """Verifies assignment persistence, ownership isolation, question ordering, and answer key security."""
+
+    @patch("app.database.assignment_repository.get_user_supabase")
+    def test_create_persists_course_id_and_returns_content_without_course_field(self, mock_get_client):
+        course_id = uuid4()
+        teacher_id = uuid4()
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        due_at = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+        content = AssignmentCreate(
+            title="Course quiz",
+            due_at=due_at,
+            total_marks=1,
+            questions=[],
+            course_id=course_id,
+        )
+
+        record = SupabaseAssignmentRepository().create(teacher_id, content, access_token="token")
+
+        payload = mock_client.table("assignments").insert.call_args.args[0]
+        assert payload["course_id"] == str(course_id)
+        assert record.course_id == course_id
+        assert "course_id" not in record.content.model_dump()
+
+    @patch("app.database.assignment_repository.get_user_supabase")
+    def test_assignment_course_ownership_is_teacher_scoped(self, mock_get_client):
+        course_id = uuid4()
+        teacher_id = uuid4()
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        course_query = mock_client.table("courses").select.return_value
+        course_query.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": str(course_id)}]
+        )
+
+        assert SupabaseAssignmentRepository().owns_course(
+            course_id, teacher_id, access_token="token"
+        ) is True
+        mock_client.table("courses").select.assert_called_once_with("id")
+        course_query.eq.assert_called_once_with("id", str(course_id))
+        course_query.eq.return_value.eq.assert_called_once_with("teacher_id", str(teacher_id))
 
     @patch("app.database.assignment_repository.get_user_supabase")
     def test_1_teacher_retrieves_own_assignment(self, mock_get_client):
@@ -271,6 +311,36 @@ class TestAssignmentRepository:
 
 class TestSubmissionRepository:
     """Verifies submission persistence, student data isolation, and OCR job tracking."""
+
+    @patch("app.database.submission_repository.get_user_supabase")
+    def test_listing_submissions_hydrates_linked_ocr_job_ids(self, mock_get_client):
+        submission_id = uuid4()
+        assignment_id = uuid4()
+        student_id = uuid4()
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.table("submissions").select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[
+                {
+                    "id": str(submission_id),
+                    "assignment_id": str(assignment_id),
+                    "student_id": str(student_id),
+                    "filename": "answer.pdf",
+                    "status": "ocr_queued",
+                    "created_at": "",
+                    "updated_at": "",
+                }
+            ]
+        )
+        mock_client.table("ocr_jobs").select.return_value.in_.return_value.execute.return_value = MagicMock(
+            data=[{"id": "job-123", "submission_id": str(submission_id)}]
+        )
+
+        records = SupabaseSubmissionRepository().list_by_assignment(
+            assignment_id, access_token="token"
+        )
+
+        assert records[0].ocr_job_id == "job-123"
 
     @patch("app.database.submission_repository.get_user_supabase")
     def test_5_submission_belongs_to_expected_assignment(self, mock_get_client):
@@ -540,4 +610,3 @@ class TestGradingRepository:
                 status=allowed,  # type: ignore
             )
             assert obj.status.value == allowed
-

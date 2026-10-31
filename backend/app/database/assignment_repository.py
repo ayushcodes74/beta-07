@@ -25,6 +25,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.database.supabase import get_user_supabase
 from app.schemas.assignment import (
+    AssignmentCreate,
     AssignmentContent,
     AssignmentStatus,
     Marks,
@@ -91,7 +92,7 @@ class SupabaseAssignmentRepository:
             raise AssignmentIntegrationNotConfiguredError(str(exc)) from exc
 
     def create(
-        self, teacher_id: UUID, content: AssignmentContent, *, access_token: str
+        self, teacher_id: UUID, content: AssignmentCreate, *, access_token: str
     ) -> AssignmentRecord:
         """Store a new assignment as a draft owned by teacher_id."""
         client = self._client(access_token)
@@ -103,7 +104,7 @@ class SupabaseAssignmentRepository:
             assignment_payload = {
                 "id": str(assignment_id),
                 "teacher_id": str(teacher_id),
-                "course_id": None,
+                "course_id": str(content.course_id) if getattr(content, "course_id", None) else None,
                 "title": content.title,
                 "instructions": content.instructions,
                 "due_at": content.due_at.isoformat(),
@@ -152,7 +153,8 @@ class SupabaseAssignmentRepository:
                 id=assignment_id,
                 teacher_id=teacher_id,
                 status=AssignmentStatus.DRAFT,
-                content=content,
+                content=AssignmentContent.model_validate(content.model_dump(exclude={"course_id"})),
+                course_id=content.course_id,
             )
         except AssignmentRepositoryError:
             raise
@@ -191,12 +193,29 @@ class SupabaseAssignmentRepository:
                 teacher_id=UUID(str(row["teacher_id"])),
                 status=AssignmentStatus(row["status"]),
                 content=content,
+                course_id=UUID(str(row["course_id"])) if row.get("course_id") else None,
             )
         except AssignmentRepositoryError:
             raise
         except Exception as exc:
             logger.exception("Failed to fetch assignment from Supabase: %s", exc)
             raise AssignmentRepositoryError("Failed to fetch assignment") from exc
+
+    def owns_course(self, course_id: UUID, teacher_id: UUID, *, access_token: str) -> bool:
+        """Verify that an optional assignment course belongs to its creating teacher."""
+        client = self._client(access_token)
+        try:
+            response = (
+                client.table("courses")
+                .select("id")
+                .eq("id", str(course_id))
+                .eq("teacher_id", str(teacher_id))
+                .execute()
+            )
+            return bool(response.data)
+        except Exception as exc:
+            logger.exception("Failed to verify course ownership for assignment: %s", exc)
+            raise AssignmentRepositoryError("Failed to verify assignment course ownership") from exc
 
     def list_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[AssignmentRecord]:
         """List all assignments belonging to a teacher."""
@@ -227,6 +246,7 @@ class SupabaseAssignmentRepository:
                         teacher_id=UUID(str(row["teacher_id"])),
                         status=AssignmentStatus(row["status"]),
                         content=content,
+                        course_id=UUID(str(row["course_id"])) if row.get("course_id") else None,
                     )
                 )
 
@@ -284,6 +304,7 @@ class SupabaseAssignmentRepository:
                 teacher_id=UUID(str(row["teacher_id"])),
                 status=AssignmentStatus.PUBLISHED,
                 content=content,
+                course_id=UUID(str(row["course_id"])) if row.get("course_id") else None,
             )
         except AssignmentRepositoryError:
             raise
@@ -335,6 +356,7 @@ class SupabaseAssignmentRepository:
                         teacher_id=UUID(str(row["teacher_id"])),
                         status=AssignmentStatus.PUBLISHED,
                         content=content,
+                        course_id=UUID(str(course_id)) if course_id else None,
                     )
                 )
 
@@ -412,6 +434,7 @@ class SupabaseAssignmentRepository:
                 teacher_id=UUID(str(row["teacher_id"])),
                 status=AssignmentStatus(row["status"]),
                 content=content,
+                course_id=UUID(str(row["course_id"])) if row.get("course_id") else None,
             )
         except AssignmentRepositoryError:
             raise
@@ -645,4 +668,3 @@ class SupabaseAssignmentRepository:
                     )
                 )
         return questions
-

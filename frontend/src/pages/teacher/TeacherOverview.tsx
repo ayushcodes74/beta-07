@@ -9,7 +9,9 @@ import {
 } from "recharts";
 import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
+import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 function TrendChart({ height = 190 }: { height?: number }) {
@@ -179,7 +181,9 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
                 <StatusBadge status={submission.ocr.state} />
               </td>
               <td className="score-cell">
-                {submission.grading ? `${submission.grading.suggestedScore} / ${assignment?.totalMarks ?? 20}` : "—"}
+                {submission.grading
+                  ? `${submission.grading.suggestedScore} / ${assignment?.totalMarks ?? "—"}`
+                  : "—"}
               </td>
               <td>
                 <StatusBadge status={submission.state} />
@@ -210,18 +214,29 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 export function TeacherOverview() {
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
+  const demoSession = isDemoSession();
   const recentSubmissions = [...submissions]
     .sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt))
     .slice(0, 5);
-  const activeAssignment = assignmentList[0];
-  const upcomingDeadlines = assignmentList.slice(0, 3);
+  const activeAssignment = assignmentList.find((item) => item.state === "Published") ?? assignmentList[0];
+  const upcomingDeadlines = assignmentList
+    .filter((item) => Date.parse(item.dueAt) >= Date.now())
+    .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
+    .slice(0, 3);
   const totalStudents = courseList.reduce((acc, c) => acc + (c.students || 0), 0);
+  const activeAssignmentSubmissions = activeAssignment
+    ? submissions.filter((submission) => submission.assignmentId === activeAssignment.id).length
+    : 0;
+  const activeCourseStudentCount = courseList.find((course) => course.id === activeAssignment?.courseId)?.students ?? 0;
+  const turnoutPercent = activeCourseStudentCount > 0
+    ? Math.min(100, (activeAssignmentSubmissions / activeCourseStudentCount) * 100)
+    : null;
 
   return (
     <>
       <div className="welcome-row">
         <div>
-          <div className="eyebrow">FACULTY WORKSPACE · SPRING TERM 2026</div>
+          <div className="eyebrow">FACULTY WORKSPACE</div>
           <h1>Good morning, {user?.name.split(" ")[0] ?? "Professor"}.</h1>
           <p className="page-subtitle">Your classroom, intelligently organized and grounded in academic authority.</p>
           <div className="welcome-context">
@@ -243,7 +258,7 @@ export function TeacherOverview() {
           {
             title: "Active courses",
             value: String(courseList.length),
-            note: "Connected live via backend",
+            note: demoSession ? "Demo workspace" : "Loaded from backend",
             change: `${courseList.length} registered`,
             icon: BookOpen,
             featured: true,
@@ -257,7 +272,7 @@ export function TeacherOverview() {
             alert: assignmentList.length === 0,
           },
           {
-            title: "Enrolled students",
+            title: "Course enrollments",
             value: String(totalStudents),
             note: "Across course rosters",
             change: "Live roster",
@@ -266,8 +281,8 @@ export function TeacherOverview() {
           {
             title: "Submissions",
             value: String(submissions.length),
-            note: "In evaluation queue",
-            change: "Real-time count",
+            note: "In submission queue",
+            change: "Loaded submission count",
             icon: Activity,
           },
         ].map((item) => (
@@ -300,13 +315,17 @@ export function TeacherOverview() {
               <p className="feature-course">Due {formatDate(activeAssignment.dueAt)}</p>
               <div className="progress-row">
                 <span>
-                  <strong>{submissions.length}</strong> submissions received
+                  <strong>{activeAssignmentSubmissions}</strong> submissions received
                 </span>
                 <span>{activeAssignment.totalMarks} marks</span>
               </div>
-              <div className="progress-track">
-                <span style={{ width: submissions.length > 0 ? "45%" : "5%" }} />
-              </div>
+              {turnoutPercent !== null ? (
+                <div className="progress-track" aria-label={`${Math.round(turnoutPercent)}% submission turnout`}>
+                  <span style={{ width: `${turnoutPercent}%` }} />
+                </div>
+              ) : (
+                <small>Submission turnout is unavailable without an enrolled-student roster.</small>
+              )}
               <div className="feature-bottom">
                 <div className="feature-meta">
                   <span>
@@ -365,29 +384,37 @@ export function TeacherOverview() {
         </Panel>
       </div>
 
-      <div className="analytics-grid">
-        <Panel className="chart-card">
-          <div className="section-heading">
-            <div>
-              <h2>Class performance trend</h2>
-              <p>Weekly progress across term coursework</p>
+      {demoSession ? (
+        <div className="analytics-grid">
+          <Panel className="chart-card">
+            <div className="section-heading">
+              <div>
+                <h2>Demo class performance trend</h2>
+                <p>Sample data for interface demonstration only</p>
+              </div>
             </div>
-          </div>
-          <div className="chart-total">
-            84.6 <span>↑ Consistent Mastery</span>
-          </div>
-          <TrendChart />
-        </Panel>
-        <Panel className="chart-card">
-          <div className="section-heading">
-            <div>
-              <h2>Grade distribution</h2>
-              <p>Current class grade band overview</p>
+            <div className="chart-total">
+              84.6 <span>Demo sample</span>
             </div>
-          </div>
-          <DistributionChart />
-        </Panel>
-      </div>
+            <TrendChart />
+          </Panel>
+          <Panel className="chart-card">
+            <div className="section-heading">
+              <div>
+                <h2>Demo grade distribution</h2>
+                <p>Sample data for interface demonstration only</p>
+              </div>
+            </div>
+            <DistributionChart />
+          </Panel>
+        </div>
+      ) : (
+        <IntegrationNotice
+          title="Class analytics are not available"
+          description="The connected backend does not expose grading statistics or historical performance data. Analytics are omitted rather than estimated."
+          tone="info"
+        />
+      )}
 
       <Panel className="recent-card dashboard-recent">
         <div className="section-heading">
@@ -405,4 +432,3 @@ export function TeacherOverview() {
     </>
   );
 }
-

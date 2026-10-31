@@ -6301,6 +6301,8 @@ h1 {
   font-weight: 800;
   letter-spacing: 0.6px;
   text-transform: uppercase;
+}
+
 /* Results, leaderboard, settings */
 .published-results { display: grid; gap: 13px; max-width: 860px; }
 .published-result-detail { padding: 18px; }

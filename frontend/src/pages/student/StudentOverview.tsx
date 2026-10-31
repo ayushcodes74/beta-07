@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BookOpen, Check, ChevronRight, FileText, Plus } from "lucide-react";
+import { ArrowRight, BookOpen, Check, ChevronRight, FileText } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
+import { isDemoSession } from "../../services/demo-session";
 
 export function StudentOverview() {
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, joinedCourseIds, submissions: studentRows } = useAppState();
-  const myCourses = courseList.filter((course) => joinedCourseIds.includes(course.id) || joinedCourseIds.length === 0);
+  const demoSession = isDemoSession();
+  const myCourses = courseList.filter((course) => joinedCourseIds.includes(course.id));
   const myAssignments = assignmentList.filter((assignment) => assignment.state === "Published");
   const published = studentRows.filter(
     (item) => item.studentId === user?.id && item.state === "Published" && item.grading?.teacherApproved
@@ -19,14 +21,13 @@ export function StudentOverview() {
     <>
       <div className="page-heading">
         <div>
-          <div className="eyebrow">STUDENT WORKSPACE · SPRING TERM 2026</div>
+          <div className="eyebrow">STUDENT WORKSPACE</div>
           <h1>Welcome back, {user?.name.split(" ")[0] ?? "there"}.</h1>
           <p className="page-subtitle">Stay on top of your coursework and receive transparent, teacher-approved feedback.</p>
         </div>
         <div className="heading-actions">
           <Button variant="secondary" onClick={() => navigate("/app/student/assignments")}>
-            <Plus size={15} />
-            Join a course
+            View assignments
           </Button>
         </div>
       </div>
@@ -176,7 +177,9 @@ export function StudentOverview() {
             ))}
             {!myCourses.length && (
               <Panel className="empty-state" style={{ padding: "2rem", textAlign: "center", color: "#5C6E61" }}>
-                Join a course to see your classes here.
+                {demoSession
+                  ? "Join a demo course from My assignments."
+                  : "Your instructor-managed enrollments will appear here."}
               </Panel>
             )}
           </div>
@@ -185,4 +188,3 @@ export function StudentOverview() {
     </>
   );
 }
-

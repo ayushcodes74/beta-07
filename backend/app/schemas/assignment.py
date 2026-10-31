@@ -130,6 +130,11 @@ class AssignmentContent(_StrictModel):
 class AssignmentCreate(AssignmentContent):
     """New assignments are always created as drafts; status cannot be set here."""
 
+    course_id: UUID | None = Field(
+        default=None,
+        description="Optional course owned by the teacher creating this assignment.",
+    )
+
 
 class AssignmentUpdate(_StrictModel):
     """Partial update. The merged result is re-validated as a whole assignment.
@@ -172,6 +177,7 @@ class SubjectiveQuestionTeacherView(SubjectiveQuestion):
 class AssignmentTeacherResponse(BaseModel):
     id: UUID
     teacher_id: UUID
+    course_id: UUID | None = None
     status: AssignmentStatus
     title: str
     instructions: str | None
@@ -214,6 +220,7 @@ class SubjectiveQuestionStudentView(BaseModel):
 class AssignmentStudentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID
+    course_id: UUID | None = None
     title: str
     instructions: str | None
     due_at: AwareDatetime

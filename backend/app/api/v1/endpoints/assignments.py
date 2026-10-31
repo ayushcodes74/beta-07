@@ -132,6 +132,7 @@ def teacher_view(record: AssignmentRecord) -> AssignmentTeacherResponse:
     return AssignmentTeacherResponse(
         id=record.id,
         teacher_id=record.teacher_id,
+        course_id=record.course_id,
         status=record.status,
         title=content.title,
         instructions=content.instructions,
@@ -166,6 +167,7 @@ def student_view(record: AssignmentRecord) -> AssignmentStudentResponse:
             )
     return AssignmentStudentResponse(
         id=record.id,
+        course_id=record.course_id,
         title=content.title,
         instructions=content.instructions,
         due_at=content.due_at,
@@ -195,7 +197,8 @@ AUTH_HEADER_DOC = "**Authentication:** `Authorization: Bearer <Supabase access t
         f"{AUTH_HEADER_DOC} Teachers only.\n\n"
         "Creates a **draft** owned by the caller; it is not visible to students until published. "
         "`due_at` must include a timezone offset and be in the future. Total question marks may not "
-        "exceed `total_marks`. `status`, `id` and `teacher_id` cannot be supplied."
+        "exceed `total_marks`. An optional `course_id` must refer to a course owned by the caller. "
+        "`status`, `id` and `teacher_id` cannot be supplied."
     ),
     responses={**COLLECTION_ERROR_RESPONSES, 422: {"description": "Invalid assignment data."}},
 )

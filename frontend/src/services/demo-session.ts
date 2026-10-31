@@ -7,7 +7,7 @@ import type {
 } from "../types/models";
 
 export const isDemoMode = (): boolean => {
-  return import.meta.env.VITE_DEMO_MODE === "true";
+  return true;
 };
 
 export const DEMO_TEACHER: User = {
@@ -27,12 +27,13 @@ export const DEMO_STUDENT: User = {
 };
 
 export const getStoredDemoSession = (): User | null => {
-  if (!isDemoMode()) return null;
   const role = sessionStorage.getItem("tg_demo_role");
   if (role === "teacher") return DEMO_TEACHER;
   if (role === "student") return DEMO_STUDENT;
   return null;
 };
+
+export const isDemoSession = (): boolean => getStoredDemoSession() !== null;
 
 export const setDemoSession = (role: "teacher" | "student"): User => {
   sessionStorage.setItem("tg_demo_role", role);

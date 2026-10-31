@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, useToast } from "../../components/ui";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function AssessmentPage({
@@ -21,6 +23,7 @@ export function AssessmentPage({
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  const demoSession = isDemoSession();
 
   if (!assignment) {
     return (
@@ -38,6 +41,10 @@ export function AssessmentPage({
 
   const submitAssessment = () => {
     if (existing || !user) return;
+    if (!demoSession) {
+      toast("MCQ answer submission is not connected to the backend yet.", "info");
+      return;
+    }
     setSubmitted(true);
     toast("Assessment recorded in your student learning session.", "info");
     const newSub: Submission = {
@@ -73,6 +80,14 @@ export function AssessmentPage({
 
       <div className="assessment-layout">
         <Panel className="assessment-card">
+          {!demoSession && (
+            <IntegrationNotice
+              title="MCQ submission is unavailable"
+              description="The backend currently accepts PDF submissions only. Your selected answers will not be saved or submitted."
+              endpoint="No MCQ answer-submission endpoint is currently available"
+              tone="warning"
+            />
+          )}
           {current ? (
             <div>
               <div className="question-prompt" style={{ marginBottom: "1.5rem" }}>
@@ -128,10 +143,10 @@ export function AssessmentPage({
                   </Button>
                 ) : (
                   <Button
-                    disabled={submitted || Boolean(existing)}
+                    disabled={!demoSession || submitted || Boolean(existing)}
                     onClick={submitAssessment}
                   >
-                    {submitted || existing ? "Submitted" : "Submit Assessment"}
+                    {submitted || existing ? "Submitted" : demoSession ? "Submit Assessment" : "Submission unavailable"}
                   </Button>
                 )}
               </div>
@@ -146,4 +161,3 @@ export function AssessmentPage({
     </>
   );
 }
-

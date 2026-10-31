@@ -1,5 +1,4 @@
-import axios, { AxiosError } from "axios";
-import { getSupabaseClient } from "./supabase";
+import axios from "axios";
 import type {
   Assignment,
   Course,
@@ -7,7 +6,6 @@ import type {
   Question,
   Submission,
   SubmissionState,
-  User,
 } from "../types/models";
 
 // Base API Axios instance
@@ -17,51 +15,9 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Request interceptor: attach Supabase access token as Bearer
-api.interceptors.request.use(async (config) => {
-  try {
-    const client = getSupabaseClient();
-    const { data: { session } } = await client.auth.getSession();
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
-    }
-  } catch (err) {
-    // Supabase client may not be initialized if env variables are missing
-    console.warn("Supabase auth session unavailable for request:", err);
-  }
-  return config;
-});
-
-// Response interceptor: handle 401s and attempt session refresh
-api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      try {
-        const client = getSupabaseClient();
-        const { data: { session } } = await client.auth.refreshSession();
-        if (session?.access_token && error.config && !(error.config as any)._retry) {
-          (error.config as any)._retry = true;
-          error.config.headers.Authorization = `Bearer ${session.access_token}`;
-          return api(error.config);
-        }
-      } catch (refreshErr) {
-        console.warn("Session refresh failed:", refreshErr);
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
 // --------------------------------------------------------------------------
 // Backend Response DTOs
 // --------------------------------------------------------------------------
-
-export interface BackendUserResponse {
-  id: string;
-  email: string;
-  role: "teacher" | "student";
-}
 
 export interface BackendCourse {
   id: string;
@@ -96,6 +52,7 @@ export interface BackendQuestion {
 export interface BackendAssignment {
   id: string;
   teacher_id?: string;
+  course_id?: string | null;
   title: string;
   instructions?: string | null;
   due_at: string;
@@ -116,6 +73,53 @@ export interface BackendSubmissionStatus {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BackendOCRTextBlock {
+  block_id: string;
+  sequence: number;
+  type: string;
+  text: string;
+  confidence: number | null;
+  bounding_box: { x1: number; y1: number; x2: number; y2: number };
+  warnings: string[];
+}
+
+export interface BackendOCRPage {
+  page_number: number;
+  status: string;
+  full_text: string;
+  text_blocks: BackendOCRTextBlock[];
+  warnings: string[];
+  math_blocks: Array<{
+    recognized_text: string;
+    latex: string;
+    confidence: number | null;
+    requires_manual_review: boolean;
+    warnings: string[];
+  }>;
+}
+
+export interface BackendOCRDocumentResult {
+  job_id: string;
+  submission_id: string;
+  status: string;
+  warnings: string[];
+  errors: string[];
+  processing_summary: {
+    total_pages: number;
+    processed_pages: number;
+    failed_pages: number;
+  };
+  pages: BackendOCRPage[];
+}
+
+export interface BackendOCRProcessingStatus {
+  job_id: string;
+  status: string;
+  stage: string;
+  progress: number;
+  message: string;
 }
 
 export interface BackendOCRRegionReference {
@@ -222,7 +226,7 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
 
   return {
     id: b.id,
-    courseId: defaultCourseId,
+    courseId: b.course_id || defaultCourseId,
     title: b.title,
     description: b.instructions || "",
     dueAt: b.due_at,
@@ -235,6 +239,7 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
 }
 
 export function toBackendAssignmentCreate(a: {
+  courseId?: string;
   title: string;
   description?: string;
   dueAt: string;
@@ -273,6 +278,7 @@ export function toBackendAssignmentCreate(a: {
     : dueDateTime.toISOString();
 
   return {
+    course_id: a.courseId || null,
     title: a.title.trim(),
     instructions: a.description ? a.description.trim() : null,
     due_at: validDueAt,
@@ -302,11 +308,11 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     ocr: {
       confidence: null,
       state: ocrState,
-      extractedText: b.status.startsWith("ocr_") ? `OCR status: ${b.status.slice(4)}` : "Submission received.",
+      extractedText: "",
       warnings: b.warnings ?? [],
       expressions: [],
     },
-    answer: "PDF submission received.",
+    answer: "",
     fileName: fileName || "submission.pdf",
   };
 }
@@ -328,117 +334,6 @@ export function extractErrorMessage(error: unknown, fallback: string = "An error
 // --------------------------------------------------------------------------
 // Centralized Services
 // --------------------------------------------------------------------------
-
-async function getTrustedProfile() {
-  const client = getSupabaseClient();
-  const { data: { session } } = await client.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error("Sign-in completed without an access token. Please sign in again.");
-  }
-  const response = await api.get<BackendUserResponse>("/auth/me", {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
-  return {
-    ...response.data,
-    name:
-      session.user.user_metadata?.name ??
-      session.user.email?.split("@")[0] ??
-      "TrustGrade user",
-  };
-}
-
-export const authService = {
-  async getSession() {
-    const client = getSupabaseClient();
-    const { data: { session }, error } = await client.auth.getSession();
-    if (error || !session) return null;
-    return session;
-  },
-
-  async getCurrentUser(): Promise<User | null> {
-    try {
-      const client = getSupabaseClient();
-      const { data: { session }, error } = await client.auth.getSession();
-      if (error || !session?.access_token) return null;
-      const profile = await getTrustedProfile();
-      return {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        initials:
-          profile.name
-            .split(/\s+/)
-            .map((part: string) => part[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase() || "TG",
-      };
-    } catch {
-      return null;
-    }
-  },
-
-  async login(email: string, password: string): Promise<User> {
-    const client = getSupabaseClient();
-    const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    try {
-      const profile = await getTrustedProfile();
-      return {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        initials:
-          profile.name
-            .split(/\s+/)
-            .map((part: string) => part[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase() || "TG",
-      };
-    } catch (err) {
-      await client.auth.signOut();
-      throw err;
-    }
-  },
-
-  async register(name: string, email: string, password: string, role: "teacher" | "student"): Promise<User> {
-    const client = getSupabaseClient();
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role } },
-    });
-    if (error) throw error;
-    if (!data.session) {
-      throw new Error(
-        "Check your email to confirm your account, then sign in. Role access is confirmed from your trusted profile."
-      );
-    }
-    const profile = await getTrustedProfile();
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-      initials:
-        profile.name
-          .split(/\s+/)
-          .map((part: string) => part[0])
-          .slice(0, 2)
-          .join("")
-          .toUpperCase() || "TG",
-    };
-  },
-
-  async logout(): Promise<void> {
-    const client = getSupabaseClient();
-    const { error } = await client.auth.signOut();
-    if (error) throw error;
-  },
-};
 
 export const courseService = {
   async getCourses(): Promise<Course[]> {
@@ -483,6 +378,7 @@ export const assignmentService = {
   },
 
   async createAssignment(assignment: {
+    courseId?: string;
     title: string;
     description?: string;
     dueAt: string;
@@ -533,8 +429,12 @@ export const submissionService = {
     return response.data;
   },
 
-  async getOcrResult(submissionId: string) {
-    const response = await api.get(`/submissions/${submissionId}/ocr-result`);
+  async getOcrResult(
+    submissionId: string
+  ): Promise<BackendOCRDocumentResult | BackendOCRProcessingStatus> {
+    const response = await api.get<BackendOCRDocumentResult | BackendOCRProcessingStatus>(
+      `/submissions/${submissionId}/ocr-result`
+    );
     return response.data;
   },
 

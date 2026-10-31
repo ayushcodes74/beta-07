@@ -81,6 +81,22 @@ class SupabaseSubmissionRepository:
         except Exception as exc:
             raise SubmissionIntegrationNotConfiguredError(str(exc)) from exc
 
+    @staticmethod
+    def _ocr_job_ids(client: Any, rows: list[dict[str, Any]]) -> dict[str, str]:
+        submission_ids = [str(row["id"]) for row in rows]
+        if not submission_ids:
+            return {}
+        response = (
+            client.table("ocr_jobs")
+            .select("id, submission_id")
+            .in_("submission_id", submission_ids)
+            .execute()
+        )
+        return {
+            str(row["submission_id"]): str(row["id"])
+            for row in (response.data or [])
+        }
+
     def create(
         self,
         submission_id: UUID,
@@ -195,13 +211,14 @@ class SupabaseSubmissionRepository:
                 .execute()
             )
             rows = resp.data or []
+            job_ids = self._ocr_job_ids(client, rows)
             return [
                 SubmissionRecord(
                     id=UUID(str(r["id"])),
                     assignment_id=UUID(str(r["assignment_id"])),
                     student_id=UUID(str(r["student_id"])),
                     filename=r["filename"],
-                    ocr_job_id=None,
+                    ocr_job_id=job_ids.get(str(r["id"])),
                     status=r["status"],
                     created_at=r.get("created_at") or "",
                     updated_at=r.get("updated_at") or "",
@@ -225,13 +242,14 @@ class SupabaseSubmissionRepository:
                 .execute()
             )
             rows = resp.data or []
+            job_ids = self._ocr_job_ids(client, rows)
             return [
                 SubmissionRecord(
                     id=UUID(str(r["id"])),
                     assignment_id=UUID(str(r["assignment_id"])),
                     student_id=UUID(str(r["student_id"])),
                     filename=r["filename"],
-                    ocr_job_id=None,
+                    ocr_job_id=job_ids.get(str(r["id"])),
                     status=r["status"],
                     created_at=r.get("created_at") or "",
                     updated_at=r.get("updated_at") or "",

@@ -18,13 +18,12 @@ export function CoursesPage({
   const { user, joinedCourseIds } = useAppState();
   const [query, setQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [courseFilter, setCourseFilter] = useState("All courses");
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
   const student = user?.role === "student";
   const visibleCourses = student
-    ? courseList.filter((course) => joinedCourseIds.includes(course.id) || joinedCourseIds.length === 0)
+    ? courseList.filter((course) => joinedCourseIds.includes(course.id))
     : courseList;
   const filtered = visibleCourses.filter((course) =>
     `${course.name} ${course.code} ${course.instructor}`.toLowerCase().includes(query.toLowerCase())
@@ -34,18 +33,10 @@ export function CoursesPage({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const name = String(form.get("courseName") ?? "").trim();
-    const code = String(form.get("courseCode") ?? "").trim().toUpperCase();
-    if (!name || !code) return;
-    if (courseList.some((course) => course.code.toLowerCase() === code.toLowerCase())) {
-      toast("A course with this code already exists in your workspace.", "info");
-      return;
-    }
+    if (!name) return;
     setCreating(true);
     try {
-      const created = await courseService.createCourse({
-        name: `${name} (${code})`,
-        description: `Course Code: ${code}`,
-      });
+      const created = await courseService.createCourse({ name });
       setCourses((current) => [created, ...current]);
       setDialogOpen(false);
       toast(`${created.name} added successfully!`);
@@ -71,8 +62,7 @@ export function CoursesPage({
         <div className="heading-actions">
           {student ? (
             <Button onClick={() => navigate("/app/student/assignments")}>
-              <Plus size={15} />
-              Join a course
+              View assignments
             </Button>
           ) : (
             <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -107,16 +97,9 @@ export function CoursesPage({
                         required
                       />
                     </div>
-                    <div className="field-block">
-                      <label htmlFor="course-code">Course code</label>
-                      <input
-                        id="course-code"
-                        name="courseCode"
-                        className="field-input"
-                        placeholder="e.g. CS 401"
-                        required
-                      />
-                    </div>
+                    <p className="modal-description">
+                      The connected backend derives a display code from the course name; custom codes are not stored.
+                    </p>
                     <div className="modal-actions">
                       <Dialog.Close asChild>
                         <Button type="button" variant="secondary">
@@ -145,17 +128,6 @@ export function CoursesPage({
             aria-label="Search courses"
           />
         </label>
-        <select className="filter-select" aria-label="Term">
-          <option>Spring term 2026</option>
-        </select>
-        <select
-          className="filter-select"
-          aria-label="Activity filter"
-          value={courseFilter}
-          onChange={(event) => setCourseFilter(event.target.value)}
-        >
-          <option>All courses</option>
-        </select>
       </div>
 
       <div className="course-grid">
@@ -197,7 +169,7 @@ export function CoursesPage({
         ) : (
           <Panel className="empty-state" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#5C6E61" }}>
             {student
-              ? "You are not enrolled in any courses yet."
+              ? "No instructor-managed course enrollments are available for this account yet."
               : "No courses found matching your search. Click 'Create course' to set up a new class."}
           </Panel>
         )}
@@ -205,4 +177,3 @@ export function CoursesPage({
     </>
   );
 }
-

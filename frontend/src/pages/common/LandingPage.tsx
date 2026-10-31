@@ -13,11 +13,11 @@ export function LandingPage() {
   const demoMode = isDemoMode();
 
   const handleGetStarted = () => {
-    navigate(demoMode ? "/demo" : "/register");
+    navigate("/demo");
   };
 
   const handleSignIn = () => {
-    navigate(demoMode ? "/demo" : "/login");
+    navigate("/demo");
   };
 
   const capabilities = [
@@ -106,10 +106,10 @@ export function LandingPage() {
               </span>
             )}
             <button className="tg-btn-ghost" onClick={handleSignIn}>
-              {demoMode ? "Demo Access" : "Sign In"}
+              Demo Access
             </button>
             <button className="tg-btn-primary" onClick={handleGetStarted}>
-              <span>{demoMode ? "Enter Demo" : "Get Started Free"}</span>
+              <span>Enter Demo</span>
               <ArrowUpRight size={15} />
             </button>
             <button
@@ -131,10 +131,10 @@ export function LandingPage() {
             <a href="#faculty" onClick={() => setMobileMenuOpen(false)}>For Faculty</a>
             <div className="tg-mobile-buttons">
               <button className="tg-btn-ghost" onClick={handleSignIn}>
-                {demoMode ? "Demo Access" : "Sign In"}
+                Demo Access
               </button>
               <button className="tg-btn-primary" onClick={handleGetStarted}>
-                <span>{demoMode ? "Enter Demo" : "Get Started Free"}</span>
+                <span>Enter Demo</span>
                 <ArrowUpRight size={15} />
               </button>
             </div>
@@ -733,4 +733,3 @@ export function LandingPage() {
     </div>
   );
 }
-

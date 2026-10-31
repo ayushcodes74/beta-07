@@ -41,6 +41,7 @@ class AssignmentRecord(BaseModel):
     teacher_id: UUID
     status: AssignmentStatus
     content: AssignmentContent
+    course_id: UUID | None = None
 
 
 class AssignmentRepositoryError(Exception):
@@ -59,12 +60,14 @@ class AssignmentRepository(Protocol):
     """Persistence for assignments. ``access_token`` is the caller's verified token."""
 
     def create(
-        self, teacher_id: UUID, content: AssignmentContent, *, access_token: str
+        self, teacher_id: UUID, content: AssignmentCreate, *, access_token: str
     ) -> AssignmentRecord:
         """Store a new assignment as a draft owned by ``teacher_id``."""
         ...
 
     def get(self, assignment_id: UUID, *, access_token: str) -> AssignmentRecord | None: ...
+
+    def owns_course(self, course_id: UUID, teacher_id: UUID, *, access_token: str) -> bool: ...
 
     def list_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[AssignmentRecord]: ...
 
@@ -97,7 +100,7 @@ class UnconfiguredAssignmentRepository:
     def _fail(self, *args: Any, **kwargs: Any) -> Any:
         raise AssignmentIntegrationNotConfiguredError("assignment repository is not configured")
 
-    create = get = list_by_teacher = list_published_for_student = _fail
+    create = get = owns_course = list_by_teacher = list_published_for_student = _fail
     get_published_for_student = replace_content = set_status = delete = _fail
 
 
@@ -140,6 +143,10 @@ class AssignmentService:
     def create(self, teacher: CurrentUser, payload: AssignmentCreate, *, access_token: str) -> AssignmentRecord:
         self._require_role(teacher, Role.TEACHER)
         self._require_future_deadline(payload.due_at)
+        if payload.course_id and not self._repository.owns_course(
+            payload.course_id, teacher.id, access_token=access_token
+        ):
+            raise AssignmentNotFoundError
         # Always a draft: publishing is a separate, explicit action.
         record = self._repository.create(teacher.id, payload, access_token=access_token)
         self._check_owned(teacher, record)

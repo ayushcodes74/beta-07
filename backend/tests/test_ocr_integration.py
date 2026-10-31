@@ -60,6 +60,9 @@ class FakeAssignmentRepository:
     def get(self, assignment_id: UUID, *, access_token: str) -> AssignmentRecord | None:
         return self.records.get(assignment_id)
 
+    def owns_course(self, course_id: UUID, teacher_id: UUID, *, access_token: str) -> bool:
+        return True
+
     def get_published_for_student(
         self, assignment_id: UUID, student_id: UUID, *, access_token: str
     ) -> AssignmentRecord | None:

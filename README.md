@@ -18,13 +18,15 @@ Create a production build with `npm run build`, or run `npm run typecheck` to ch
 
 Copy `frontend/.env.example` to `frontend/.env` and configure:
 
-- `VITE_USE_API_AUTH=true` to use Supabase Auth instead of the local demo sign-in.
+- `VITE_DEMO_MODE=true` only when intentionally using the isolated sample/demo workspace. Leave it `false` for connected accounts.
 - `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the public Supabase client configuration.
 - `VITE_API_BASE_URL` for the FastAPI API base URL.
 
-The frontend does not contain service-role keys or other server secrets. With real authentication enabled, the application obtains the user's role from the trusted `/api/v1/auth/me` profile endpoint; it does not use a client-selected role as authorization.
+The frontend does not contain service-role keys or other server secrets. Connected accounts use Supabase Auth and obtain their role from the trusted `/api/v1/auth/me` profile endpoint; a client-selected role is never authorization.
 
-AI question generation, OCR, file handling, grading, and course workflows are demonstration experiences unless connected to their backend services. The FastAPI backend is in `backend/`.
+The connected API currently supports course and assignment records, PDF submissions, OCR status/results, and same-assignment integrity comparisons. Assignment creation accepts an optional `course_id`; the backend verifies the course belongs to the creating teacher before storing it. The API derives display codes from course names and does not persist custom course codes.
+
+Course-material upload/indexing, student invite-code enrollment, MCQ answer submission, grade review/publication, results, leaderboard, corrected OCR persistence, and teacher integrity-decision audit endpoints are not implemented. Their connected-mode UI is disabled or shows an explicit limitation instead of recording local-only success. Interactive sample content and simulated grades are restricted to active demo sessions. The FastAPI backend is in `backend/`.
 
 ### Submission integrity comparison
 
