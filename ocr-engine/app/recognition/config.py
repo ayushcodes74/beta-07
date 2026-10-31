@@ -9,6 +9,13 @@ from app.env import load_env_file
 load_env_file()
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 class RecognitionConfig(BaseModel):
     """Configuration controlling text detection, classification, and OCR inference."""
 
@@ -82,6 +89,47 @@ class RecognitionConfig(BaseModel):
         ),
     )
 
+    # Vision-LLM page reader (Gemini): math -> LaTeX, tables, diagrams/graphs, any language/script.
+    # Runs before the OCR engines above whenever a key is configured; any failure falls back to them.
+    vision_enabled: bool = Field(
+        default_factory=lambda: _env_bool("OCR_VISION_ENABLED", True),
+        description="Use the vision LLM as the primary page reader when an API key is available (env OCR_VISION_ENABLED)",
+    )
+    vision_api_key: str = Field(
+        default_factory=lambda: os.getenv("OCR_VISION_API_KEY") or os.getenv("GEMINI_API_KEY", ""),
+        description="Gemini API key (env OCR_VISION_API_KEY, falling back to GEMINI_API_KEY). Empty disables it.",
+        repr=False,
+    )
+    vision_model: str = Field(
+        default_factory=lambda: os.getenv("OCR_VISION_MODEL", "gemini-2.5-flash"),
+        description="Gemini model used to read pages (env OCR_VISION_MODEL)",
+    )
+    vision_fallback_models: list = Field(
+        default_factory=lambda: [
+            m.strip()
+            for m in (os.getenv("OCR_VISION_FALLBACK_MODELS") or os.getenv("GEMINI_FALLBACK_MODELS", "")).split(",")
+            if m.strip()
+        ],
+        description=(
+            "Models tried in order when the primary is rate-limited/over quota/unavailable "
+            "(env OCR_VISION_FALLBACK_MODELS, comma-separated; falls back to GEMINI_FALLBACK_MODELS)"
+        ),
+    )
+    vision_endpoint: str = Field(
+        default_factory=lambda: os.getenv("OCR_VISION_ENDPOINT", "https://generativelanguage.googleapis.com/v1beta"),
+        description="Gemini API base URL",
+    )
+    vision_timeout_seconds: float = Field(
+        default_factory=lambda: float(os.getenv("OCR_VISION_TIMEOUT_SECONDS", "120")),
+        description="Per-page request timeout for the vision model",
+        gt=0,
+    )
+    vision_max_image_side: int = Field(
+        default=2048,
+        description="Page images are downscaled so their longest side is at most this many pixels",
+        ge=512,
+    )
+
     # OCR.space cloud OCR (https://ocr.space/ocrapi)
     ocr_space_api_key: str = Field(
         default_factory=lambda: os.getenv("OCR_SPACE_API_KEY", ""),
@@ -97,6 +145,13 @@ class RecognitionConfig(BaseModel):
         description="OCR.space OCREngine: 3 = handwriting/tables (1000/month free), 2 = fast general purpose",
         ge=1,
         le=3,
+    )
+    ocr_space_language: str = Field(
+        default_factory=lambda: os.getenv("OCR_SPACE_LANGUAGE", "auto"),
+        description=(
+            "OCR.space language. 'auto' (default) auto-detects mixed languages/scripts on Engines 2 and 3 "
+            "(Engine 3: 200+ languages). 3-letter codes (e.g. 'hin', 'ara', 'chs') are only a fallback hint."
+        ),
     )
     ocr_space_timeout_seconds: float = Field(
         default=120.0,

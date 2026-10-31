@@ -4,13 +4,9 @@ import {
   Activity, ArrowRight, BookOpen, CheckCircle2, ChevronRight, FileText,
   MessageSquareWarning, Plus, ScanText, ShieldAlert, ShieldCheck, Sparkles, Users,
 } from "lucide-react";
-import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
-} from "recharts";
 import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
-import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import { ClassAnalytics } from "./ClassAnalytics";
 import { formatDate } from "../../lib/utils";
 import { reviewService, type ReviewQueue } from "../../services/api";
 import type { Submission } from "../../types/models";
@@ -18,7 +14,8 @@ import type { Submission } from "../../types/models";
 /** Dashboard summary of the Review queue: one card per manual-review section. */
 function ReviewSummary() {
   const navigate = useNavigate();
-  const [queue, setQueue] = useState<ReviewQueue | null>(null);
+  // Show the last known counts at once; refresh them in the background.
+  const [queue, setQueue] = useState<ReviewQueue | null>(() => reviewService.peekQueue());
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -26,7 +23,7 @@ function ReviewSummary() {
     reviewService
       .getQueue()
       .then((result) => active && setQueue(result))
-      .catch(() => active && setFailed(true));
+      .catch(() => active && !reviewService.peekQueue() && setFailed(true));
     return () => {
       active = false;
     };
@@ -68,82 +65,6 @@ function ReviewSummary() {
         ))}
       </div>
     </Panel>
-  );
-}
-
-function TrendChart({ height = 190 }: { height?: number }) {
-  const data = [
-    { week: "W1", average: 76 },
-    { week: "W2", average: 78 },
-    { week: "W3", average: 77 },
-    { week: "W4", average: 81 },
-    { week: "W5", average: 84 },
-    { week: "W6", average: 83 },
-    { week: "W7", average: 86 },
-    { week: "W8", average: 88 },
-  ];
-
-  return (
-    <div className="chart-area" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: -20 }}>
-          <defs>
-            <linearGradient id="forestWash" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#173D2B" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#A8C98A" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} stroke="#E7EBE3" strokeDasharray="3 5" />
-          <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: "#7A8C7F", fontSize: 10 }} dy={10} />
-          <YAxis domain={[60, 100]} ticks={[60, 70, 80, 90, 100]} axisLine={false} tickLine={false} tick={{ fill: "#7A8C7F", fontSize: 9 }} />
-          <Tooltip
-            cursor={{ stroke: "#A8C98A", strokeDasharray: "3 4" }}
-            contentStyle={{ borderRadius: 10, border: "1px solid #E7EBE3", boxShadow: "0 6px 20px rgba(16, 42, 32, 0.08)", fontSize: 11 }}
-            formatter={(value) => [`${value} / 100`, "Class Average"]}
-          />
-          <Area
-            type="monotone"
-            dataKey="average"
-            stroke="#173D2B"
-            strokeWidth={2.4}
-            fill="url(#forestWash)"
-            activeDot={{ r: 5, fill: "#C8F169", stroke: "#173D2B", strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-const distribution = [
-  { name: "A", value: 38, fill: "#173D2B" },
-  { name: "B", value: 61, fill: "#2D6346" },
-  { name: "C", value: 74, fill: "#528F6C" },
-  { name: "D", value: 51, fill: "#A8C98A" },
-  { name: "F", value: 24, fill: "#D5DDD0" },
-];
-
-function DistributionChart() {
-  return (
-    <div className="distribution-bars">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={distribution} margin={{ top: 10, right: 4, bottom: 0, left: -20 }} barCategoryGap="28%">
-          <CartesianGrid vertical={false} stroke="#E7EBE3" strokeDasharray="3 5" />
-          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#7A8C7F", fontSize: 10 }} dy={8} />
-          <YAxis axisLine={false} tickLine={false} tick={{ fill: "#7A8C7F", fontSize: 9 }} />
-          <Tooltip
-            cursor={{ fill: "rgba(200, 241, 105, 0.15)" }}
-            contentStyle={{ borderRadius: 10, border: "1px solid #E7EBE3", boxShadow: "0 6px 20px rgba(16, 42, 32, 0.08)", fontSize: 11 }}
-            formatter={(value) => [`${value} students`, "Grade"]}
-          />
-          <Bar dataKey="value" radius={[5, 5, 0, 0]}>
-            {distribution.map((item) => (
-              <Cell key={item.name} fill={item.fill} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
   );
 }
 
@@ -269,8 +190,6 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 }
 
 export function TeacherOverview() {
-  void TrendChart;
-  void DistributionChart;
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
   const recentSubmissions = [...submissions]
@@ -444,13 +363,7 @@ export function TeacherOverview() {
         </Panel>
       </div>
 
-      {
-        <IntegrationNotice
-          title="Class analytics are not available"
-          description="The connected backend does not expose grading statistics or historical performance data. Analytics are omitted rather than estimated."
-          tone="info"
-        />
-      }
+      <ClassAnalytics submissions={submissions} assignments={assignmentList} />
 
       <Panel className="recent-card dashboard-recent">
         <div className="section-heading">

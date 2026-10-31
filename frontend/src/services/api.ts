@@ -210,6 +210,7 @@ export function withPublishedGrade(submission: Submission, grade: BackendPublish
     backendStatus: "published",
     grading: {
       suggestedScore: grade.final_score,
+      maxScore: grade.max_score,
       confidence: 1,
       reasoning: grade.final_feedback,
       rubric: [],
@@ -891,12 +892,35 @@ export interface ReviewQueue {
   notes: string[];
 }
 
+// The review queue is slow to build (it checks OCR for every unpublished submission) and is shown on
+// both the teacher overview and the Review queue page. Keep the last result, tied to the signed-in
+// token, so either page can render it instantly while a fresh copy loads; share one in-flight request.
+let reviewQueueCache: { token: string | null; queue: ReviewQueue } | null = null;
+let reviewQueueRequest: { token: string | null; promise: Promise<ReviewQueue> } | null = null;
+const currentToken = () => sessionStorage.getItem("tg_access_token");
+
 export const reviewService = {
   /** Teacher: everything that needs manual review, grouped into OCR / low trust / student requests. */
   async getQueue(): Promise<ReviewQueue> {
+    const token = currentToken();
+    if (reviewQueueRequest?.token === token) return reviewQueueRequest.promise;
     // Checks OCR results for every unpublished submission, so allow longer than the default.
-    const response = await api.get<ReviewQueue>("/reviews/queue", { timeout: 60_000 });
-    return response.data;
+    const promise = api
+      .get<ReviewQueue>("/reviews/queue", { timeout: 60_000 })
+      .then((response) => {
+        reviewQueueCache = { token, queue: response.data };
+        return response.data;
+      })
+      .finally(() => {
+        if (reviewQueueRequest?.promise === promise) reviewQueueRequest = null;
+      });
+    reviewQueueRequest = { token, promise };
+    return promise;
+  },
+
+  /** The last loaded review queue for the signed-in user, if any (may be slightly out of date). */
+  peekQueue(): ReviewQueue | null {
+    return reviewQueueCache?.token === currentToken() ? reviewQueueCache.queue : null;
   },
 
   /** Student: own requests. Teacher: requests on own assignments. */
@@ -923,6 +947,7 @@ export const reviewService = {
       status,
       teacher_response: teacherResponse?.trim() || null,
     });
+    reviewQueueCache = null; // the request leaves the queue
     return response.data;
   },
 };
@@ -957,5 +982,49 @@ export const leaderboardService = {
   async getCourseLeaderboard(courseId: string): Promise<CourseLeaderboard> {
     const response = await api.get<CourseLeaderboard>(`/courses/${courseId}/leaderboard`);
     return response.data;
+  },
+};
+
+// --------------------------------------------------------------------------
+// Dashboard notifications (bell icon)
+// --------------------------------------------------------------------------
+
+export type NotificationType =
+  | "assignment_published"
+  | "assignment_updated"
+  | "result_published"
+  | "result_updated"
+  | "late_decision"
+  | "review_resolved"
+  | "submission_received"
+  | "review_requested";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  link: string | null;
+  actor_id: string | null;
+  assignment_id: string | null;
+  submission_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationList {
+  items: AppNotification[];
+  unread_count: number;
+}
+
+export const notificationService = {
+  async list(limit = 30): Promise<NotificationList> {
+    const response = await api.get<NotificationList>("/notifications", { params: { limit } });
+    return response.data;
+  },
+
+  /** Marks the given notifications read, or all of them when `ids` is omitted. */
+  async markRead(ids?: string[]): Promise<void> {
+    await api.post("/notifications/read", ids ? { ids } : {});
   },
 };

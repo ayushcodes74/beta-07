@@ -11,8 +11,9 @@ import logging
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
+from app.api.v1.endpoints.notifications import Notifications
 from app.api.v1.endpoints.submissions import ERROR_RESPONSES, _handle_error, get_submission_service
 from app.core.dependencies import api_error, get_bearer_token, require_authenticated_user, require_student, require_teacher
 from app.database.grading_repository import GradingRepositoryError, SupabaseGradingRepository
@@ -111,11 +112,21 @@ async def create_review_request(
     student: StudentUser,
     token: AccessToken,
     reviews: Reviews,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> ReviewRequestResponse:
     try:
-        return await reviews.create_request(student, submission_id, body.reason, access_token=token)
+        created = await reviews.create_request(student, submission_id, body.reason, access_token=token)
     except Exception as exc:
         _handle_review_error(exc)
+    background.add_task(
+        notifications.notify_review_requested,
+        student,
+        submission_id=created.submission_id,
+        reason=created.reason,
+        access_token=token,
+    )
+    return created
 
 
 @router.patch(
@@ -134,10 +145,22 @@ async def resolve_review_request(
     teacher: TeacherUser,
     token: AccessToken,
     reviews: Reviews,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> ReviewRequestResponse:
     try:
-        return await reviews.resolve_request(
+        resolved = await reviews.resolve_request(
             teacher, request_id, body.status, body.teacher_response, access_token=token
         )
     except Exception as exc:
         _handle_review_error(exc)
+    background.add_task(
+        notifications.notify_review_resolved,
+        teacher,
+        submission_id=resolved.submission_id,
+        student_id=resolved.student_id,
+        status=str(getattr(resolved.status, "value", resolved.status)),
+        teacher_response=resolved.teacher_response,
+        access_token=token,
+    )
+    return resolved

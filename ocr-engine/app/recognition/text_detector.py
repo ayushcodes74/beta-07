@@ -106,7 +106,7 @@ class TextDetector:
                     }
                 )
 
-            return raw_regions
+            return self._merge_line_fragments(raw_regions, image)
 
         except Exception as e:
             logger.error("Text region detection failed on page %d: %s", page_number, e)
@@ -115,3 +115,44 @@ class TextDetector:
                 page_number=page_number,
             ) from e
 
+    def _merge_line_fragments(
+        self,
+        regions: List[Dict[str, Any]],
+        image: np.ndarray,
+    ) -> List[Dict[str, Any]]:
+        """Merge word-level fragments of the same visual line into one region.
+
+        The fixed-width dilation kernel only bridges small glyph gaps, so larger text (or wide word
+        spacing) comes out as one region per word. Fragments that share a line (vertical overlap of at
+        least half the smaller height) and are separated by less than ``column_gap_threshold`` are
+        joined; wider gaps are left alone so side-by-side columns stay separate for reading order.
+        """
+        max_gap = self.config.column_gap_threshold
+        merged: List[Dict[str, Any]] = []
+        # Sweep left-to-right so each fragment only needs to be compared with the right edge of
+        # the line segments built so far.
+        for reg in sorted(regions, key=lambda r: r["bounding_box"].x1):
+            box = reg["bounding_box"]
+            target = None
+            if not reg["is_diagram"]:
+                for cand in merged:
+                    cb = cand["bounding_box"]
+                    if cand["is_diagram"] or box.x1 - cb.x2 >= max_gap:
+                        continue
+                    overlap = min(box.y2, cb.y2) - max(box.y1, cb.y1)
+                    if overlap >= 0.5 * min(box.height, cb.height):
+                        target = cand
+                        break
+            if target is None:
+                merged.append(reg)
+                continue
+            cb = target["bounding_box"]
+            union = BoundingBox(
+                x1=min(box.x1, cb.x1),
+                y1=min(box.y1, cb.y1),
+                x2=max(box.x2, cb.x2),
+                y2=max(box.y2, cb.y2),
+            )
+            target["bounding_box"] = union
+            target["crop"] = image[union.y1 : union.y2, union.x1 : union.x2]
+        return merged

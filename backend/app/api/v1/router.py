@@ -7,6 +7,8 @@ from app.api.v1.endpoints import (
     course_materials,
     courses,
     leaderboard,
+    messages,
+    notifications,
     reviews,
     submissions,
     users,
@@ -24,6 +26,8 @@ api_router.include_router(ai_generation.router)
 api_router.include_router(assignments.router)
 api_router.include_router(submissions.router)
 api_router.include_router(reviews.router)
+api_router.include_router(notifications.router)
+api_router.include_router(messages.router)
 
 
 @api_router.get("/health")

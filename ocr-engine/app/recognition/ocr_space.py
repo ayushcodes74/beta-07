@@ -55,6 +55,7 @@ class OCRSpaceClient:
         engine: int = 3,
         timeout_seconds: float = 120.0,
         max_upload_bytes: int = 1_000_000,
+        language: str = "auto",
     ) -> None:
         if not api_key:
             raise ValueError("OCR.space API key is required")
@@ -63,6 +64,8 @@ class OCRSpaceClient:
         self.engine = engine
         self.timeout_seconds = timeout_seconds
         self.max_upload_bytes = max_upload_bytes
+        # Engines 2/3 auto-detect (mixed) languages and scripts; Engine 1 only knows explicit codes.
+        self.language = language or "auto"
 
     @property
     def model_version(self) -> str:
@@ -85,6 +88,7 @@ class OCRSpaceClient:
                 headers={"apikey": self.api_key},
                 data={
                     "OCREngine": str(self.engine),
+                    "language": self.language,
                     "isOverlayRequired": "true",
                     "scale": "true",
                     "detectOrientation": "false",

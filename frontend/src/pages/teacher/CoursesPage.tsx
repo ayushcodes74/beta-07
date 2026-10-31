@@ -1,7 +1,6 @@
 import { useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, BookOpen, Plus, Search, X } from "lucide-react";
-import { motion } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { courseService, extractErrorMessage } from "../../services/api";
 import { useAppState } from "../../App";
@@ -133,11 +132,11 @@ export function CoursesPage({
       <div className="course-grid">
         {filtered.length ? (
           filtered.map((course, index) => (
-            <motion.div
+            <div
               key={course.id}
-              initial={{ opacity: 0, y: 7 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.035 }}
+              className="course-card-enter"
+              // CSS fade-in, staggered (capped so long lists don't keep animating in).
+              style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}
             >
               <Panel className="course-card">
                 <div className={`course-accent accent-${index % 4}`} />
@@ -164,7 +163,7 @@ export function CoursesPage({
                   <ArrowRight size={13} />
                 </button>
               </Panel>
-            </motion.div>
+            </div>
           ))
         ) : (
           <Panel className="empty-state" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#5C6E61" }}>

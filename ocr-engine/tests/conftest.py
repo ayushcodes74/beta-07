@@ -10,6 +10,9 @@ import pymupdf
 os.environ.setdefault("OCR_PRELOAD_MODELS", "false")
 # Never call the real OCR.space API (or spend its quota) from tests; OCR.space tests use mocks.
 os.environ["OCR_SPACE_API_KEY"] = ""
+# Same for the Gemini vision page reader; vision tests inject a mocked client.
+os.environ["OCR_VISION_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 # Keep test jobs out of the real ocr-engine/storage folder (must be set before app.api.config is imported).
 os.environ.setdefault("OCR_STORAGE_ROOT", tempfile.mkdtemp(prefix="trustgrade-ocr-tests-"))
 

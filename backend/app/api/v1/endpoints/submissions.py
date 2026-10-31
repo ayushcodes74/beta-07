@@ -11,15 +11,17 @@ Privacy Convention:
     course assignment return 404, never revealing the existence of the resource.
 """
 
+import asyncio
 import logging
 from typing import Annotated, Any, NoReturn, Union
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from app.api.v1.endpoints.assignments import get_assignment_service
 from app.api.v1.endpoints.auth import AUTH_ERROR_RESPONSES
+from app.api.v1.endpoints.notifications import Notifications
 from app.core.dependencies import (
     api_error,
     get_bearer_token,
@@ -153,6 +155,8 @@ async def submit_assignment(
     student: StudentUser,
     token: AccessToken,
     service: Service,
+    notifications: Notifications,
+    background: BackgroundTasks,
     file: UploadFile = File(..., description="Student scanned answer PDF"),
 ) -> SubmissionOCRStatusResponse:
     try:
@@ -165,9 +169,18 @@ async def submit_assignment(
             file_bytes=content,
             access_token=token,
         )
-        return await service.get_submission_status(student, record.id, access_token=token)
+        result = await service.get_submission_status(student, record.id, access_token=token)
     except Exception as exc:
         _handle_error(exc)
+    background.add_task(
+        notifications.notify_submission_received,
+        student,
+        assignment_id=assignment_id,
+        submission_id=record.id,
+        late=bool(getattr(result, "late_status", None) or record.late_status),
+        access_token=token,
+    )
+    return result
 
 
 @router.get(
@@ -219,6 +232,8 @@ async def decide_late_submission(
     teacher: TeacherUser,
     token: AccessToken,
     service: Service,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> SubmissionOCRStatusResponse:
     try:
         record = await service.decide_late_submission(
@@ -227,6 +242,17 @@ async def decide_late_submission(
             body.decision,
             body.penalty_percent,
             body.note,
+            access_token=token,
+        )
+        background.add_task(
+            notifications.notify_late_decision,
+            teacher,
+            submission_id=record.id,
+            assignment_id=record.assignment_id,
+            student_id=record.student_id,
+            decision=str(getattr(body.decision, "value", body.decision)),
+            penalty_percent=body.penalty_percent,
+            note=body.note,
             access_token=token,
         )
         return SubmissionOCRStatusResponse(
@@ -446,14 +472,28 @@ async def publish_submission_grade(
     teacher: TeacherUser,
     token: AccessToken,
     grading: Grading,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> PublishedGradeResponse:
+    # Read before publishing: an already-published grade being replaced is an "updated result".
+    previous_status = await asyncio.to_thread(notifications.submission_status, submission_id, access_token=token)
     try:
-        return await grading.publish_grade(
+        published = await grading.publish_grade(
             teacher, submission_id, body.final_score, body.final_feedback, access_token=token,
             show_solutions=body.show_solutions,
         )
     except Exception as exc:
         _handle_grading_error(exc)
+    background.add_task(
+        notifications.notify_result_published,
+        teacher,
+        submission_id,
+        updated=previous_status == "published",
+        final_score=published.final_score,
+        max_score=published.max_score,
+        access_token=token,
+    )
+    return published
 
 
 @router.get(

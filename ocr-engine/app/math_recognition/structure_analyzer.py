@@ -12,6 +12,29 @@ logger = logging.getLogger(__name__)
 class MathStructureAnalyzer:
     """Detects and decomposes mathematical structures (fractions, exponents, roots, integrals)."""
 
+    @staticmethod
+    def _brace_group(text: str, start: int):
+        """Return (content, index_after) of the balanced ``{...}`` group at ``text[start]`` (whitespace skipped).
+
+        Returns (None, start) if there is no well-formed group there.
+        """
+        i = start
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text) or text[i] != "{":
+            return None, start
+        depth = 0
+        for j in range(i, len(text)):
+            ch = text[j]
+            # Escaped braces (\{ \}) are literal set delimiters, not grouping
+            if ch == "{" and (j == 0 or text[j - 1] != "\\"):
+                depth += 1
+            elif ch == "}" and text[j - 1] != "\\":
+                depth -= 1
+                if depth == 0:
+                    return text[i + 1:j], j + 1
+        return None, start
+
     @classmethod
     def analyze_structures(cls, expression: str) -> List[StructureDetection]:
         """Parse structured mathematical components from a LaTeX expression.
@@ -27,29 +50,33 @@ class MathStructureAnalyzer:
 
         structures: List[StructureDetection] = []
 
-        # 1. Fractions: \frac{numerator}{denominator}
-        frac_matches = re.finditer(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", expression)
-        for m in frac_matches:
-            num = m.group(1).strip()
-            den = m.group(2).strip()
+        # 1. Fractions: \frac{numerator}{denominator} (also \dfrac / \tfrac; arguments may nest braces)
+        for m in re.finditer(r"\\[dt]?frac\s*(?=\{)", expression):
+            num, end = cls._brace_group(expression, m.end())
+            if num is None:
+                continue
+            den, end = cls._brace_group(expression, end)
+            if den is None:
+                continue
             structures.append(
                 StructureDetection(
                     structure_type="fraction",
-                    latex_representation=m.group(0),
-                    components={"numerator": num, "denominator": den},
+                    latex_representation=expression[m.start():end],
+                    components={"numerator": num.strip(), "denominator": den.strip()},
                 )
             )
 
-        # 2. Square Roots & Radicals: \sqrt[n]{radicand} or \sqrt{radicand}
-        sqrt_matches = re.finditer(r"\\sqrt(?:\[([^\[\]]+)\])?\s*\{([^{}]+)\}", expression)
-        for m in sqrt_matches:
+        # 2. Square Roots & Radicals: \sqrt[n]{radicand} or \sqrt{radicand} (radicand may nest braces)
+        for m in re.finditer(r"\\sqrt(?:\[([^\[\]]+)\])?\s*(?=\{)", expression):
             degree = m.group(1) or "2"
-            radicand = m.group(2).strip()
+            radicand, end = cls._brace_group(expression, m.end())
+            if radicand is None:
+                continue
             structures.append(
                 StructureDetection(
                     structure_type="radical",
-                    latex_representation=m.group(0),
-                    components={"degree": degree.strip(), "radicand": radicand},
+                    latex_representation=expression[m.start():end],
+                    components={"degree": degree.strip(), "radicand": radicand.strip()},
                 )
             )
 

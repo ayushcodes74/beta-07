@@ -50,6 +50,8 @@ class MathRecognitionPipeline:
         raw_text_hint: Optional[str] = None,
         page_width: Optional[int] = None,
         page_height: Optional[int] = None,
+        precomputed_latex: Optional[str] = None,
+        precomputed_meta: Optional[Dict[str, Any]] = None,
     ) -> MathRegionResult:
         """Process an individual mathematical crop with full quality and structure analysis.
 
@@ -61,13 +63,14 @@ class MathRecognitionPipeline:
             raw_text_hint: Optional prior text hint from Module 3.
             page_width: Optional page width for boundary checking.
             page_height: Optional page height for boundary checking.
+            precomputed_latex: LaTeX already produced upstream (e.g. by the Module 3 vision reader). When
+                given, the math OCR model is skipped and the LaTeX is kept verbatim (delimiters are still
+                validated and symbols/structures still analyzed).
+            precomputed_meta: Engine metadata for ``precomputed_latex`` (engine_used, model_version, ...).
 
         Returns:
             MathRegionResult with recognized LaTeX, quality score, symbols, and diagnostics.
         """
-        # Ensure models are initialized
-        self.model_manager.initialize_models()
-
         # 1. Bounding-Box Validation
         self.region_validator.assert_valid_region(
             bounding_box, page_width=page_width, page_height=page_height, crop=crop, region_id=region_id
@@ -76,15 +79,37 @@ class MathRecognitionPipeline:
         # 2. Physical Image Quality Analysis
         quality_assessment: MathQualityAssessment = self.quality_analyzer.analyze_crop(crop, box=bounding_box)
 
-        # 3. Mathematical OCR Inference
-        raw_text, raw_latex, model_conf, ocr_meta = self.ocr_engine.recognize_crop(crop, region_id, page_id)
+        if precomputed_latex and precomputed_latex.strip():
+            # 3/4. Upstream model already produced LaTeX: keep it exactly (the heuristic converter is meant
+            # for plain-text OCR output and would rewrite valid LaTeX such as "a/b" or "x^{2}").
+            raw_text = raw_latex = precomputed_latex.strip()
+            model_conf = None
+            ocr_meta = {
+                "engine_used": "upstream",
+                "is_fallback": False,
+                "recognition_mode": "upstream_latex",
+                "recognition_available": True,
+                **(precomputed_meta or {}),
+                "recognition_status": "completed",
+            }
+            latex_expr = raw_latex
+            latex_warnings: List[str] = []
+            valid, err = LaTeXConverter.validate_delimiters(latex_expr)
+            if not valid:
+                latex_warnings.append(f"Unbalanced LaTeX delimiters: {err}")
+        else:
+            # Ensure models are initialized
+            self.model_manager.initialize_models()
 
-        # If model returned no text but caller provided a raw text hint (e.g. from Module 3)
-        if not raw_text and raw_text_hint:
-            raw_text = raw_text_hint
+            # 3. Mathematical OCR Inference
+            raw_text, raw_latex, model_conf, ocr_meta = self.ocr_engine.recognize_crop(crop, region_id, page_id)
 
-        # 4. LaTeX Conversion and Syntax Normalization
-        latex_expr, latex_warnings = LaTeXConverter.convert_to_latex(raw_latex or raw_text)
+            # If model returned no text but caller provided a raw text hint (e.g. from Module 3)
+            if not raw_text and raw_text_hint:
+                raw_text = raw_text_hint
+
+            # 4. LaTeX Conversion and Syntax Normalization
+            latex_expr, latex_warnings = LaTeXConverter.convert_to_latex(raw_latex or raw_text)
 
         # 5. Symbol Analysis & Ambiguity Detection
         symbols, symbol_warnings = MathSymbolAnalyzer.analyze_symbols(latex_expr or raw_text)
@@ -174,11 +199,29 @@ class MathRecognitionPipeline:
                 text = getattr(b, "text", "")
                 box = getattr(b, "bounding_box", None)
                 block_id = getattr(b, "block_id", "unknown-block")
+                meta = getattr(b, "metadata", None)
+                if not isinstance(meta, dict):
+                    meta = {}
+                content_type = meta.get("content_type")
 
-                # Check if block was flagged as containing mathematical notation
-                is_math = any("mathematical" in w_msg.lower() for w_msg in warnings) or any(
-                    sym in text for sym in ["=", "+", "-", "*", "/", "^", "_", "∫", "∑", "√"]
-                )
+                precomputed_latex: Optional[str] = None
+                precomputed_meta: Optional[Dict[str, Any]] = None
+                if content_type is not None:
+                    # Typed blocks (vision reader) already separate math from prose, tables and figures,
+                    # and carry LaTeX; don't re-harvest prose just because it contains '-' or '/'.
+                    is_math = content_type == "math"
+                    if is_math and meta.get("latex"):
+                        precomputed_latex = str(meta["latex"])
+                        precomputed_meta = {
+                            "engine_used": meta.get("engine_used", "upstream"),
+                            "model_version": meta.get("model_version"),
+                            "device": meta.get("device"),
+                        }
+                else:
+                    # Check if block was flagged as containing mathematical notation
+                    is_math = any("mathematical" in w_msg.lower() for w_msg in warnings) or any(
+                        sym in text for sym in ["=", "+", "-", "*", "/", "^", "_", "∫", "∑", "√"]
+                    )
 
                 if is_math and box is not None:
                     # Convert bounding box if necessary
@@ -189,6 +232,9 @@ class MathRecognitionPipeline:
                         "region_id": f"math-{block_id}",
                         "bounding_box": bbox,
                         "raw_text_hint": text,
+                        "precomputed_latex": precomputed_latex,
+                        "precomputed_meta": precomputed_meta,
+                        "upstream_uncertain": bool(meta.get("uncertain")),
                     })
 
         # 2. Add any explicitly provided regions
@@ -240,7 +286,14 @@ class MathRecognitionPipeline:
                     raw_text_hint=hint,
                     page_width=w,
                     page_height=h,
+                    precomputed_latex=reg_meta.get("precomputed_latex"),
+                    precomputed_meta=reg_meta.get("precomputed_meta"),
                 )
+                if reg_meta.get("upstream_uncertain"):
+                    reg_result.requires_manual_review = True
+                    reg_result.warnings.append(
+                        "Upstream reader marked this expression as uncertain; teacher verification recommended."
+                    )
                 results.append(reg_result)
 
             except Exception as e:

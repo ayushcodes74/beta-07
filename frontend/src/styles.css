@@ -6593,13 +6593,11 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px 8px 18px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.95);
   border-radius: 9999px;
   box-shadow: 0 16px 40px rgba(15, 20, 31, 0.08), 0 2px 6px rgba(15, 20, 31, 0.04);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  transition: all 0.25s ease;
+  transition: color 0.25s ease, background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
 }
 
 .tg-nav-brand {
@@ -6691,7 +6689,7 @@ h1 {
   padding: 8px 14px;
   border-radius: 9999px;
   cursor: pointer;
-  transition: all 0.18s;
+  transition: color 0.18s, background-color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, opacity 0.18s;
 }
 
 .tg-btn-ghost:hover {
@@ -6712,7 +6710,7 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(23, 61, 43, 0.2);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tg-btn-primary svg {
@@ -6885,7 +6883,7 @@ h1 {
   font-weight: 650;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(23, 61, 43, 0.22);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tg-hero-btn-primary svg {
@@ -6918,7 +6916,7 @@ h1 {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgba(23, 61, 43, 0.05);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tg-hero-btn-secondary:hover {
@@ -7581,7 +7579,7 @@ h1 {
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.18s;
+  transition: color 0.18s, background-color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, opacity 0.18s;
 }
 
 .tg-btn-outline:hover {
@@ -7652,7 +7650,7 @@ h1 {
   border: 1px solid #e2e8f0;
   color: #334155;
   cursor: pointer;
-  transition: all 0.18s;
+  transition: color 0.18s, background-color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, opacity 0.18s;
 }
 
 .tg-ctrl-btn:hover {
@@ -7769,7 +7767,7 @@ h1 {
   font-weight: 600;
   cursor: pointer;
   backdrop-filter: blur(8px);
-  transition: all 0.18s;
+  transition: color 0.18s, background-color 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s, opacity 0.18s;
 }
 
 .tg-card-pill-btn:hover {
@@ -8373,7 +8371,7 @@ h1 {
   font-weight: 750;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(200, 241, 105, 0.3);
-  transition: all 0.2s;
+  transition: color 0.2s, background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s, opacity 0.2s;
 }
 
 .tg-btn-approve:hover {
@@ -8472,7 +8470,7 @@ h1 {
   font-weight: 750;
   cursor: pointer;
   box-shadow: 0 6px 20px rgba(200, 241, 105, 0.35);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tg-btn-primary-lg:hover {
@@ -8493,7 +8491,7 @@ h1 {
   font-weight: 600;
   color: #ffffff;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 0.2s, background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s, opacity 0.2s;
 }
 
 .tg-btn-glass-lg:hover {
@@ -9172,3 +9170,362 @@ h1 {
   font: inherit;
 }
 .name-prompt-error { flex-basis: 100%; color: #9B2C2C; font-weight: 600; }
+
+/* ---- Performance: page transitions and loading (App shell) -------------------------------------
+   Enter-only fade (opacity/transform are GPU-composited); no exit animation, so navigation is never
+   held back waiting for the old page to fade out. */
+.page-enter { animation: page-enter 140ms ease-out both; }
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.page-loading { padding: 24px 0; }
+.page-loading-bar {
+  display: block;
+  width: 120px;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent, #A8C98A, transparent);
+  background-size: 200% 100%;
+  animation: page-loading 900ms linear infinite;
+}
+@keyframes page-loading { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* The sticky sidebar re-blurred the page behind it on every scroll frame; a near-opaque background
+   looks the same and is free to composite. */
+.sidebar {
+  background: rgba(255, 255, 255, .94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .page-loading-bar { animation: none; }
+}
+
+/* ---- Performance & smoothness --------------------------------------------------------------- */
+/* Course cards fade in with CSS (replaces a framer-motion animation and its ~37 kB gzip runtime). */
+.course-card-enter { animation: page-enter 220ms ease-out both; }
+/* Smooth in-page anchor scrolling (landing page nav), only for users who haven't asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+/* No 300ms double-tap-zoom wait on taps; no grey flash on mobile. */
+a, button, [role="button"], input, select, textarea, label { touch-action: manipulation; }
+html { -webkit-tap-highlight-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .course-card-enter { animation: none; }
+}
+
+/* ---- Landing page on phones ------------------------------------------------------------------
+   A `1fr` grid track grows to its widest child's min-content width, so the hero preview board
+   pushed the single mobile column (and the headline, copy and buttons) past the screen edge. */
+@media (max-width: 1024px) {
+  .tg-hero-grid { grid-template-columns: minmax(0, 1fr); }
+  .tg-hero-left, .tg-hero-right { min-width: 0; }
+}
+.tg-nav-actions .tg-btn-primary { white-space: nowrap; }
+@media (max-width: 520px) {
+  /* "Sign in" is in the menu drawer; dropping it here keeps the menu button on screen. */
+  .tg-nav-actions > .tg-btn-ghost { display: none; }
+  .tg-nav-actions { gap: 6px; }
+  .tg-nav-inner { padding: 8px 8px 8px 12px; }
+}
+@media (max-width: 400px) {
+  .tg-nav-actions .tg-btn-primary { padding: 8px 13px; }
+  .tg-nav-actions .tg-btn-primary svg { display: none; }
+  .tg-nav-brand { gap: 7px; flex-shrink: 0; }
+  .tg-brand-symbol { width: 32px; height: 32px; }
+}
+
+/* ---- Class analytics (teacher overview) -------------------------------------------------------
+   Plain HTML bars. Marks: one validated hue for single-series bars (#2E7D4F), a validated light→dark
+   ordinal ramp for the pipeline stages; thin bars with 4px rounded data-ends, hairline solid tracks;
+   text always in ink tokens, never the series color. */
+.analytics-card { margin-bottom: 16px; padding: 18px 20px; }
+.analytics-empty { color: var(--muted); font-size: 13px; padding: 8px 0 4px; margin: 0; }
+.analytics-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+.analytics-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.analytics-tile > span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.analytics-tile > strong { color: var(--ink); font-size: 24px; font-weight: 650; line-height: 1.2; }
+.analytics-tile > small { color: var(--faint); font-size: 11px; }
+.analytics-block { min-width: 0; }
+.analytics-block + .analytics-block, .analytics-charts { margin-top: 18px; }
+.analytics-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.analytics-block-head h3 { margin: 0; font-size: 13px; font-weight: 650; color: var(--ink); }
+.analytics-block-head small, .analytics-note { color: var(--faint); font-size: 11px; }
+.analytics-note { display: block; margin-top: 8px; }
+.analytics-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; }
+.analytics-charts .analytics-block + .analytics-block { margin-top: 0; }
+
+/* Grading progress: tall segmented bar (28px, 2px surface gaps, 4px corners, share printed inside). */
+.segmented-bar { display: flex; gap: 2px; height: 28px; }
+.segment { display: flex; align-items: center; min-width: 4px; padding: 0 8px; border-radius: 4px; flex-basis: 0; }
+.segment b { font-size: 11px; font-weight: 650; }
+.segment-awaiting { background: #86B06A; color: #102A20; }
+.segment-approval { background: #47805F; color: #FFFFFF; }
+.segment-published { background: #173D2B; color: #FFFFFF; }
+.analytics-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted); }
+.analytics-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.analytics-legend li span { color: var(--ink); font-weight: 650; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; padding: 0; }
+
+/* Grade distribution: columns <= 24px wide, rounded top, square at the baseline, count on the cap. */
+.column-chart {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  height: 180px;
+}
+.column-slot { display: flex; flex-direction: column; align-items: center; height: 100%; border-radius: 6px; outline-offset: 2px; }
+.column-value { font-size: 11.5px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.column-track { flex: 1; display: flex; align-items: flex-end; width: 100%; justify-content: center; border-bottom: 1px solid var(--line-strong); }
+.column-bar { width: min(24px, 60%); min-height: 2px; background: #2E7D4F; border-radius: 4px 4px 0 0; transition: height .3s ease-out, opacity .15s; }
+.column-label { font-size: 11.5px; font-weight: 650; color: var(--muted); padding-top: 6px; }
+
+/* Average by assignment: horizontal bars on a 0–100% track, value at the tip. */
+.bar-list { display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr); align-items: center; gap: 12px; border-radius: 6px; outline-offset: 2px; }
+.bar-row-label { display: flex; flex-direction: column; min-width: 0; }
+.bar-row-label strong { font-size: 12.5px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row-label small { font-size: 11px; color: var(--faint); }
+.bar-row-track { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bar-row-fill { height: 12px; min-width: 2px; max-width: calc(100% - 40px); background: #2E7D4F; border-radius: 0 4px 4px 0; transition: width .3s ease-out, opacity .15s; }
+.bar-row-value { font-size: 12px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Hover / keyboard focus: the hovered mark stays, its neighbours step back. */
+.column-chart:hover .column-slot:not(:hover) .column-bar,
+.bar-list:hover .bar-row:not(:hover) .bar-row-fill { opacity: .45; }
+.column-slot:focus-visible, .bar-row:focus-visible { outline: 2px solid var(--forest); }
+
+.analytics-table { margin-top: 16px; font-size: 12px; color: var(--muted); }
+.analytics-table summary { cursor: pointer; font-weight: 600; width: fit-content; }
+.analytics-table table { width: 100%; margin-top: 10px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.analytics-table caption { text-align: left; font-weight: 650; color: var(--ink); padding: 6px 0; }
+.analytics-table th, .analytics-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.analytics-table th { color: var(--faint); font-weight: 600; }
+
+@media (max-width: 760px) {
+  .analytics-charts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .column-bar, .bar-row-fill { transition: none; }
+}
+
+/* ---- Dashboard notifications (topbar bell) ---- */
+.notification-badge {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1.5px solid var(--paper);
+  border-radius: 999px;
+  background: var(--sage-dark);
+  color: #fff;
+  font: 700 9px/13px var(--font-display);
+  text-align: center;
+}
+
+.notification-popover {
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(480px, 70vh);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 6px 6px;
+}
+
+.notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-head > strong {
+  font: 700 12px var(--font-display);
+}
+
+.notification-mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sage-dark);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-mark-all:hover {
+  background: var(--line);
+}
+
+.notification-popover p.notification-empty {
+  padding: 18px 8px 12px;
+  border-top: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.notification-list {
+  margin: 0;
+  padding: 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.notification-item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 22px 9px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover,
+.notification-item:focus-visible {
+  background: rgba(23, 61, 43, 0.05);
+}
+
+.notification-item.unread {
+  background: rgba(168, 201, 138, 0.16);
+}
+
+.notification-item.unread:hover {
+  background: rgba(168, 201, 138, 0.26);
+}
+
+.notification-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--sage-dark);
+}
+
+.notification-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-copy b {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.notification-copy span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notification-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.notification-unread-dot {
+  position: absolute;
+  top: 13px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage-dark);
+}
+
+/* ---- Student performance line chart (course > Students > Performance) ------------------------
+   2px lines, 9px markers with a 2px surface ring, solid hairline grid, text in ink tokens only. */
+.performance-modal { width: min(calc(100% - 36px), 760px); padding: 20px 22px; }
+.perf-subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.perf-empty { color: var(--muted); font-size: 13px; margin: 14px 0 4px; }
+.perf-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0 14px; }
+@media (max-width: 520px) {
+  .perf-tiles { gap: 6px; }
+  .perf-tiles > div { padding: 9px 10px; }
+  .perf-tiles strong { font-size: 18px; }
+  .perf-tiles small { display: none; }
+}
+.perf-tiles > div { display: flex; flex-direction: column; gap: 2px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.perf-tiles span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.perf-tiles strong { color: var(--ink); font-size: 22px; font-weight: 650; line-height: 1.2; }
+.perf-tiles small { color: var(--faint); font-size: 11px; }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 4px; padding: 0; list-style: none; font-size: 12px; color: var(--muted); }
+.perf-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.perf-legend i, .perf-tooltip i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.perf-chart { position: relative; width: 100%; min-height: 250px; border-radius: 8px; outline-offset: 3px; }
+.perf-chart:focus-visible { outline: 2px solid var(--forest); }
+.perf-chart svg { display: block; overflow: visible; }
+.perf-grid { stroke: #EEF2EB; stroke-width: 1; shape-rendering: crispEdges; }
+.perf-baseline { stroke: var(--line-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.perf-crosshair { stroke: #C9D2C5; stroke-width: 1; shape-rendering: crispEdges; }
+.perf-tick { fill: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.perf-xlabel { fill: var(--muted); }
+.perf-end-label { fill: var(--ink); font-size: 12px; font-weight: 650; }
+.perf-tooltip {
+  position: absolute;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 170px;
+  max-width: 240px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(16, 42, 32, .1);
+  font-size: 11.5px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.perf-tooltip strong { color: var(--ink); font-size: 12px; }
+.perf-tooltip small { color: var(--faint); font-size: 10.5px; margin-bottom: 2px; }
+.perf-tooltip span { display: flex; align-items: center; gap: 7px; }
+.perf-tooltip b { margin-left: auto; padding-left: 12px; color: var(--ink); font-variant-numeric: tabular-nums; }

@@ -13,12 +13,14 @@ from collections.abc import Callable
 from typing import Annotated, NoReturn, TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 
 from app.api.v1.endpoints.auth import AUTH_ERROR_RESPONSES
+from app.api.v1.endpoints.notifications import Notifications
 from app.core.dependencies import api_error, get_bearer_token, require_authenticated_user, require_teacher
 from app.schemas.assignment import (
     AssignmentCreate,
+    AssignmentStatus,
     AssignmentStudentResponse,
     AssignmentTeacherResponse,
     AssignmentUpdate,
@@ -270,9 +272,20 @@ def get_assignment(
     },
 )
 def update_assignment(
-    assignment_id: UUID, payload: AssignmentUpdate, teacher: TeacherUser, token: AccessToken, service: Service
+    assignment_id: UUID,
+    payload: AssignmentUpdate,
+    teacher: TeacherUser,
+    token: AccessToken,
+    service: Service,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> AssignmentTeacherResponse:
     record = _call(lambda: service.update(teacher, assignment_id, payload, access_token=token))
+    if record.status == AssignmentStatus.PUBLISHED:
+        # Students can already see it: tell them it changed. (Draft edits are invisible to them.)
+        background.add_task(
+            notifications.notify_assignment_published, teacher, assignment_id, updated=True, access_token=token
+        )
     return teacher_view(record)
 
 
@@ -305,9 +318,20 @@ def delete_assignment(assignment_id: UUID, teacher: TeacherUser, token: AccessTo
     responses={**ERROR_RESPONSES, 422: {"model": ErrorResponse, "description": "Assignment is not publishable."}},
 )
 def publish_assignment(
-    assignment_id: UUID, teacher: TeacherUser, token: AccessToken, service: Service
+    assignment_id: UUID,
+    teacher: TeacherUser,
+    token: AccessToken,
+    service: Service,
+    notifications: Notifications,
+    background: BackgroundTasks,
 ) -> AssignmentTeacherResponse:
+    previous_status = notifications.assignment_status(assignment_id, access_token=token)
     record = _call(lambda: service.publish(teacher, assignment_id, access_token=token))
+    if previous_status != AssignmentStatus.PUBLISHED.value:
+        # Only a draft -> published transition is news; re-publishing returns the assignment unchanged.
+        background.add_task(
+            notifications.notify_assignment_published, teacher, assignment_id, updated=False, access_token=token
+        )
     return teacher_view(record)
 
 

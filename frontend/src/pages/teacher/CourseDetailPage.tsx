@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Plus, UserPlus, X } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, MessageCircle, Pencil, Plus, TrendingUp, UserPlus, X } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
 import { courseService, extractErrorMessage, type EnrolledStudentResponse } from "../../services/api";
 import type { Course } from "../../types/models";
+import { StudentPerformanceDialog } from "./StudentPerformance";
 
 function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountChange: (count: number) => void }) {
   const toast = useToast();
@@ -13,6 +14,8 @@ function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountC
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  // Student whose assignment-by-assignment performance chart is open.
+  const [performanceFor, setPerformanceFor] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,20 +101,42 @@ function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountC
                   {student.email || `ID ${student.student_id.slice(0, 8)}…`}
                 </small>
               </span>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`Remove ${student.email || student.name || "student"}`}
-                onClick={() => void remove(student)}
-              >
-                <X size={14} />
-              </button>
+              <span style={{ display: "flex", flex: "0 0 auto" }}>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Performance of ${student.name || student.email || "student"}`}
+                  title="Performance"
+                  onClick={() =>
+                    setPerformanceFor({ id: student.student_id, name: student.name || student.email || "Student" })
+                  }
+                >
+                  <TrendingUp size={14} />
+                </button>
+                <Link
+                  className="icon-button"
+                  to={`/app/messages?course=${courseId}&student=${student.student_id}`}
+                  aria-label={`Message ${student.name || student.email || "student"}`}
+                  title="Message"
+                >
+                  <MessageCircle size={14} />
+                </Link>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Remove ${student.email || student.name || "student"}`}
+                  onClick={() => void remove(student)}
+                >
+                  <X size={14} />
+                </button>
+              </span>
             </li>
           ))}
         </ul>
       ) : (
         <p style={{ color: "#5C6E61" }}>No students enrolled yet.</p>
       )}
+      <StudentPerformanceDialog courseId={courseId} student={performanceFor} onClose={() => setPerformanceFor(null)} />
     </Panel>
   );
 }

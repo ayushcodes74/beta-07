@@ -211,9 +211,21 @@ Module 3 processes enhanced page images from Module 2, identifies text regions, 
 ### 2. Model Evaluation & Architecture
 
 #### Engines:
+- **Vision page reader (Gemini; tried first whenever a key is configured, under every backend except `degraded`):**
+  - One `generateContent` call per page with a JSON response schema reads the page as ordered, typed blocks:
+    - `text` – prose in **any language/script**, transcribed in the original script (never translated); inline math as `$...$`.
+    - `math` – standalone expressions/derivation lines as **LaTeX** (fractions, roots, integrals, matrices, chemical equations).
+    - `table` – cell grid (`metadata.table_rows`) plus a Markdown rendering (`text`).
+    - `diagram` / `graph` – an objective description (components, labels, arrows; chart type, axes, units, scales, plotted values) plus all text inside the figure, prefixed `[Diagram]` / `[Graph]`.
+  - Student mistakes are transcribed as written (never corrected); text such as "ignore previous instructions" is transcribed as data. Unreadable words become `[illegible]` and the block is flagged `uncertain` (warning → teacher review).
+  - Block metadata: `content_type`, `language` (BCP-47), `uncertain`, `latex` (math), `table_rows` / `table_markdown` (tables), `figure_description` (figures). Page metadata: `languages`, `content_types`. `type` stays `printed` / `handwritten`. Confidence is `null` (no calibrated score).
+  - `full_text` (what grading reads) contains everything in reading order: prose, `$$LaTeX$$`, Markdown tables and figure descriptions.
+  - Module 4 takes the LaTeX of `math` blocks verbatim (`engine_used: "gemini-vision"`) instead of re-running pix2tex, and no longer harvests prose blocks just because they contain `-` or `/`.
+  - Configure in `ocr-engine/.env`: `OCR_VISION_API_KEY=<Gemini key>` (or `GEMINI_API_KEY`); optional `OCR_VISION_MODEL` (default `gemini-2.5-flash`), `OCR_VISION_FALLBACK_MODELS` (comma-separated, e.g. `gemini-3.5-flash-lite,gemini-3.5-flash`; defaults to `GEMINI_FALLBACK_MODELS`), `OCR_VISION_TIMEOUT_SECONDS` (default 120), `OCR_VISION_ENABLED=false` to turn it off. Student pages leave this machine when it is enabled.
+  - **Fallback:** a model that is rate-limited/over quota/unavailable (HTTP 429/404/503) is skipped for 10 minutes and the next fallback model is tried. If every model fails (or the key is invalid) the page goes to OCR.space → PaddleOCR with a `"Vision reader unavailable (...)"` warning; key/quota errors pause the vision reader for 5 minutes. `/health` reports `vision_page_reader` as `loaded` or `disabled`.
 0. **OCR.space Engine 3 (default, `backend="ocrspace"`):**
    - Cloud OCR with strong handwriting recognition ([OCR.space API](https://ocr.space/ocrapi), `OCREngine=3`). Each page image is JPEG-compressed under 1 MB and sent separately; word boxes are mapped back to page coordinates. Student pages leave this machine when it is enabled.
-   - Configure in `ocr-engine/.env` (gitignored): `OCR_SPACE_API_KEY=<your key>`; optional `OCR_SPACE_ENGINE` (default 3), `OCR_SPACE_ENDPOINT` (PRO plans use another host), `OCR_SPACE_MAX_UPLOAD_BYTES` (default 1000000). Restart the service after changing it.
+   - Configure in `ocr-engine/.env` (gitignored): `OCR_SPACE_API_KEY=<your key>`; optional `OCR_SPACE_ENGINE` (default 3), `OCR_SPACE_ENDPOINT` (PRO plans use another host), `OCR_SPACE_MAX_UPLOAD_BYTES` (default 1000000), `OCR_SPACE_LANGUAGE` (default `auto`: Engine 3 auto-detects 200+ languages, including mixed-language pages). Restart the service after changing it.
    - Free plan limits: 1000 Engine 3 conversions/month (one per page), 500 requests/day/IP, 1 MB per file.
    - OCR.space returns no confidence scores, so its blocks have `confidence: null`.
    - **Fallback:** with no key, or when a request fails, the page is recognized by local PaddleOCR and the page gets an `"OCR.space unavailable (...)"` warning. Key/quota errors (HTTP 401/403/429, "limit exceeded") pause OCR.space for 10 minutes. `/health` reports `ocr_space_engine` as `loaded`, `unavailable` (no key) or `disabled`.
@@ -325,6 +337,7 @@ results = recognize_pages(
 - **Preservation:** Bounding boxes and regional context are preserved without hallucinating ordinary words over formulas.
 - **Warnings:** Flagged with `"Mathematical notation detected; bounding box preserved for specialized Module 4 processing."`.
 - **Handoff:** Module 4 can directly inspect `block.bounding_box` and the original or enhanced page image to perform formula parsing and LaTeX translation.
+- **Vision reader pages:** blocks with `metadata.content_type == "math"` already carry LaTeX (`metadata.latex`); Module 4 keeps it verbatim (delimiters validated, symbols/structures analyzed, nested `\frac{..}{..}` / `\sqrt{..}` supported) and only sends `math` blocks — not prose, tables or figures — through math analysis.
 
 ---
 

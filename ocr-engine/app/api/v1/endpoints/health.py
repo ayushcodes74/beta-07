@@ -34,6 +34,7 @@ def get_health() -> HealthResponse:
         "trocr_handwriting": rec_mgr.handwriting_engine_status,
         "paddleocr_printed": rec_mgr.printed_engine_status,
         "ocr_space_engine": rec_mgr.ocr_space_status,
+        "vision_page_reader": rec_mgr.vision_status,
         "pix2tex_math": math_mgr.model_status,
     }
 

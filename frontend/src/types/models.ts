@@ -93,6 +93,8 @@ export interface QuestionResult {
 
 export interface GradingResult {
   suggestedScore: number;
+  /** Marks available, when the backend reports it with a published grade. */
+  maxScore?: number | null;
   confidence: number;
   reasoning: string;
   rubric: RubricCriterion[];

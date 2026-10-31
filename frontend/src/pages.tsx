@@ -1,5 +1,6 @@
 import { lazy } from "react";
 import { useAppState } from "./App";
+import type { User } from "./types/models";
 
 // Public entry pages load with the main bundle: they are the first thing a visitor sees, and they
 // render outside the app shell's <Suspense> boundary.
@@ -12,6 +13,7 @@ export { AuthPage } from "./pages/common/AuthPage";
 const pageLoaders = {
   LeaderboardPage: () => import("./pages/common/LeaderboardPage").then((m) => ({ default: m.LeaderboardPage })),
   SettingsPage: () => import("./pages/common/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+  MessagesPage: () => import("./pages/common/MessagesPage").then((m) => ({ default: m.MessagesPage })),
   CoursesPage: () => import("./pages/teacher/CoursesPage").then((m) => ({ default: m.CoursesPage })),
   CourseDetailPage: () => import("./pages/teacher/CourseDetailPage").then((m) => ({ default: m.CourseDetailPage })),
   AssignmentsPage: () => import("./pages/teacher/AssignmentsPage").then((m) => ({ default: m.AssignmentsPage })),
@@ -34,6 +36,7 @@ const pageLoaders = {
 
 export const LeaderboardPage = lazy(pageLoaders.LeaderboardPage);
 export const SettingsPage = lazy(pageLoaders.SettingsPage);
+export const MessagesPage = lazy(pageLoaders.MessagesPage);
 export const CoursesPage = lazy(pageLoaders.CoursesPage);
 export const CourseDetailPage = lazy(pageLoaders.CourseDetailPage);
 export const AssignmentsPage = lazy(pageLoaders.AssignmentsPage);
@@ -53,21 +56,23 @@ const StudentOverview = lazy(pageLoaders.StudentOverview);
 const teacherPages = [
   "TeacherOverview", "CoursesPage", "CourseDetailPage", "AssignmentsPage", "AssignmentEditor", "SubmissionsPage",
   "GradingReviewPage", "OCRReviewPage", "ReviewQueuePage", "LateSubmissionsPage", "ResultsPage", "LeaderboardPage",
-  "SettingsPage",
+  "SettingsPage", "MessagesPage",
 ] as const;
 const studentPages = [
   "StudentOverview", "StudentAssignmentsPage", "StudentSubmissionPage", "AssessmentPage", "ResultsPage",
-  "LeaderboardPage", "SettingsPage",
+  "LeaderboardPage", "SettingsPage", "MessagesPage",
 ] as const;
 
-let prefetched = false;
+// Tracked per role: signing out and back in as the other role (same tab) must still prefetch its pages.
+const prefetchedRoles = new Set<string>();
 
 /** After sign-in, quietly download the role's other pages while the browser is idle, so later
  *  navigation is instant without making the first screen wait for them. */
-export function prefetchAppPages(role: "teacher" | "student") {
-  if (prefetched) return;
-  prefetched = true;
-  const names = role === "student" ? studentPages : teacherPages;
+export function prefetchAppPages(role: User["role"]) {
+  const key = role === "student" ? "student" : "teacher";
+  if (prefetchedRoles.has(key)) return;
+  prefetchedRoles.add(key);
+  const names = key === "student" ? studentPages : teacherPages;
   const run = () => names.forEach((name) => void pageLoaders[name]().catch(() => undefined));
   const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
   if (idle) idle(run);

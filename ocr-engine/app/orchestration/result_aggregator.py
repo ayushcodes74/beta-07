@@ -221,6 +221,9 @@ class ResultAggregator:
                         "skew_detected": prep_item.image_quality.corrected_skew_angle if prep_item and hasattr(prep_item, "image_quality") else 0.0,
                         "math_regions_count": len(math_blocks),
                         "text_blocks_count": len(text_blocks),
+                        # From the vision reader (empty when only line OCR ran)
+                        "languages": (rec_item.metadata or {}).get("languages", []) if rec_item else [],
+                        "content_types": (rec_item.metadata or {}).get("content_types", {}) if rec_item else {},
                     },
                 )
             )

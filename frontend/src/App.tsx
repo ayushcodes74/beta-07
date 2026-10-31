@@ -1,6 +1,6 @@
 import {
-  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, FileText, GraduationCap,
-  LayoutDashboard, LogOut, Menu, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
+  Award, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, FileText, GraduationCap,
+  LayoutDashboard, LogOut, Menu, MessageCircle, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
   Sparkles, Upload, X,
 } from "lucide-react";
 import { createContext, Suspense, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
@@ -11,9 +11,11 @@ import type { Assignment, Course, Submission, User } from "./types/models";
 import { assignmentService, courseService, extractErrorMessage, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
 import { NamePrompt } from "./components/common/NamePrompt";
+import { NotificationBell } from "./components/common/NotificationBell";
+import { useUnreadMessages } from "./components/common/useUnreadMessages";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
-  GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, NotFoundPage, OCRReviewPage,
+  GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, MessagesPage, NotFoundPage, OCRReviewPage,
   OverviewPage, ResultsPage, ReviewQueuePage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage, prefetchAppPages,
 } from "./pages";
@@ -74,6 +76,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       workspace.catch(() => undefined); // handled below; avoids an unhandled rejection if the profile fails first
       const profile = await getProfile();
       setUserState(profile);
+      prefetchAppPages(profile.role);
       const [courses, assignments, submissions] = await workspace;
       setCourses(courses);
       setAssignments(assignments);
@@ -145,6 +148,7 @@ const teacherNavigation = [
       { label: "Assignments", to: "/app/assignments", icon: FileText },
       { label: "Submissions", to: "/app/submissions", icon: Upload },
       { label: "AI Grading", to: "/app/grading/review", icon: Sparkles },
+      { label: "Messages", to: "/app/messages", icon: MessageCircle },
     ],
   },
   {
@@ -176,6 +180,7 @@ const studentNavigation = [
       { label: "My submissions", to: "/app/submissions", icon: Upload },
       { label: "My results", to: "/app/results", icon: ClipboardCheck },
       { label: "Leaderboard", to: "/app/leaderboard", icon: Award },
+      { label: "Messages", to: "/app/messages", icon: MessageCircle },
     ],
   },
 ];
@@ -190,23 +195,58 @@ function isNavItemActive(to: string, pathname: string, search: string) {
   return tab === current;
 }
 
+function WorkspaceLoading() {
+  return (
+    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "1rem" }}>
+      <span className="button-spinner" style={{ width: 24, height: 24 }} />
+      <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspace…</span>
+    </div>
+  );
+}
+
+/** Route segments that are record ids (UUIDs, numeric ids), not page names. */
+const isIdSegment = (segment: string) => /\d/.test(segment) && segment.length >= 6;
+const pageTitles: Record<string, string> = {
+  app: "Overview",
+  reviews: "Review queue",
+  grading: "AI grading review",
+  ocr: "OCR review",
+  new: "New assignment",
+  edit: "Edit assignment",
+  submit: "Submit assignment",
+  assessment: "Assessment",
+};
+
+function pageTitle(pathname: string) {
+  const segment = pathname.split("/").filter(Boolean).reverse().find((part) => !isIdSegment(part)) ?? "app";
+  if (pageTitles[segment]) return pageTitles[segment];
+  return segment.split("-").filter(Boolean).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ");
+}
+
 function ApplicationShell() {
-  const { user, setUser, loading, submissions, refreshSession } = useAppState();
+  const {
+    user, setUser, submissions, courses: courseList, refreshSession,
+    setCourses, setAssignments, setJoinedCourseIds, setSubmissions,
+  } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  if (loading) {
-    return (
-      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "1rem" }}>
-        <span className="button-spinner" style={{ width: 24, height: 24 }} />
-        <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspace…</span>
-      </div>
-    );
-  }
+  // A new notification usually means a new/changed assignment, submission or grade: reload those lists
+  // quietly so the dashboard (and the notification's link) shows the latest data without a page refresh.
+  const reloadWorkspace = () => {
+    Promise.all([courseService.getCourses(), assignmentService.getAssignments(), submissionService.getSubmissions()])
+      .then(([courses, assignments, items]) => {
+        setCourses(courses);
+        setAssignments(assignments);
+        setJoinedCourseIds(courses.map((course) => course.id));
+        setSubmissions(items);
+      })
+      .catch(() => undefined);
+  };
+  const unreadMessages = useUnreadMessages(!!user);
 
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
@@ -217,6 +257,7 @@ function ApplicationShell() {
   const navCount = (label: string) => {
     if (label === "Submissions" && submissions.length > 0) return String(submissions.length);
     if (label === "Late submissions" && pendingLate > 0) return String(pendingLate);
+    if (label === "Messages" && unreadMessages > 0) return String(unreadMessages);
     return undefined;
   };
   const navigation = rawNavigation.map((group) => ({
@@ -224,12 +265,8 @@ function ApplicationShell() {
     items: group.items.map((item) => ({ ...item, count: navCount(item.label) })),
   }));
 
-  const pageName = location.pathname.endsWith("/app")
-    ? "Overview"
-    : location.pathname.split("/").filter(Boolean).at(-1)?.replace(/-/g, " ") ?? "Overview";
-  const title = pageName.split(" ").map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ");
+  const title = pageTitle(location.pathname);
 
-  const { courses: courseList } = useAppState();
   const search = (value: string) => {
     if (!value.trim()) return;
     const query = value.toLowerCase();
@@ -347,29 +384,13 @@ function ApplicationShell() {
               </>
             )}
             <span className="topbar-divider" />
-            <div className="notification-wrap">
-              <button
-                className="icon-button notification-button"
-                aria-label="Notifications"
-                onClick={() => setNotificationsOpen((open) => !open)}
-              >
-                <Bell size={17} />
-              </button>
-              {notificationsOpen && (
-                <div className="notification-popover glass-panel">
-                  <strong>Notifications</strong>
-                  <p>
-                    <b>Workspace connected</b>
-                    <span>{user.name} · {user.role === "teacher" ? "Faculty" : "Student"}</span>
-                  </p>
-                </div>
-              )}
-            </div>
+            <NotificationBell onNew={reloadWorkspace} />
             <Avatar name={user.name} initials={user.initials} className="avatar-top" />
           </div>
         </header>
         <div className="route-stage">
-          {user?.needsName && <NamePrompt suggestion={user.name} onSaved={refreshSession} />}
+          {/* Students only: their name is what teachers and the course leaderboard show. */}
+          {isStudent && user.needsName && <NamePrompt suggestion={user.name} onSaved={refreshSession} />}
           {/* The new page renders immediately with a short CSS fade-in. (A framer-motion
               AnimatePresence in "wait" mode held every navigation until the old page had faded out.) */}
           <main key={location.pathname} className="page-content page-enter">
@@ -390,7 +411,9 @@ function ApplicationShell() {
 
 function SessionRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAppState();
-  if (loading) return null;
+  // Only the first load blocks the screen. Later refreshes (e.g. after saving a display name) keep the
+  // shell mounted, so the current page and its unsaved state aren't thrown away.
+  if (loading && !user) return <WorkspaceLoading />;
   return user ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
@@ -429,6 +452,7 @@ function AppRoutes() {
         <Route path="ocr/:submissionId" element={<OCRReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
         <Route path="results" element={<ResultsPage submissions={submissionState} />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="student/assignments" element={<StudentAssignmentsPage courses={courseState} joinedCourseIds={joinedCourseIds} setJoinedCourseIds={setJoinedCourseIds} submissions={submissionState} />} />
         <Route path="student/submit/:assignmentId" element={<StudentSubmissionPage submissions={submissionState} setSubmissions={setSubmissions} />} />

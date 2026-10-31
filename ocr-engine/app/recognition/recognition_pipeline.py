@@ -28,6 +28,7 @@ from app.recognition.schemas import (
 from app.recognition.text_classifier import TextClassifier
 from app.recognition.text_detector import TextDetector
 from app.recognition.text_normalizer import TextNormalizer
+from app.recognition.vision_llm import CONTENT_TYPES, VisionBlock, VisionLLMError
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,160 @@ def _recognize_page_with_ocr_space(
     return _build_page_from_lines(
         image, lines, submission_id, page_number, cfg, model_mgr,
         engine="ocrspace", model_version=client.model_version, device="cloud",
+    )
+
+
+# Vision-LLM errors that persist across pages (bad key, quota, rate limit) pause the vision reader.
+_VISION_COOLDOWN_SECONDS = 300
+_VISION_HARD_ERROR_MARKERS = (
+    "http 400", "http 401", "http 403", "http 404", "http 429", "resource_exhausted", "quota", "api key",
+)
+_vision_disabled_until = 0.0
+
+_FIGURE_LABELS = {"diagram": "Diagram", "graph": "Graph"}
+
+
+def _vision_block_text(block: VisionBlock) -> str:
+    """Render a vision block as plain text for ``TextBlock.text`` / ``full_text`` (what grading reads)."""
+    if block.kind == "math":
+        return f"$${block.latex or block.content}$$"
+    if block.kind in _FIGURE_LABELS:
+        return f"[{_FIGURE_LABELS[block.kind]}] {block.content}"
+    return block.content
+
+
+def _recognize_page_with_vision(
+    image: np.ndarray,
+    submission_id: str,
+    page_number: int,
+    cfg: RecognitionConfig,
+    model_mgr: ModelManager,
+) -> PageRecognitionResult:
+    """Vision-LLM path: one model call reads text, math (LaTeX), tables, diagrams and graphs in any language.
+
+    Raises:
+        VisionLLMError: So the caller can fall back to OCR.space / PaddleOCR.
+    """
+    global _vision_disabled_until
+    client = model_mgr.vision_client
+    if time.monotonic() < _vision_disabled_until:
+        raise VisionLLMError("Vision reader temporarily skipped after a key/quota error")
+    try:
+        analysis = client.analyze_page(image)
+    except VisionLLMError as e:
+        if any(marker in str(e).lower() for marker in _VISION_HARD_ERROR_MARKERS):
+            _vision_disabled_until = time.monotonic() + _VISION_COOLDOWN_SECONDS
+            logger.warning("Vision reader disabled for %ds after: %s", _VISION_COOLDOWN_SECONDS, e)
+        raise
+
+    engine = "gemini-vision"
+    content_counts = {k: sum(1 for b in analysis.blocks if b.kind == k) for k in CONTENT_TYPES}
+    page_meta = {
+        "engine_used": [engine],
+        "is_fallback": False,
+        "recognition_available": True,
+        "model_version": {"handwriting": analysis.model_version, "printed": analysis.model_version},
+        "recognition_mode": "vision_llm" if analysis.blocks else "empty_page",
+        "total_blocks": len(analysis.blocks),
+        "languages": analysis.languages,
+        "content_types": {k: v for k, v in content_counts.items() if v},
+    }
+
+    if not analysis.blocks:
+        return PageRecognitionResult(
+            submission_id=submission_id,
+            page_number=page_number,
+            status="completed",
+            text_blocks=[],
+            full_text="",
+            warnings=["Page contains no detectable text regions."],
+            metadata=page_meta,
+        )
+
+    text_blocks: List[TextBlock] = []
+    for seq, vb in enumerate(analysis.blocks, start=1):
+        x1, y1, x2, y2 = vb.box
+        crop = image[y1:y2, x1:x2]
+        quality_score = model_mgr._compute_image_quality_score(crop) if crop.size else None
+
+        if vb.handwritten is True:
+            block_type = "handwritten"
+        elif vb.handwritten is False:
+            block_type = "printed"
+        else:
+            block_type, _ = TextClassifier.classify_region(crop) if crop.size else ("unknown", None)
+
+        warnings: List[str] = []
+        if vb.kind == "math":
+            warnings.append("Mathematical notation detected; transcribed to LaTeX by the vision model.")
+        elif vb.kind == "table":
+            warnings.append("Table detected; cell grid preserved in metadata.table_rows.")
+        elif vb.kind in _FIGURE_LABELS:
+            warnings.append(
+                f"{_FIGURE_LABELS[vb.kind]} detected and described in words; verify against the original image."
+            )
+        if vb.uncertain:
+            warnings.append(
+                "Vision model marked this region as uncertain or partly illegible; teacher verification recommended."
+            )
+        if vb.box_estimated:
+            warnings.append("Region location could not be determined; bounding box covers the whole page.")
+        if quality_score is not None and quality_score < 0.40:
+            warnings.append("Faint or low-contrast text strokes detected.")
+
+        metadata: Dict[str, Any] = {
+            "engine_used": engine,
+            "model_version": analysis.model_version,
+            "is_fallback": False,
+            "recognition_mode": "vision_llm",
+            "recognition_available": True,
+            "device": "cloud",
+            "content_type": vb.kind,
+            "language": vb.language,
+            "uncertain": vb.uncertain,
+        }
+        if vb.kind == "math":
+            metadata["latex"] = vb.latex
+            metadata["is_mathematical"] = True
+        if vb.kind == "table":
+            metadata["table_rows"] = vb.rows or []
+            metadata["table_markdown"] = vb.content
+        if vb.kind in _FIGURE_LABELS:
+            metadata["figure_description"] = vb.content
+
+        text = _vision_block_text(vb)
+        # Tables keep their line structure; other blocks get the standard whitespace-only normalization.
+        clean_text = text.strip() if vb.kind == "table" else TextNormalizer.normalize_block_text(text)
+
+        text_blocks.append(
+            TextBlock(
+                block_id=f"page-{page_number}-block-{seq}",
+                sequence=seq,
+                type=block_type,
+                text=clean_text,
+                confidence=None,  # the model reports no calibrated confidence; 'uncertain' flags weak reads
+                quality_score=round(quality_score, 2) if quality_score is not None else None,
+                bounding_box=BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
+                warnings=warnings,
+                metadata=metadata,
+            )
+        )
+
+    page_warnings: List[str] = []
+    uncertain = sum(1 for b in analysis.blocks if b.uncertain)
+    if uncertain:
+        page_warnings.append(
+            f"{uncertain} of {len(text_blocks)} regions were uncertain or partly illegible; teacher review recommended."
+        )
+
+    return PageRecognitionResult(
+        submission_id=submission_id,
+        page_number=page_number,
+        status="completed",
+        text_blocks=text_blocks,
+        full_text=TextNormalizer.assemble_full_text([b.text for b in text_blocks]),
+        warnings=page_warnings,
+        metadata=page_meta,
     )
 
 
@@ -362,11 +517,31 @@ def recognize_page(
             f"Failed to load image '{image_path}': {e}", page_number=page_number
         ) from e
 
-    # Primary path: OCR.space Engine 3 (cloud), falling back to local PaddleOCR on any failure.
+    # Primary path when configured: vision LLM (math as LaTeX, tables, diagrams, graphs, any language).
+    vision_failure: Optional[str] = None
+    if model_mgr.uses_vision:
+        try:
+            return _recognize_page_with_vision(image, submission_id, page_number, cfg, model_mgr)
+        except VisionLLMError as e:
+            vision_failure = str(e)
+            logger.warning("Page %d: %s; falling back to line OCR.", page_number, e)
+
+    def _note_vision_fallback(result: PageRecognitionResult) -> PageRecognitionResult:
+        if vision_failure:
+            result.warnings.insert(
+                0,
+                f"Vision reader unavailable ({vision_failure}); math, tables and diagrams were read as plain text lines.",
+            )
+            result.metadata["vision_error"] = vision_failure
+        return result
+
+    # Next: OCR.space Engine 3 (cloud), falling back to local PaddleOCR on any failure.
     ocr_space_failure: Optional[str] = None
     if model_mgr.uses_ocr_space:
         try:
-            return _recognize_page_with_ocr_space(image, submission_id, page_number, cfg, model_mgr)
+            return _note_vision_fallback(
+                _recognize_page_with_ocr_space(image, submission_id, page_number, cfg, model_mgr)
+            )
         except OCRSpaceError as e:
             ocr_space_failure = str(e)
             logger.warning("Page %d: %s; falling back to local OCR.", page_number, e)
@@ -377,7 +552,7 @@ def recognize_page(
         if ocr_space_failure:
             result.warnings.insert(0, f"OCR.space unavailable ({ocr_space_failure}); recognized with local PaddleOCR.")
             result.metadata["ocr_space_error"] = ocr_space_failure
-        return result
+        return _note_vision_fallback(result)
 
     # Legacy path (backend 'auto'/'trocr', or PaddleOCR unavailable -> degraded layout-only mode)
     h, w = image.shape[:2]
@@ -505,14 +680,16 @@ def recognize_page(
         },
     }
 
-    return PageRecognitionResult(
-        submission_id=submission_id,
-        page_number=page_number,
-        status=page_status,
-        text_blocks=text_blocks,
-        full_text=full_text,
-        warnings=page_warnings,
-        metadata=page_metadata,
+    return _note_vision_fallback(
+        PageRecognitionResult(
+            submission_id=submission_id,
+            page_number=page_number,
+            status=page_status,
+            text_blocks=text_blocks,
+            full_text=full_text,
+            warnings=page_warnings,
+            metadata=page_metadata,
+        )
     )
 
 

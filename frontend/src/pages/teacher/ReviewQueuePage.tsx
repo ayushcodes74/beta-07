@@ -54,14 +54,16 @@ export function ReviewQueuePage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const tab: TabKey = isTab(params.get("tab")) ? (params.get("tab") as TabKey) : "ocr";
-  const [queue, setQueue] = useState<ReviewQueue | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Render the last loaded queue immediately (if any) and refresh it in the background.
+  const [queue, setQueue] = useState<ReviewQueue | null>(() => reviewService.peekQueue());
+  const [loading, setLoading] = useState(() => !reviewService.peekQueue());
   const [error, setError] = useState("");
   // Student names come from the course rosters (the queue only carries student ids).
   const names = useStudentNames(courses);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /** `background`: refresh without the loading state (a cached queue is already on screen). */
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     setError("");
     try {
       setQueue(await reviewService.getQueue());
@@ -73,7 +75,7 @@ export function ReviewQueuePage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void load(Boolean(reviewService.peekQueue()));
   }, [load]);
 
 

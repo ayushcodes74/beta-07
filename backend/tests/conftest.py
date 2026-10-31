@@ -114,6 +114,17 @@ def make_token(signing_key: ec.EllipticCurvePrivateKey):
     return _make
 
 
+@pytest.fixture(autouse=True)
+def _offline_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Notifications are written as background tasks after most actions; keep them off the network."""
+    from app.database import notification_repository
+
+    def _no_supabase(access_token: str):
+        raise RuntimeError("Supabase is not available in tests")
+
+    monkeypatch.setattr(notification_repository, "get_user_supabase", _no_supabase)
+
+
 @pytest.fixture
 def profiles() -> FakeProfileRepository:
     return FakeProfileRepository()

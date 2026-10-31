@@ -14,6 +14,7 @@ from app.recognition.exceptions import (
     PrintedRecognitionError,
 )
 from app.recognition.ocr_space import OCRSpaceClient
+from app.recognition.vision_llm import GeminiVisionClient
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,11 @@ class ModelManager:
         self.ocr_space_client: Optional[OCRSpaceClient] = None
         self.ocr_space_status: str = "uninitialized"
         self.ocr_space_error_msg: Optional[str] = None
+
+        # Vision LLM page reader (math / tables / diagrams / graphs / any language); tried before OCR engines
+        self.vision_client: Optional[GeminiVisionClient] = None
+        self.vision_status: str = "uninitialized"
+        self.vision_error_msg: Optional[str] = None
 
         # "v3" -> PaddleOCR 3.x `predict()` API, "v2" -> legacy 2.x `ocr()` API
         self._paddle_api: str = "v3"
@@ -104,6 +110,9 @@ class ModelManager:
                 else:
                     self.ocr_space_status = "disabled"
 
+                # 4. Vision LLM page reader (any backend except the model-free 'degraded' mode)
+                self._init_vision()
+
                 self._initialized = True
                 logger.info(
                     "OCR engines initialized. Handwriting: %s, PaddleOCR: %s",
@@ -129,10 +138,42 @@ class ModelManager:
             engine=self.config.ocr_space_engine,
             timeout_seconds=self.config.ocr_space_timeout_seconds,
             max_upload_bytes=self.config.ocr_space_max_upload_bytes,
+            language=self.config.ocr_space_language,
         )
         self.ocr_space_status = "loaded"
         self.ocr_space_error_msg = None
         logger.info("OCR.space client configured (engine %d).", self.config.ocr_space_engine)
+
+    def _init_vision(self) -> None:
+        """Create the Gemini vision client if enabled and a key is configured (no network call here).
+
+        The vision reader is optional, so a missing key reports 'disabled' (not 'unavailable').
+        """
+        if self.config.backend == "degraded" or not self.config.vision_enabled:
+            self.vision_status = "disabled"
+            return
+        if not self.config.vision_api_key:
+            self.vision_status = "disabled"
+            self.vision_error_msg = (
+                "OCR_VISION_API_KEY / GEMINI_API_KEY not set; math, tables and diagrams use line OCR only"
+            )
+            logger.info("Vision page reader disabled: no OCR_VISION_API_KEY or GEMINI_API_KEY.")
+            return
+        self.vision_client = GeminiVisionClient(
+            api_key=self.config.vision_api_key,
+            model=self.config.vision_model,
+            endpoint=self.config.vision_endpoint,
+            timeout_seconds=self.config.vision_timeout_seconds,
+            max_image_side=self.config.vision_max_image_side,
+            fallback_models=list(self.config.vision_fallback_models),
+        )
+        self.vision_status = "loaded"
+        self.vision_error_msg = None
+        logger.info("Vision page reader configured (model %s).", self.config.vision_model)
+
+    @property
+    def uses_vision(self) -> bool:
+        return self.vision_client is not None
 
     @property
     def uses_paddle_page_mode(self) -> bool:
