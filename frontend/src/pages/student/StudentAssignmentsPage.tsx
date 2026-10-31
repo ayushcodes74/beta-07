@@ -4,6 +4,8 @@ import { CalendarDays, ChevronRight, FileText, Plus, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge, useToast } from "../../components/ui";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import { isDemoSession } from "../../services/demo-session";
 import { formatDate } from "../../lib/utils";
 import type { Course, Submission } from "../../types/models";
 
@@ -20,11 +22,16 @@ export function StudentAssignmentsPage({
   const { assignments: assignmentList } = useAppState();
   const navigate = useNavigate();
   const toast = useToast();
+  const demoSession = isDemoSession();
   const [dialogOpen, setDialogOpen] = useState(false);
   const visibleAssignments = assignmentList.filter((item) => item.state === "Published");
 
   const joinCourse = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!demoSession) {
+      toast("Course enrollment is managed by your instructor in the connected backend.", "info");
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const code = String(form.get("inviteCode") ?? "").trim().toUpperCase();
     const course = courseList.find(
@@ -54,9 +61,9 @@ export function StudentAssignmentsPage({
         <div className="heading-actions">
           <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
             <Dialog.Trigger asChild>
-              <Button variant="secondary">
+              <Button variant="secondary" disabled={!demoSession}>
                 <Plus size={15} />
-                Join a course
+                {demoSession ? "Join a course" : "Instructor enrollment"}
               </Button>
             </Dialog.Trigger>
             <Dialog.Portal>
@@ -98,6 +105,15 @@ export function StudentAssignmentsPage({
           </Dialog.Root>
         </div>
       </div>
+
+      {!demoSession && (
+        <IntegrationNotice
+          title="Course self-enrollment is unavailable"
+          description="There is no student invite-code endpoint. Ask your instructor to add you; only backend-confirmed enrollments appear here."
+          endpoint="Enrollment management is teacher-operated"
+          tone="info"
+        />
+      )}
 
       <div className="student-assignment-list">
         {visibleAssignments.length > 0 ? (
@@ -147,4 +163,3 @@ export function StudentAssignmentsPage({
     </>
   );
 }
-

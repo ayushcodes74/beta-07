@@ -103,7 +103,7 @@ export function StudentSubmissionPage({
             <ul>
               <li>Submit a single PDF containing all answer sheets and scratch work.</li>
               <li>Ensure handwriting, figures, and mathematical notations are clearly lit and legible.</li>
-              <li>Late submissions are timestamped and preserved for faculty discretion.</li>
+              <li>Submissions are timestamped; a late-submission policy is not configured in the backend.</li>
             </ul>
             <div className="assignment-instruction-footer">
               <span>{assignment.totalMarks} marks total</span>
@@ -170,7 +170,7 @@ export function StudentSubmissionPage({
           <div className="submit-actions" style={{ marginTop: "16px" }}>
             <span style={{ fontSize: "10px", color: "#5C6E61", display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <ShieldCheck size={14} style={{ color: "#173D2B" }} />
-              You will receive an authentic cryptographic submission receipt.
+              The backend will record your submission and return its submission ID.
             </span>
             <ConfirmDialog
               trigger={
@@ -252,4 +252,3 @@ export function StudentSubmissionPage({
     </>
   );
 }
-

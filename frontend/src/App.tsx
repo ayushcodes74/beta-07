@@ -8,7 +8,13 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 
 import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
-import { assignmentService, authService, courseService, submissionService } from "./services/api";
+import {
+  assignmentService,
+  authService,
+  courseService,
+  extractErrorMessage,
+  submissionService,
+} from "./services/api";
 import {
   clearDemoSession,
   DEMO_ASSIGNMENTS,
@@ -18,6 +24,7 @@ import {
   DEMO_SUBMISSIONS,
   getStoredDemoSession,
   isDemoMode,
+  isDemoSession,
   setDemoSession,
 } from "./services/demo-session";
 import {
@@ -42,6 +49,7 @@ interface AppState {
   materials: CourseMaterial[];
   setMaterials: Dispatch<SetStateAction<CourseMaterial[]>>;
   loading: boolean;
+  workspaceError: string | null;
   refreshData: () => Promise<void>;
 }
 
@@ -62,9 +70,11 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [submissionState, setSubmissions] = useState<Submission[]>([]);
   const [materialState, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   const refreshData = async () => {
     if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
+      setWorkspaceError(null);
       setCourses(DEMO_COURSES);
       setAssignments(DEMO_ASSIGNMENTS);
       setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
@@ -74,27 +84,20 @@ function AppProvider({ children }: { children: ReactNode }) {
     }
     try {
       const [courses, assignments, submissions] = await Promise.all([
-        courseService.getCourses().catch((err) => {
-          console.warn("Could not fetch courses from backend:", err);
-          return [] as Course[];
-        }),
-        assignmentService.getAssignments().catch((err) => {
-          console.warn("Could not fetch assignments from backend:", err);
-          return [] as Assignment[];
-        }),
-        import.meta.env.VITE_USE_API_AUTH === "true"
-          ? submissionService.getSubmissions().catch((err) => {
-              console.warn("Could not fetch submissions from backend:", err);
-              return [] as Submission[];
-            })
-          : Promise.resolve([] as Submission[]),
+        courseService.getCourses(),
+        assignmentService.getAssignments(),
+        submissionService.getSubmissions(),
       ]);
       setCourses(courses);
       setAssignments(assignments);
       setSubmissions(submissions);
       setJoinedCourseIds(courses.map((c) => c.id));
+      setWorkspaceError(null);
     } catch (err) {
       console.error("Failed to load workspace data:", err);
+      setWorkspaceError(
+        extractErrorMessage(err, "Could not load workspace data. Check your connection and try again.")
+      );
     }
   };
 
@@ -150,6 +153,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       }
     } else {
       clearDemoSession();
+      setWorkspaceError(null);
       setCourses([]);
       setAssignments([]);
       setJoinedCourseIds([]);
@@ -174,9 +178,10 @@ function AppProvider({ children }: { children: ReactNode }) {
       materials: materialState,
       setMaterials,
       loading,
+      workspaceError,
       refreshData,
     }),
-    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading]
+    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading, workspaceError]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -219,7 +224,7 @@ const studentNavigation = [
 ];
 
 function ApplicationShell() {
-  const { user, setUser, loading, submissions } = useAppState();
+  const { user, setUser, loading, submissions, workspaceError, refreshData } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -437,6 +442,17 @@ function ApplicationShell() {
           </div>
         </header>
         <div className="route-stage">
+          {workspaceError && (
+            <div role="alert" className="integration-notice-card warning-notice" style={{ margin: "16px 24px 0" }}>
+              <div className="integration-notice-content">
+                <h4>Workspace data could not be refreshed</h4>
+                <p>{workspaceError}</p>
+                <button className="text-button" onClick={() => void refreshData()}>
+                  Retry loading workspace
+                </button>
+              </div>
+            </div>
+          )}
           <AnimatePresence mode="wait" initial={false}>
             <motion.main
               key={location.pathname}
@@ -453,7 +469,9 @@ function ApplicationShell() {
         <footer className="app-footnote">
           <ShieldCheck size={13} />
           <span>AI assists. Teachers decide. Students understand.</span>
-          <span className="demo-label" style={{ opacity: 0.8 }}>SPRING TERM 2026</span>
+          <span className="demo-label" style={{ opacity: 0.8 }}>
+            {isDemoSession() ? "DEMO WORKSPACE" : "CONNECTED WORKSPACE"}
+          </span>
         </footer>
       </div>
     </div>
@@ -485,7 +503,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/demo" element={<RoleSelectionPage />} />
+      <Route path="/demo" element={isDemoMode() ? <RoleSelectionPage /> : <Navigate to="/login" replace />} />
       <Route path="/login" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="login" onAuthenticated={setUser} />} />
       <Route path="/register" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="register" onAuthenticated={setUser} />} />
       <Route path="/app" element={<SessionRoute><ApplicationShell /></SessionRoute>}>

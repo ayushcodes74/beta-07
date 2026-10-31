@@ -34,6 +34,8 @@ export const getStoredDemoSession = (): User | null => {
   return null;
 };
 
+export const isDemoSession = (): boolean => getStoredDemoSession() !== null;
+
 export const setDemoSession = (role: "teacher" | "student"): User => {
   sessionStorage.setItem("tg_demo_role", role);
   return role === "teacher" ? DEMO_TEACHER : DEMO_STUDENT;

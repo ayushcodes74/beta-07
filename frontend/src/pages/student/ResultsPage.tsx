@@ -1,11 +1,14 @@
 import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Panel } from "../../components/ui";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
+import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function ResultsPage({ submissions: rows }: { submissions: Submission[] }) {
   const { user, assignments: assignmentList } = useAppState();
+  const demoSession = isDemoSession();
   const student = user?.role === "student";
   const approved = student
     ? rows.filter((item) => item.studentId === user?.id && item.state === "Published")
@@ -24,6 +27,22 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
           </p>
         </div>
       </div>
+
+      {!demoSession && (
+        <IntegrationNotice
+          title="Grade results are not connected"
+          description="The backend does not expose grading-result or publication endpoints. This view will not invent scores or feedback."
+          endpoint="No grade-result endpoint is currently available"
+          tone="warning"
+        />
+      )}
+      {demoSession && (
+        <IntegrationNotice
+          title="Demo results"
+          description="Any displayed evaluations are sample data and are not real student grades."
+          tone="info"
+        />
+      )}
 
       <div className="published-results" style={{ display: "grid", gap: "16px" }}>
         {approved.length > 0 ? (
@@ -58,12 +77,16 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                     Final Score Awarded:
                   </span>
                   <strong style={{ fontSize: "22px", color: "#173D2B" }}>
-                    {item.grading?.suggestedScore ?? 18} / {assignment?.totalMarks ?? 20}
+                    {item.grading
+                      ? `${item.grading.suggestedScore} / ${assignment?.totalMarks ?? "—"}`
+                      : "No grade record"}
                   </strong>
-                  <span style={{ fontSize: "10px", color: "#5C6E61", marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <ShieldCheck size={14} style={{ color: "#173D2B" }} />
-                    Teacher Approved
-                  </span>
+                  {item.grading?.teacherApproved && (
+                    <span style={{ fontSize: "10px", color: "#5C6E61", marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <ShieldCheck size={14} style={{ color: "#173D2B" }} />
+                      Teacher Approved
+                    </span>
+                  )}
                 </div>
 
                 {item.grading?.reasoning && (
@@ -102,4 +125,3 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
     </>
   );
 }
-

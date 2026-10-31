@@ -37,6 +37,7 @@ class FakeAssignmentRepository:
         self.tokens: list[str] = []
         self.in_use: set[UUID] = set()
         self.student_access: dict[UUID, set[UUID]] | None = None  # None = all published
+        self.course_owned = True
 
     def _save(self, record: AssignmentRecord) -> AssignmentRecord:
         self.records[record.id] = record
@@ -44,12 +45,22 @@ class FakeAssignmentRepository:
 
     def create(self, teacher_id, content, *, access_token):
         self.tokens.append(access_token)
-        record = AssignmentRecord(id=uuid4(), teacher_id=teacher_id, status=AssignmentStatus.DRAFT, content=content)
+        record = AssignmentRecord(
+            id=uuid4(),
+            teacher_id=teacher_id,
+            status=AssignmentStatus.DRAFT,
+            content=AssignmentContent.model_validate(content.model_dump(exclude={"course_id"})),
+            course_id=content.course_id,
+        )
         return self._save(record)
 
     def get(self, assignment_id, *, access_token):
         self.tokens.append(access_token)
         return self.records.get(assignment_id)
+
+    def owns_course(self, course_id, teacher_id, *, access_token):
+        self.tokens.append(access_token)
+        return self.course_owned
 
     def list_by_teacher(self, teacher_id, *, access_token):
         self.tokens.append(access_token)
@@ -237,6 +248,17 @@ class TestAuthentication:
 
 
 class TestAuthorization:
+    def test_teacher_cannot_create_assignment_for_another_teachers_course(self, api, repo, teacher):
+        repo.course_owned = False
+        response = api.post(
+            BASE,
+            json=assignment_body(course_id=str(uuid4())),
+            headers=teacher[1],
+        )
+
+        assert response.status_code == 404
+        assert repo.records == {}
+
     def test_student_cannot_create(self, api, repo, student):
         response = api.post(BASE, json=assignment_body(), headers=student[1])
         assert response.status_code == 403
@@ -307,7 +329,7 @@ class TestAuthorization:
 class TestStudentViewHidesAnswers:
     def test_student_get_has_no_answers(self, api, student, published):
         response = api.get(f"{BASE}/{published['id']}", headers=student[1])
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         body = response.json()
         assert not _contains_key(body, "correct_option_id")
         assert not _contains_key(body, "expected_answer")
@@ -403,6 +425,13 @@ class TestValidation:
 
 
 class TestCrud:
+    def test_assignment_course_is_persisted_and_returned(self, api, teacher):
+        course_id = uuid4()
+        response = api.post(BASE, json=assignment_body(course_id=str(course_id)), headers=teacher[1])
+
+        assert response.status_code == 201, response.text
+        assert response.json()["course_id"] == str(course_id)
+
     def test_create_is_draft_owned_by_caller(self, api, teacher, draft):
         assert draft["status"] == "draft"
         assert draft["teacher_id"] == str(teacher[0])
@@ -428,7 +457,7 @@ class TestCrud:
             json={"title": "Updated", "instructions": None, "total_marks": 20},
             headers=teacher[1],
         )
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         body = response.json()
         assert (body["title"], body["instructions"], body["total_marks"]) == ("Updated", None, 20.0)
         assert body["questions"] == draft["questions"]

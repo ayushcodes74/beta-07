@@ -96,6 +96,7 @@ export interface BackendQuestion {
 export interface BackendAssignment {
   id: string;
   teacher_id?: string;
+  course_id?: string | null;
   title: string;
   instructions?: string | null;
   due_at: string;
@@ -116,6 +117,53 @@ export interface BackendSubmissionStatus {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BackendOCRTextBlock {
+  block_id: string;
+  sequence: number;
+  type: string;
+  text: string;
+  confidence: number | null;
+  bounding_box: { x1: number; y1: number; x2: number; y2: number };
+  warnings: string[];
+}
+
+export interface BackendOCRPage {
+  page_number: number;
+  status: string;
+  full_text: string;
+  text_blocks: BackendOCRTextBlock[];
+  warnings: string[];
+  math_blocks: Array<{
+    recognized_text: string;
+    latex: string;
+    confidence: number | null;
+    requires_manual_review: boolean;
+    warnings: string[];
+  }>;
+}
+
+export interface BackendOCRDocumentResult {
+  job_id: string;
+  submission_id: string;
+  status: string;
+  warnings: string[];
+  errors: string[];
+  processing_summary: {
+    total_pages: number;
+    processed_pages: number;
+    failed_pages: number;
+  };
+  pages: BackendOCRPage[];
+}
+
+export interface BackendOCRProcessingStatus {
+  job_id: string;
+  status: string;
+  stage: string;
+  progress: number;
+  message: string;
 }
 
 export interface BackendOCRRegionReference {
@@ -222,7 +270,7 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
 
   return {
     id: b.id,
-    courseId: defaultCourseId,
+    courseId: b.course_id || defaultCourseId,
     title: b.title,
     description: b.instructions || "",
     dueAt: b.due_at,
@@ -235,6 +283,7 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
 }
 
 export function toBackendAssignmentCreate(a: {
+  courseId?: string;
   title: string;
   description?: string;
   dueAt: string;
@@ -273,6 +322,7 @@ export function toBackendAssignmentCreate(a: {
     : dueDateTime.toISOString();
 
   return {
+    course_id: a.courseId || null,
     title: a.title.trim(),
     instructions: a.description ? a.description.trim() : null,
     due_at: validDueAt,
@@ -302,11 +352,11 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     ocr: {
       confidence: null,
       state: ocrState,
-      extractedText: b.status.startsWith("ocr_") ? `OCR status: ${b.status.slice(4)}` : "Submission received.",
+      extractedText: "",
       warnings: b.warnings ?? [],
       expressions: [],
     },
-    answer: "PDF submission received.",
+    answer: "",
     fileName: fileName || "submission.pdf",
   };
 }
@@ -483,6 +533,7 @@ export const assignmentService = {
   },
 
   async createAssignment(assignment: {
+    courseId?: string;
     title: string;
     description?: string;
     dueAt: string;
@@ -533,8 +584,12 @@ export const submissionService = {
     return response.data;
   },
 
-  async getOcrResult(submissionId: string) {
-    const response = await api.get(`/submissions/${submissionId}/ocr-result`);
+  async getOcrResult(
+    submissionId: string
+  ): Promise<BackendOCRDocumentResult | BackendOCRProcessingStatus> {
+    const response = await api.get<BackendOCRDocumentResult | BackendOCRProcessingStatus>(
+      `/submissions/${submissionId}/ocr-result`
+    );
     return response.data;
   },
 
