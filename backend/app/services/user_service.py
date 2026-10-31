@@ -16,6 +16,7 @@ user operations.
 """
 
 import logging
+from app.database.supabase import get_user_supabase
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -74,12 +75,79 @@ class UnconfiguredProfileRepository:
         self, user_id: UUID, changes: Mapping[str, Any], *, access_token: str
     ) -> ProfileRecord | None:
         raise ProfileIntegrationNotConfiguredError("profile repository is not configured")
+class SupabaseProfileRepository:
+    """Supabase implementation using the authenticated user's JWT."""
 
+    @staticmethod
+    def _to_record(data: Any) -> ProfileRecord | None:
+        if not data:
+            return None
+
+        if isinstance(data, list):
+            if not data:
+                return None
+            data = data[0]
+
+        if not isinstance(data, Mapping):
+            raise ProfileRepositoryError("Invalid profile response")
+
+        try:
+            return ProfileRecord(
+                user_id=UUID(str(data["id"])),
+                role=str(data["role"]),
+            )
+        except (KeyError, ValueError, TypeError):
+            raise ProfileRepositoryError("Invalid profile data") from None
+
+    def get_profile(
+        self, user_id: UUID, *, access_token: str
+    ) -> ProfileRecord | None:
+        try:
+            client = get_user_supabase(access_token)
+
+            response = (
+                client.table("profiles")
+                .select("id, role")
+                .eq("id", str(user_id))
+                .execute()
+            )
+
+            return self._to_record(response.data)
+
+        except ProfileRepositoryError:
+            raise
+        except Exception:
+            logger.exception("Supabase profile lookup failed")
+            raise ProfileRepositoryError("Profile lookup failed") from None
+
+    def update_profile(
+        self,
+        user_id: UUID,
+        changes: Mapping[str, Any],
+        *,
+        access_token: str,
+    ) -> ProfileRecord | None:
+        try:
+            client = get_user_supabase(access_token)
+
+            response = (
+                client.table("profiles")
+                .update(dict(changes))
+                .eq("id", str(user_id))
+                .select("id, role")
+                .execute()
+            )
+
+            return self._to_record(response.data)
+
+        except ProfileRepositoryError:
+            raise
+        except Exception:
+            logger.exception("Supabase profile update failed")
+            raise ProfileRepositoryError("Profile update failed") from None
 
 def get_profile_repository() -> ProfileRepository:
-    # TODO(db-contract): return the Supabase-backed repository once the
-    # profiles table, columns, role values and RLS policies are confirmed.
-    return UnconfiguredProfileRepository()
+    return SupabaseProfileRepository()
 
 
 class ProfileNotFoundError(Exception):
