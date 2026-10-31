@@ -386,6 +386,7 @@ function AppRoutes() {
         <Route path="materials" element={<Navigate to="/app/assignment/new" replace />} />
         <Route path="assignments" element={<AssignmentsPage />} />
         <Route path="assignment/new" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
+        <Route path="assignment/:assignmentId/edit" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
         <Route path="submissions" element={<SubmissionsPage submissions={submissionState} />} />
         <Route path="grading/:submissionId" element={<GradingReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
         <Route path="ocr/:submissionId" element={<OCRReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />

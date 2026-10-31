@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarDays, ChevronRight, FileText, Plus } from "lucide-react";
+import { CalendarDays, ChevronRight, FileText, Pencil, Plus } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
@@ -84,6 +84,16 @@ export function AssignmentsPage() {
                   </span>
                 </div>
                 <StatusBadge status={state} />
+                {!student && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/app/assignment/${assignment.id}/edit`)}
+                  >
+                    <Pencil size={13} />
+                    Edit
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

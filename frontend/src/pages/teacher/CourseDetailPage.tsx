@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, UserPlus, X } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
@@ -191,6 +191,7 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
                   <th>Marks</th>
                   <th>Due Date</th>
                   <th>Status</th>
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -206,11 +207,21 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
                       <td>
                         <StatusBadge status={item.state} />
                       </td>
+                      <td>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => navigate(`/app/assignment/${item.id}/edit`)}
+                        >
+                          <Pencil size={13} />
+                          Edit
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "#5C6E61" }}>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "#5C6E61" }}>
                       No assignments created yet for this course. Click "Create assignment" above to add one.
                     </td>
                   </tr>

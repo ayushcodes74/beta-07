@@ -10,7 +10,7 @@ import {
   extractErrorMessage,
   type ExtractedCourseMaterial,
 } from "../../services/api";
-import { Badge, Button, Panel, useToast } from "../../components/ui";
+import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import type { Assignment, Course, Question } from "../../types/models";
 
 function QuestionEditor({
@@ -301,7 +301,7 @@ export function AssignmentEditor({
     // Students only see published assignments from courses they're enrolled in, so an
     // assignment without a course would be invisible to every student.
     const selectedCourseId = courseId || courseList[0]?.id;
-    if (!selectedCourseId) {
+    if (!editing && !selectedCourseId) {
       toast("Create a course first (Courses page) and enroll your students; assignments must belong to a course.", "info");
       return;
     }
@@ -316,6 +316,35 @@ export function AssignmentEditor({
     }
 
     setSaving(true);
+    if (editing) {
+      try {
+        let saved = await assignmentService.updateAssignment(editing.id, {
+          title: cleanTitle,
+          description: description.trim(),
+          // Only send the deadline if it changed, so overdue assignments stay editable.
+          dueAt: dueAt !== originalDueAt ? deadline.toISOString() : undefined,
+          totalMarks: total,
+          questions: questions.map((q) => ({ ...q, prompt: q.prompt.trim() })),
+        });
+        if (state === "Published" && saved.state !== "Published") {
+          saved = await assignmentService.publishAssignment(saved.id);
+        }
+        setAssignments((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+        toast(
+          editing.state === "Published"
+            ? "Changes saved. Students now see the updated assignment."
+            : state === "Published"
+            ? "Assignment updated and published to students."
+            : "Draft updated."
+        );
+        navigate("/app/assignments");
+      } catch (err) {
+        toast(extractErrorMessage(err, "Could not save changes. Check all fields and try again."), "info");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     try {
       let created = await assignmentService.createAssignment({
         courseId: selectedCourseId,
@@ -343,25 +372,69 @@ export function AssignmentEditor({
     }
   };
 
+  if (loadingExisting) {
+    return (
+      <Panel className="empty-state" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#5C6E61" }}>
+        <span className="button-spinner" /> Loading assignment…
+      </Panel>
+    );
+  }
+
+  const editingPublished = editing?.state === "Published";
+
   return (
     <>
       <div className="page-heading">
         <div>
-          <div className="eyebrow">ASSIGNMENT CREATION CONSOLE</div>
-          <h1>Create assignment</h1>
-          <p className="page-subtitle">Give your class a clear, thoughtful next step with structured questions and rubrics.</p>
+          <div className="eyebrow">{editing ? "ASSIGNMENT EDITOR" : "ASSIGNMENT CREATION CONSOLE"}</div>
+          <h1>
+            {editing ? "Edit assignment" : "Create assignment"}{" "}
+            {editing && <StatusBadge status={editing.state} />}
+          </h1>
+          <p className="page-subtitle">
+            {editingPublished
+              ? "This assignment is live. Changes to details, due date and questions apply to students as soon as you save."
+              : editing
+              ? "Update this draft, then save it or publish it to students."
+              : "Give your class a clear, thoughtful next step with structured questions and rubrics."}
+          </p>
         </div>
         <div className="heading-actions">
-          <Button variant="secondary" disabled={saving} onClick={() => saveAssignment("Draft")}>
-            <FileText size={15} />
-            Save draft
-          </Button>
-          <Button disabled={saving} onClick={() => saveAssignment("Published")}>
-            <Upload size={15} />
-            Publish assignment
-          </Button>
+          {editing && (
+            <Button variant="secondary" disabled={saving} onClick={() => navigate("/app/assignments")}>
+              Cancel
+            </Button>
+          )}
+          {editingPublished ? (
+            <Button disabled={saving} onClick={() => saveAssignment("Published")}>
+              <Save size={15} />
+              Save changes
+            </Button>
+          ) : (
+            <>
+              <Button variant="secondary" disabled={saving} onClick={() => saveAssignment("Draft")}>
+                <FileText size={15} />
+                Save draft
+              </Button>
+              <Button disabled={saving} onClick={() => saveAssignment("Published")}>
+                <Upload size={15} />
+                {editing ? "Save & publish" : "Publish assignment"}
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {submissionCount > 0 && (
+        <IntegrationNotice
+          tone="warning"
+          title={`${submissionCount} submission${submissionCount === 1 ? " has" : "s have"} already been made`}
+          description={
+            "Edits apply to everyone, including students who already submitted. Their existing answers are kept, " +
+            "so prefer editing a question over removing it — removing a question students have answered is refused."
+          }
+        />
+      )}
 
       <div className="editor-layout">
         <div className="editor-main">
@@ -639,6 +712,8 @@ export function AssignmentEditor({
                 className="field-select"
                 value={courseId || courseList[0]?.id || ""}
                 onChange={(event) => setCourseId(event.target.value)}
+                disabled={Boolean(editing)}
+                title={editing ? "An assignment's course can't be changed after it is created." : undefined}
               >
                 {courseList.map((course) => (
                   <option value={course.id} key={course.id}>
