@@ -520,19 +520,45 @@ class TestFunctional16Scenarios:
         assert grade.review_required is True
         assert any("evidence" in r.lower() for r in grade.review_reasons)
 
-    # Scenario 12: Missing rubric
-    def test_scenario_12_missing_rubric_rejected_by_schema(self):
-        with pytest.raises(ValidationError):
-            GradingRequest(
-                course_id="PHY101",
-                assignment_id="asgn_1",
-                submission_id="sub_12",
-                question_id="q1",
-                question_text="Explain work.",
-                question_max_marks=5.0,
-                student_answer="Work is force times displacement.",
-                rubric=None,  # Missing rubric
-            )
+    # Scenario 12: Missing rubric handled safely & flagged for review
+    def test_scenario_12_missing_rubric_handled_safely(self, physics_evidence):
+        req = GradingRequest(
+            course_id="PHY101",
+            assignment_id="asgn_1",
+            submission_id="sub_12",
+            question_id="q1",
+            question_text="Explain work.",
+            question_max_marks=5.0,
+            student_answer="Work is force times displacement.",
+            rubric=None,  # Missing rubric
+        )
+        llm_resp = {
+            "awarded_marks": 5.0,
+            "criterion_evaluations": [
+                {
+                    "criterion_id": "general_eval",
+                    "awarded_marks": 5.0,
+                    "max_marks": 5.0,
+                    "explanation": "Correct statement.",
+                    "matched_concepts": ["force times displacement"],
+                    "missing_concepts": [],
+                    "confidence": 0.8,
+                }
+            ],
+            "overall_explanation": "Good answer.",
+            "strengths": [],
+            "areas_for_improvement": [],
+            "confidence": 0.8,
+            "review_required": False,
+            "review_reasons": [],
+        }
+        client = _make_mock_client(llm_resp)
+        evaluator = AnswerEvaluator(gemini_client=client)
+        grade = evaluator.evaluate_question(req, retrieved_evidence=["work = force * distance"], source_references=physics_evidence)
+
+        # Successfully graded without crash, but review is required because no rubric or model answer was provided
+        assert grade.review_required is True
+        assert any("no rubric" in r.lower() for r in grade.review_reasons)
 
     # Scenario 13: Low-confidence answer due to poor OCR quality
     def test_scenario_13_low_confidence_from_poor_ocr(self, physics_evidence):
@@ -575,9 +601,8 @@ class TestFunctional16Scenarios:
         # Triggers review because ocr_score < 0.60
         assert grade.review_required is True
         assert any("low ocr" in r.lower() for r in grade.review_reasons)
-        # Note: Because OCR weight is only 15%, overall confidence remains relatively high (0.85)
-        # despite severe text corruption, demonstrating linear weighting dampening.
-        assert grade.confidence == 0.85
+        # Fix 4 safeguard: OCR confidence < 0.50 (0.35) caps overall confidence at 0.59 (LOW)
+        assert grade.confidence <= 0.59
 
     # Scenario 14: MCQ with correct option
     def test_scenario_14_mcq_correct_option(self):

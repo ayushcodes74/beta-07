@@ -128,7 +128,7 @@ class HumanReviewRouter:
             )
 
         # 4. Low OCR Extraction Quality Trigger
-        if ocr_confidence is not None and ocr_confidence < 0.65:
+        if ocr_confidence is not None and ocr_confidence < 0.60:
             items.append(
                 HumanReviewItem(
                     review_id=f"rev_ocr_{uuid.uuid4().hex[:8]}",

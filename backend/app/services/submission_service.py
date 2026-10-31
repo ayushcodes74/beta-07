@@ -135,7 +135,9 @@ class UnconfiguredSubmissionRepository:
 
 def get_submission_repository() -> SubmissionRepository:
     """Dependency provider returning the submission repository implementation."""
-    return UnconfiguredSubmissionRepository()
+    from app.database.submission_repository import SupabaseSubmissionRepository
+
+    return SupabaseSubmissionRepository()
 
 
 class SubmissionService:

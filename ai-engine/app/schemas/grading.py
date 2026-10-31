@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator, model_validator
 
 from app.schemas.common import BaseSchema, SourceReference, ReviewReasonCategory
-from app.schemas.assignment import ModelAnswer, Rubric
+from app.schemas.assignment import ModelAnswer, QuestionType, Rubric
 
 
 class GradingStatus(str, Enum):
@@ -27,11 +27,40 @@ class GradingRequest(BaseSchema):
     question_id: str = Field(description="Target question identifier.")
     question_text: str = Field(description="The question prompt given to the student.")
     question_max_marks: float = Field(gt=0, description="Maximum possible marks for this question.")
-    student_answer: str = Field(description="The raw student response provided by OCR or text input.")
-    rubric: Rubric = Field(description="Teacher-approved grading criteria rubric.")
+    student_answer: str = Field(default="", description="The raw student response provided by OCR or text input.")
+    rubric: Optional[Rubric] = Field(
+        default=None,
+        description="Teacher-approved grading criteria rubric (optional).",
+    )
     model_answer: Optional[ModelAnswer] = Field(
         default=None,
         description="Teacher-approved model answer for conceptual guidance.",
+    )
+    expected_answer: Optional[str] = Field(
+        default=None,
+        description="Plain-text teacher-provided expected answer for subjective questions.",
+    )
+    instructions: Optional[str] = Field(
+        default=None,
+        description="Teacher-provided grading instructions.",
+    )
+    question_type: Optional[QuestionType] = Field(
+        default=QuestionType.SUBJECTIVE,
+        description="Question type: MCQ or SUBJECTIVE.",
+    )
+    selected_option_id: Optional[str] = Field(
+        default=None,
+        description="For MCQ: ID of the option selected by student (e.g. 'A', 'B').",
+    )
+    correct_option_id: Optional[str] = Field(
+        default=None,
+        description="For MCQ: ID of the correct option specified by the teacher.",
+    )
+    ocr_confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Optional OCR text extraction confidence score (0.0 to 1.0).",
     )
     context: Optional[str] = Field(
         default=None,

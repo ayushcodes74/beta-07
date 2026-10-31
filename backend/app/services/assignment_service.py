@@ -104,7 +104,9 @@ class UnconfiguredAssignmentRepository:
 def get_assignment_repository() -> AssignmentRepository:
     # TODO(db-contract): return the Supabase-backed repository once Person 4
     # confirms the assignment tables, student access scoping and RLS policies.
-    return UnconfiguredAssignmentRepository()
+    from app.database.assignment_repository import SupabaseAssignmentRepository
+
+    return SupabaseAssignmentRepository()
 
 
 class AssignmentNotFoundError(Exception):

@@ -176,24 +176,52 @@ class TextChunker:
         return all_chunks
 
     @staticmethod
-    def _find_natural_break(text: str, start: int, end: int) -> int:
-        """Find the last natural break point (paragraph, sentence, or word) before end."""
+    def _is_inside_latex(text: str, pos: int) -> bool:
+        """Check if index pos is inside an inline or block LaTeX delimiter ($...$ or $$...$$)."""
+        prefix = text[:pos]
+        dollar_count = 0
+        i = 0
+        while i < len(prefix):
+            if prefix[i] == '$':
+                if i > 0 and prefix[i - 1] == '\\':
+                    pass
+                else:
+                    dollar_count += 1
+            i += 1
+        return (dollar_count % 2) != 0
+
+    @classmethod
+    def _find_natural_break(cls, text: str, start: int, end: int) -> int:
+        """Find the last natural break point (paragraph, sentence, or word) before end.
+
+        Protects inline LaTeX expressions from being split mid-formula.
+        """
         sub = text[start:end]
+
+        def _candidate_ok(abs_pos: int) -> bool:
+            return not cls._is_inside_latex(text, abs_pos)
+
         # Look for double newline
         p_idx = sub.rfind("\n\n")
         if p_idx != -1 and p_idx > len(sub) * 0.5:
-            return start + p_idx + 2
+            cand = start + p_idx + 2
+            if _candidate_ok(cand):
+                return cand
 
         # Look for sentence end (.!?)
         for sep in [". ", "? ", "! ", ".\n", "; "]:
             s_idx = sub.rfind(sep)
             if s_idx != -1 and s_idx > len(sub) * 0.5:
-                return start + s_idx + len(sep)
+                cand = start + s_idx + len(sep)
+                if _candidate_ok(cand):
+                    return cand
 
         # Look for space
         sp_idx = sub.rfind(" ")
         if sp_idx != -1 and sp_idx > len(sub) * 0.5:
-            return start + sp_idx + 1
+            cand = start + sp_idx + 1
+            if _candidate_ok(cand):
+                return cand
 
         return end
 
