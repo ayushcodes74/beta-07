@@ -5,7 +5,6 @@ import { Badge, Button, Panel, StatusBadge } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
 import { extractErrorMessage, submissionService, type BackendOCRDocumentResult, type BackendOCRProcessingStatus } from "../../services/api";
-import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function OCRReviewPage({
@@ -17,7 +16,7 @@ export function OCRReviewPage({
   const { submissionId } = useParams();
   const navigate = useNavigate();
   const submission = rows.find((item) => item.id === submissionId);
-  const demoSession = isDemoSession();
+  const backendOCRConnected = false;
   const [document, setDocument] = useState<BackendOCRDocumentResult | null>(null);
   const [processing, setProcessing] = useState<BackendOCRProcessingStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,7 @@ export function OCRReviewPage({
 
   useEffect(() => {
     if (!submission) return;
-    if (demoSession) {
+    if (backendOCRConnected) {
       setDocument(null);
       setProcessing(null);
       setError("");
@@ -56,7 +55,7 @@ export function OCRReviewPage({
     return () => {
       active = false;
     };
-  }, [demoSession, retry, submission?.id]);
+  }, [backendOCRConnected, retry, submission?.id]);
 
   return (
     <>
@@ -71,7 +70,7 @@ export function OCRReviewPage({
             <ArrowLeft size={14} />
             Back to queue
           </Button>
-          {submission && !demoSession && (
+          {submission && !backendOCRConnected && (
             <Button variant="secondary" disabled={loading} onClick={() => setRetry((value) => value + 1)}>
               {loading ? "Refreshing…" : "Refresh OCR"}
             </Button>
@@ -81,10 +80,10 @@ export function OCRReviewPage({
 
       {submission ? (
         <div style={{ display: "grid", gap: "16px" }}>
-          {demoSession && (
+          {backendOCRConnected && (
             <IntegrationNotice
-              title="Demo OCR content"
-              description="This sample extraction is for demonstration only; it is not the OCR result for a real submission."
+              title="OCR results are unavailable"
+              description="There is no processed OCR result for this submission."
               tone="info"
             />
           )}
@@ -106,15 +105,15 @@ export function OCRReviewPage({
               <StatusBadge status={document?.status ?? submission.ocr.state} />
             </div>
 
-            {demoSession ? (
+            {backendOCRConnected ? (
               <>
                 {submission.ocr.confidence !== null && (
                   <div style={{ margin: "14px 0" }}>
-                    <Badge tone="sage">Sample confidence: {Math.round(submission.ocr.confidence * 100)}%</Badge>
+                    <Badge tone="sage">Confidence: {Math.round(submission.ocr.confidence * 100)}%</Badge>
                   </div>
                 )}
-                <h4 style={{ margin: "16px 0 8px", fontSize: "12px" }}>Demo extracted text:</h4>
-                <div className="ocr-box">{submission.ocr.extractedText || "No demo OCR text recorded."}</div>
+                <h4 style={{ margin: "16px 0 8px", fontSize: "12px" }}>Extracted text:</h4>
+                <div className="ocr-box">{submission.ocr.extractedText || "No OCR text has been recorded."}</div>
               </>
             ) : document ? (
               <>

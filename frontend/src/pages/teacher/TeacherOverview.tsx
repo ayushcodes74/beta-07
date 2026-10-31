@@ -11,7 +11,6 @@ import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
-import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 function TrendChart({ height = 190 }: { height?: number }) {
@@ -212,9 +211,10 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 }
 
 export function TeacherOverview() {
+  void TrendChart;
+  void DistributionChart;
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
-  const demoSession = isDemoSession();
   const recentSubmissions = [...submissions]
     .sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt))
     .slice(0, 5);
@@ -258,7 +258,7 @@ export function TeacherOverview() {
           {
             title: "Active courses",
             value: String(courseList.length),
-            note: demoSession ? "Demo workspace" : "Loaded from backend",
+            note: "Loaded from backend",
             change: `${courseList.length} registered`,
             icon: BookOpen,
             featured: true,
@@ -384,37 +384,13 @@ export function TeacherOverview() {
         </Panel>
       </div>
 
-      {demoSession ? (
-        <div className="analytics-grid">
-          <Panel className="chart-card">
-            <div className="section-heading">
-              <div>
-                <h2>Demo class performance trend</h2>
-                <p>Sample data for interface demonstration only</p>
-              </div>
-            </div>
-            <div className="chart-total">
-              84.6 <span>Demo sample</span>
-            </div>
-            <TrendChart />
-          </Panel>
-          <Panel className="chart-card">
-            <div className="section-heading">
-              <div>
-                <h2>Demo grade distribution</h2>
-                <p>Sample data for interface demonstration only</p>
-              </div>
-            </div>
-            <DistributionChart />
-          </Panel>
-        </div>
-      ) : (
+      {
         <IntegrationNotice
           title="Class analytics are not available"
           description="The connected backend does not expose grading statistics or historical performance data. Analytics are omitted rather than estimated."
           tone="info"
         />
-      )}
+      }
 
       <Panel className="recent-card dashboard-recent">
         <div className="section-heading">

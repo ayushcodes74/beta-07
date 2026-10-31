@@ -3,12 +3,10 @@ import { ArrowRight, BookOpen, Check, ChevronRight, FileText } from "lucide-reac
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
-import { isDemoSession } from "../../services/demo-session";
 
 export function StudentOverview() {
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, joinedCourseIds, submissions: studentRows } = useAppState();
-  const demoSession = isDemoSession();
   const myCourses = courseList.filter((course) => joinedCourseIds.includes(course.id));
   const myAssignments = assignmentList.filter((assignment) => assignment.state === "Published");
   const published = studentRows.filter(
@@ -177,9 +175,7 @@ export function StudentOverview() {
             ))}
             {!myCourses.length && (
               <Panel className="empty-state" style={{ padding: "2rem", textAlign: "center", color: "#5C6E61" }}>
-                {demoSession
-                  ? "Join a demo course from My assignments."
-                  : "Your instructor-managed enrollments will appear here."}
+                Your instructor-managed enrollments will appear here.
               </Panel>
             )}
           </div>

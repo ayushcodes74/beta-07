@@ -3,12 +3,10 @@ import { ArrowLeft, FileCheck2, Plus } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
-import { isDemoSession } from "../../services/demo-session";
 import type { Course } from "../../types/models";
 
 export function CourseDetailPage({ courses: courseList }: { courses: Course[] }) {
   const { assignments: assignmentList } = useAppState();
-  const demoSession = isDemoSession();
   const { courseId } = useParams();
   const navigate = useNavigate();
   const course = courseList.find((item) => item.id === courseId);
@@ -41,9 +39,9 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
           </p>
         </div>
         <div className="heading-actions">
-          <Button variant="secondary" disabled={!demoSession} onClick={() => navigate("/app/materials")}>
+          <Button variant="secondary" disabled onClick={() => navigate("/app/materials")}>
             <FileCheck2 size={15} />
-            {demoSession ? "Demo materials" : "Materials unavailable"}
+            Materials unavailable
           </Button>
           <Button onClick={() => navigate(`/app/assignment/new?courseId=${encodeURIComponent(course.id)}`)}>
             <Plus size={15} />

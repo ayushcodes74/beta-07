@@ -4,12 +4,10 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
-import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function AssessmentPage({
   submissions: studentRows,
-  setSubmissions,
 }: {
   submissions: Submission[];
   setSubmissions: Dispatch<SetStateAction<Submission[]>>;
@@ -22,8 +20,7 @@ export function AssessmentPage({
   const existing = studentRows.find((item) => item.studentId === user?.id && item.assignmentId === assignmentId);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const demoSession = isDemoSession();
+  const submitted = false;
 
   if (!assignment) {
     return (
@@ -41,23 +38,7 @@ export function AssessmentPage({
 
   const submitAssessment = () => {
     if (existing || !user) return;
-    if (!demoSession) {
-      toast("MCQ answer submission is not connected to the backend yet.", "info");
-      return;
-    }
-    setSubmitted(true);
-    toast("Assessment recorded in your student learning session.", "info");
-    const newSub: Submission = {
-      id: `mcq-${crypto.randomUUID()}`,
-      studentId: user.id,
-      assignmentId: assignment.id,
-      submittedAt: new Date().toISOString(),
-      deadline: assignment.dueAt,
-      state: "Submitted",
-      ocr: { confidence: 1, state: "Verified", extractedText: "MCQ answers recorded successfully.", warnings: [], expressions: [] },
-      answer: "MCQ interactive submission",
-    };
-    setSubmissions((curr) => [newSub, ...curr]);
+    toast("MCQ answer submission is not connected to the backend yet.", "info");
   };
 
   return (
@@ -80,14 +61,14 @@ export function AssessmentPage({
 
       <div className="assessment-layout">
         <Panel className="assessment-card">
-          {!demoSession && (
+          {
             <IntegrationNotice
               title="MCQ submission is unavailable"
               description="The backend currently accepts PDF submissions only. Your selected answers will not be saved or submitted."
               endpoint="No MCQ answer-submission endpoint is currently available"
               tone="warning"
             />
-          )}
+          }
           {current ? (
             <div>
               <div className="question-prompt" style={{ marginBottom: "1.5rem" }}>
@@ -143,10 +124,10 @@ export function AssessmentPage({
                   </Button>
                 ) : (
                   <Button
-                    disabled={!demoSession || submitted || Boolean(existing)}
+                    disabled={submitted || Boolean(existing)}
                     onClick={submitAssessment}
                   >
-                    {submitted || existing ? "Submitted" : demoSession ? "Submit Assessment" : "Submission unavailable"}
+                    {submitted || existing ? "Submitted" : "Submission unavailable"}
                   </Button>
                 )}
               </div>

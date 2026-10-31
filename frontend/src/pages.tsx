@@ -3,10 +3,10 @@ import { TeacherOverview } from "./pages/teacher/TeacherOverview";
 import { StudentOverview } from "./pages/student/StudentOverview";
 
 export { LandingPage } from "./pages/common/LandingPage";
-export { RoleSelectionPage } from "./pages/common/RoleSelectionPage";
 export { LeaderboardPage } from "./pages/common/LeaderboardPage";
 export { SettingsPage } from "./pages/common/SettingsPage";
 export { NotFoundPage } from "./pages/common/NotFoundPage";
+export { AuthPage } from "./pages/common/AuthPage";
 
 export { CoursesPage } from "./pages/teacher/CoursesPage";
 export { CourseDetailPage } from "./pages/teacher/CourseDetailPage";
