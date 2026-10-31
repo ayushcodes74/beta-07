@@ -260,52 +260,49 @@ class SupabaseCourseRepository:
             logger.exception("Failed to update course %s: %s", course_id, exc)
             raise CourseRepositoryError(f"Database error updating course: {exc}") from exc
 
-    def get_student_profile(self, student_id: UUID, *, access_token: str) -> dict[str, Any] | None:
+    def get_student_profile(
+        self, course_id: UUID, student_id: UUID, *, access_token: str
+    ) -> dict[str, Any] | None:
+        """Validate target student profile via course-scoped RPC. Fail closed if RPC fails."""
         client = self._client(access_token)
-        # 1. Attempt secure RPC first (validate_student_enrollment_target)
         try:
             rpc_res = client.rpc(
                 "validate_student_enrollment_target",
-                {"target_student_id": str(student_id)},
+                {
+                    "target_course_id": str(course_id),
+                    "target_student_id": str(student_id),
+                },
             ).execute()
             data = rpc_res.data
-            if isinstance(data, dict):
-                if not data.get("is_valid", False):
-                    err_code = data.get("error_code")
-                    if err_code == "student_not_found":
-                        return None
-                    return {
-                        "id": student_id,
-                        "role": data.get("role", "unknown"),
-                        "is_disabled": data.get("is_disabled", False),
-                        "display_name": data.get("display_name"),
-                        "_validation_error": err_code,
-                        "_validation_message": data.get("error_message", "Validation failed."),
-                    }
+            if not isinstance(data, dict):
+                logger.error("Invalid response format from validation RPC: %s", data)
+                raise CourseRepositoryError("Invalid response format from validation RPC")
+
+            if not data.get("is_valid", False):
+                err_code = data.get("error_code")
+                if err_code == "student_not_found":
+                    return None
                 return {
                     "id": student_id,
-                    "role": data.get("role", "student"),
+                    "role": data.get("role", "unknown"),
                     "is_disabled": data.get("is_disabled", False),
                     "display_name": data.get("display_name"),
+                    "_validation_error": err_code,
+                    "_validation_message": data.get("error_message", "Validation failed."),
                 }
-        except Exception as rpc_err:
-            logger.debug("validate_student_enrollment_target RPC not available: %s", rpc_err)
 
-        # 2. Fallback to direct profiles table select
-        try:
-            resp = (
-                client.table("profiles")
-                .select("id, role, is_disabled, display_name")
-                .eq("id", str(student_id))
-                .execute()
-            )
-            rows = resp.data or []
-            if not rows:
-                return None
-            return rows[0]
+            return {
+                "id": student_id,
+                "role": data.get("role", "student"),
+                "is_disabled": data.get("is_disabled", False),
+                "display_name": data.get("display_name"),
+            }
+        except CourseRepositoryError:
+            raise
         except Exception as exc:
-            logger.exception("Failed to fetch student profile %s: %s", student_id, exc)
-            raise CourseRepositoryError(f"Database error fetching profile: {exc}") from exc
+            logger.error("validate_student_enrollment_target RPC infrastructure failure: %s", exc)
+            # Fail closed: Do NOT fallback to direct profile select!
+            raise CourseRepositoryError(f"Student validation service unavailable: {exc}") from exc
 
     def get_enrollment(
         self, course_id: UUID, student_id: UUID, *, access_token: str
