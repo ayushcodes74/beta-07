@@ -9,13 +9,6 @@ import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
 import {
-  assignmentService,
-  authService,
-  courseService,
-  extractErrorMessage,
-  submissionService,
-} from "./services/api";
-import {
   clearDemoSession,
   DEMO_ASSIGNMENTS,
   DEMO_COURSES,
@@ -28,7 +21,7 @@ import {
   setDemoSession,
 } from "./services/demo-session";
 import {
-  AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
+  AssignmentEditor, AssignmentsPage, AssessmentPage, CourseDetailPage, CoursesPage,
   GradingReviewPage, LandingPage, LeaderboardPage, MaterialsPage, NotFoundPage, OCRReviewPage,
   OverviewPage, ResultsPage, RoleSelectionPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage,
@@ -49,8 +42,6 @@ interface AppState {
   materials: CourseMaterial[];
   setMaterials: Dispatch<SetStateAction<CourseMaterial[]>>;
   loading: boolean;
-  workspaceError: string | null;
-  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -70,90 +61,31 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [submissionState, setSubmissions] = useState<Submission[]>([]);
   const [materialState, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-
-  const refreshData = async () => {
-    if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
-      setWorkspaceError(null);
-      setCourses(DEMO_COURSES);
-      setAssignments(DEMO_ASSIGNMENTS);
-      setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
-      setSubmissions(DEMO_SUBMISSIONS);
-      setMaterials(DEMO_MATERIALS);
-      return;
-    }
-    try {
-      const [courses, assignments, submissions] = await Promise.all([
-        courseService.getCourses(),
-        assignmentService.getAssignments(),
-        submissionService.getSubmissions(),
-      ]);
-      setCourses(courses);
-      setAssignments(assignments);
-      setSubmissions(submissions);
-      setJoinedCourseIds(courses.map((c) => c.id));
-      setWorkspaceError(null);
-    } catch (err) {
-      console.error("Failed to load workspace data:", err);
-      setWorkspaceError(
-        extractErrorMessage(err, "Could not load workspace data. Check your connection and try again.")
-      );
-    }
+  const loadDemoWorkspace = (demoUser: User) => {
+    setUserState(demoUser);
+    setPeople(DEMO_PEOPLE);
+    setCourses(DEMO_COURSES);
+    setAssignments(DEMO_ASSIGNMENTS);
+    setJoinedCourseIds(DEMO_COURSES.map((course) => course.id));
+    setSubmissions(DEMO_SUBMISSIONS);
+    setMaterials(DEMO_MATERIALS);
   };
 
   useEffect(() => {
-    let mounted = true;
-    async function initSession() {
-      try {
-        if (isDemoMode()) {
-          const storedDemo = getStoredDemoSession();
-          if (storedDemo) {
-            setUserState(storedDemo);
-            setPeople(DEMO_PEOPLE);
-            setCourses(DEMO_COURSES);
-            setAssignments(DEMO_ASSIGNMENTS);
-            setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
-            setSubmissions(DEMO_SUBMISSIONS);
-            setMaterials(DEMO_MATERIALS);
-            return;
-          }
-        }
-        const current = await authService.getCurrentUser();
-        if (mounted && current) {
-          setUserState(current);
-          setPeople([current]);
-          await refreshData();
-        }
-      } catch (err) {
-        console.warn("Initial auth verification failed:", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+    const storedDemo = getStoredDemoSession();
+    if (storedDemo) {
+      loadDemoWorkspace(storedDemo);
     }
-    void initSession();
-    return () => {
-      mounted = false;
-    };
+    setLoading(false);
   }, []);
 
   const setUser = (nextUser: User | null) => {
-    setUserState(nextUser);
     if (nextUser) {
-      if (isDemoMode() && (nextUser.id === "demo-teacher-01" || nextUser.id === "demo-student-01")) {
-        setDemoSession(nextUser.role === "teacher" ? "teacher" : "student");
-        setPeople(DEMO_PEOPLE);
-        setCourses(DEMO_COURSES);
-        setAssignments(DEMO_ASSIGNMENTS);
-        setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
-        setSubmissions(DEMO_SUBMISSIONS);
-        setMaterials(DEMO_MATERIALS);
-      } else {
-        setPeople((current) => (current.some((p) => p.id === nextUser.id) ? current : [...current, nextUser]));
-        void refreshData();
-      }
+      loadDemoWorkspace(setDemoSession(nextUser.role));
     } else {
       clearDemoSession();
-      setWorkspaceError(null);
+      setUserState(null);
+      setPeople([]);
       setCourses([]);
       setAssignments([]);
       setJoinedCourseIds([]);
@@ -178,10 +110,8 @@ function AppProvider({ children }: { children: ReactNode }) {
       materials: materialState,
       setMaterials,
       loading,
-      workspaceError,
-      refreshData,
     }),
-    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading, workspaceError]
+    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -224,7 +154,7 @@ const studentNavigation = [
 ];
 
 function ApplicationShell() {
-  const { user, setUser, loading, submissions, workspaceError, refreshData } = useAppState();
+  const { user, setUser, loading, submissions } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -236,7 +166,7 @@ function ApplicationShell() {
     return (
       <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "1rem" }}>
         <span className="button-spinner" style={{ width: 24, height: 24 }} />
-        <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Connecting to TrustGrade workspace…</span>
+        <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading demo workspace…</span>
       </div>
     );
   }
@@ -271,20 +201,10 @@ function ApplicationShell() {
   };
 
   const logout = async () => {
-    try {
-      if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
-        clearDemoSession();
-        setUser(null);
-        navigate(isDemoMode() ? "/demo" : "/");
-        toast("Demo session cleared.", "info");
-        return;
-      }
-      await authService.logout();
-      setUser(null);
-      navigate("/");
-    } catch (reason) {
-      toast(reason instanceof Error ? `Could not sign out: ${reason.message}` : "Could not sign out. Please try again.", "info");
-    }
+    clearDemoSession();
+    setUser(null);
+    navigate("/demo");
+    toast("Demo session cleared.", "info");
   };
 
   return (
@@ -433,7 +353,7 @@ function ApplicationShell() {
                   <strong>Notifications</strong>
                   <p>
                     <b>Workspace connected</b>
-                    <span>Authenticated as {user.name} ({user.role}).</span>
+                    <span>Using demo profile {user.name} ({user.role}).</span>
                   </p>
                 </div>
               )}
@@ -442,17 +362,6 @@ function ApplicationShell() {
           </div>
         </header>
         <div className="route-stage">
-          {workspaceError && (
-            <div role="alert" className="integration-notice-card warning-notice" style={{ margin: "16px 24px 0" }}>
-              <div className="integration-notice-content">
-                <h4>Workspace data could not be refreshed</h4>
-                <p>{workspaceError}</p>
-                <button className="text-button" onClick={() => void refreshData()}>
-                  Retry loading workspace
-                </button>
-              </div>
-            </div>
-          )}
           <AnimatePresence mode="wait" initial={false}>
             <motion.main
               key={location.pathname}
@@ -470,7 +379,7 @@ function ApplicationShell() {
           <ShieldCheck size={13} />
           <span>AI assists. Teachers decide. Students understand.</span>
           <span className="demo-label" style={{ opacity: 0.8 }}>
-            {isDemoSession() ? "DEMO WORKSPACE" : "CONNECTED WORKSPACE"}
+            {isDemoSession() ? "DEMO WORKSPACE" : "NO ACTIVE SESSION"}
           </span>
         </footer>
       </div>
@@ -487,7 +396,6 @@ function SessionRoute({ children }: { children: ReactNode }) {
 function AppRoutes() {
   const {
     user,
-    setUser,
     courses: courseState,
     setCourses,
     assignments: assignmentState,
@@ -504,8 +412,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/demo" element={isDemoMode() ? <RoleSelectionPage /> : <Navigate to="/login" replace />} />
-      <Route path="/login" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="login" onAuthenticated={setUser} />} />
-      <Route path="/register" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="register" onAuthenticated={setUser} />} />
+      <Route path="/login" element={<Navigate to={user ? "/app" : "/demo"} replace />} />
+      <Route path="/register" element={<Navigate to={user ? "/app" : "/demo"} replace />} />
       <Route path="/app" element={<SessionRoute><ApplicationShell /></SessionRoute>}>
         <Route index element={<OverviewPage />} />
         <Route path="courses" element={<CoursesPage courses={courseState} setCourses={setCourses} />} />

@@ -146,8 +146,7 @@ export function RoleSelectionPage() {
             <span>Demo sessions run in isolated memory and can be switched or exited at any time.</span>
           </div>
           <div className="demo-footer-login-link">
-            <span>Need real account authentication?</span>
-            <Link to="/login">Sign in with Supabase</Link>
+            <span>Demo access only. Real account authentication is not enabled.</span>
           </div>
         </div>
       </main>

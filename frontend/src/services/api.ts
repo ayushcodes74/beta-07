@@ -1,5 +1,4 @@
-import axios, { AxiosError } from "axios";
-import { getSupabaseClient } from "./supabase";
+import axios from "axios";
 import type {
   Assignment,
   Course,
@@ -7,7 +6,6 @@ import type {
   Question,
   Submission,
   SubmissionState,
-  User,
 } from "../types/models";
 
 // Base API Axios instance
@@ -17,51 +15,9 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Request interceptor: attach Supabase access token as Bearer
-api.interceptors.request.use(async (config) => {
-  try {
-    const client = getSupabaseClient();
-    const { data: { session } } = await client.auth.getSession();
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
-    }
-  } catch (err) {
-    // Supabase client may not be initialized if env variables are missing
-    console.warn("Supabase auth session unavailable for request:", err);
-  }
-  return config;
-});
-
-// Response interceptor: handle 401s and attempt session refresh
-api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      try {
-        const client = getSupabaseClient();
-        const { data: { session } } = await client.auth.refreshSession();
-        if (session?.access_token && error.config && !(error.config as any)._retry) {
-          (error.config as any)._retry = true;
-          error.config.headers.Authorization = `Bearer ${session.access_token}`;
-          return api(error.config);
-        }
-      } catch (refreshErr) {
-        console.warn("Session refresh failed:", refreshErr);
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
 // --------------------------------------------------------------------------
 // Backend Response DTOs
 // --------------------------------------------------------------------------
-
-export interface BackendUserResponse {
-  id: string;
-  email: string;
-  role: "teacher" | "student";
-}
 
 export interface BackendCourse {
   id: string;
@@ -378,117 +334,6 @@ export function extractErrorMessage(error: unknown, fallback: string = "An error
 // --------------------------------------------------------------------------
 // Centralized Services
 // --------------------------------------------------------------------------
-
-async function getTrustedProfile() {
-  const client = getSupabaseClient();
-  const { data: { session } } = await client.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error("Sign-in completed without an access token. Please sign in again.");
-  }
-  const response = await api.get<BackendUserResponse>("/auth/me", {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
-  return {
-    ...response.data,
-    name:
-      session.user.user_metadata?.name ??
-      session.user.email?.split("@")[0] ??
-      "TrustGrade user",
-  };
-}
-
-export const authService = {
-  async getSession() {
-    const client = getSupabaseClient();
-    const { data: { session }, error } = await client.auth.getSession();
-    if (error || !session) return null;
-    return session;
-  },
-
-  async getCurrentUser(): Promise<User | null> {
-    try {
-      const client = getSupabaseClient();
-      const { data: { session }, error } = await client.auth.getSession();
-      if (error || !session?.access_token) return null;
-      const profile = await getTrustedProfile();
-      return {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        initials:
-          profile.name
-            .split(/\s+/)
-            .map((part: string) => part[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase() || "TG",
-      };
-    } catch {
-      return null;
-    }
-  },
-
-  async login(email: string, password: string): Promise<User> {
-    const client = getSupabaseClient();
-    const { error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    try {
-      const profile = await getTrustedProfile();
-      return {
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        initials:
-          profile.name
-            .split(/\s+/)
-            .map((part: string) => part[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase() || "TG",
-      };
-    } catch (err) {
-      await client.auth.signOut();
-      throw err;
-    }
-  },
-
-  async register(name: string, email: string, password: string, role: "teacher" | "student"): Promise<User> {
-    const client = getSupabaseClient();
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role } },
-    });
-    if (error) throw error;
-    if (!data.session) {
-      throw new Error(
-        "Check your email to confirm your account, then sign in. Role access is confirmed from your trusted profile."
-      );
-    }
-    const profile = await getTrustedProfile();
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-      initials:
-        profile.name
-          .split(/\s+/)
-          .map((part: string) => part[0])
-          .slice(0, 2)
-          .join("")
-          .toUpperCase() || "TG",
-    };
-  },
-
-  async logout(): Promise<void> {
-    const client = getSupabaseClient();
-    const { error } = await client.auth.signOut();
-    if (error) throw error;
-  },
-};
 
 export const courseService = {
   async getCourses(): Promise<Course[]> {

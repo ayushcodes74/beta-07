@@ -3,7 +3,6 @@ import { TeacherOverview } from "./pages/teacher/TeacherOverview";
 import { StudentOverview } from "./pages/student/StudentOverview";
 
 export { LandingPage } from "./pages/common/LandingPage";
-export { AuthPage } from "./pages/common/AuthPage";
 export { RoleSelectionPage } from "./pages/common/RoleSelectionPage";
 export { LeaderboardPage } from "./pages/common/LeaderboardPage";
 export { SettingsPage } from "./pages/common/SettingsPage";
