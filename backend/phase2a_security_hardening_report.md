@@ -163,3 +163,4 @@ ORDER BY tablename, policyname;
 2. Run Preflight Queries (Section 3 above) to confirm zero duplicate active enrollments and no unexpected policies.
 3. Paste the contents of [`backend/phase2a_rls_remediation.sql`](file:///C:/beta-07/backend/phase2a_rls_remediation.sql) from line 63 (`BEGIN;`) to line 351 (`COMMIT;`) and execute.
 4. Run Post-Migration Verification Queries (Section 4 above) to confirm function search paths, execution grants, and active policy inventory.
+
