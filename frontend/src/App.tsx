@@ -10,9 +10,10 @@ import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
 import { assignmentService, courseService, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
+import { clearDemoSession, getDemoUser } from "./services/demo-session";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
-  GradingReviewPage, LandingPage, LeaderboardPage, MaterialsPage, NotFoundPage, OCRReviewPage,
+  GradingReviewPage, LeaderboardPage, MaterialsPage, NotFoundPage, OCRReviewPage,
   OverviewPage, ResultsPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage,
 } from "./pages";
@@ -33,6 +34,8 @@ interface AppState {
   setMaterials: Dispatch<SetStateAction<CourseMaterial[]>>;
   loading: boolean;
   refreshSession: () => Promise<void>;
+  isDemo: boolean;
+  workspaceNotice: string | null;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -52,39 +55,57 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [submissionState, setSubmissions] = useState<Submission[]>([]);
   const [materialState, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
+  const activateDemo = (notice: string | null = null) => {
+    clearDemoSession();
+    setUserState(getDemoUser());
+    setCourses([]);
+    setAssignments([]);
+    setJoinedCourseIds([]);
+    setSubmissions([]);
+    setPeople([]);
+    setMaterials([]);
+    setIsDemo(true);
+    setWorkspaceNotice(notice);
+    setLoading(false);
+  };
   const refreshSession = async () => {
+    if (!sessionStorage.getItem("tg_access_token")) {
+      activateDemo();
+      return;
+    }
     setLoading(true);
     try {
       const profile = await getProfile();
-      setUserState(profile);
       const [courses, assignments, submissions] = await Promise.all([
         courseService.getCourses(),
         assignmentService.getAssignments(),
         submissionService.getSubmissions(),
       ]);
+      setUserState(profile);
       setCourses(courses);
       setAssignments(assignments);
       setJoinedCourseIds(courses.map((course) => course.id));
       setSubmissions(submissions);
       setPeople([]);
       setMaterials([]);
-    } catch {
+      setIsDemo(false);
+      setWorkspaceNotice(null);
+    } catch (reason) {
       signOut();
-      setUserState(null);
-      setCourses([]);
-      setAssignments([]);
-      setJoinedCourseIds([]);
-      setSubmissions([]);
-      setPeople([]);
-      setMaterials([]);
+      activateDemo(
+        reason instanceof Error
+          ? `Could not restore the authenticated workspace: ${reason.message} The demo workspace is open instead.`
+          : "Could not restore the authenticated workspace. The demo workspace is open instead."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (sessionStorage.getItem("tg_access_token")) void refreshSession();
-    else setLoading(false);
+    void refreshSession();
   }, []);
 
   const setUser = (nextUser: User | null) => {
@@ -92,13 +113,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       void refreshSession();
     } else {
       signOut();
-      setUserState(null);
-      setPeople([]);
-      setCourses([]);
-      setAssignments([]);
-      setJoinedCourseIds([]);
-      setSubmissions([]);
-      setMaterials([]);
+      activateDemo();
     }
   };
 
@@ -119,8 +134,10 @@ function AppProvider({ children }: { children: ReactNode }) {
       setMaterials,
       loading,
       refreshSession,
+      isDemo,
+      workspaceNotice,
     }),
-    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading]
+    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading, isDemo, workspaceNotice]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -163,7 +180,7 @@ const studentNavigation = [
 ];
 
 function ApplicationShell() {
-  const { user, setUser, loading, submissions } = useAppState();
+  const { user, setUser, loading, submissions, isDemo, workspaceNotice } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -180,7 +197,7 @@ function ApplicationShell() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/" replace state={{ from: location.pathname }} />;
 
   const isStudent = user.role === "student";
   const rawNavigation = isStudent ? studentNavigation : teacherNavigation;
@@ -209,14 +226,21 @@ function ApplicationShell() {
     setSearchOpen(false);
   };
 
-  const logout = async () => {
+  const logout = () => {
     setUser(null);
-    navigate("/login");
-    toast("Signed out.", "info");
+    navigate("/app");
+    toast(isDemo ? "Demo workspace reset." : "Signed out. Opened the demo workspace.", "info");
   };
 
   return (
     <div className="app-shell">
+      {workspaceNotice && (
+        <div role="status" className="integration-notice-card warning-notice" style={{ margin: "16px 24px" }}>
+          <div className="integration-notice-content">
+            <p>{workspaceNotice}</p>
+          </div>
+        </div>
+      )}
       {mobileOpen && <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
       <aside className={cn("sidebar", mobileOpen && "sidebar-open")}>
         <Link to="/app" className="brand">
@@ -354,7 +378,7 @@ function ApplicationShell() {
         <footer className="app-footnote">
           <ShieldCheck size={13} />
           <span>AI assists. Teachers decide. Students understand.</span>
-          <span className="workspace-status-label" style={{ opacity: 0.8 }}>Signed in workspace</span>
+          <span className="workspace-status-label" style={{ opacity: 0.8 }}>{isDemo ? "DEMO WORKSPACE" : "SIGNED IN WORKSPACE"}</span>
         </footer>
       </div>
     </div>
@@ -364,7 +388,7 @@ function ApplicationShell() {
 function SessionRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAppState();
   if (loading) return null;
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  return user ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 function AppRoutes() {
@@ -383,7 +407,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<Navigate to="/app" replace />} />
       <Route path="/login" element={<AuthPage />} />
       <Route path="/register" element={<AuthPage register />} />
       <Route path="/app" element={<SessionRoute><ApplicationShell /></SessionRoute>}>
