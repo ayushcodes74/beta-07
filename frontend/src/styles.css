@@ -949,3 +949,2040 @@ h1 { margin-bottom: 6px; font: 750 clamp(24px,2.25vw,31px)/1.2 var(--font-displa
 @media (prefers-reduced-motion: reduce) {
   *,*:before,*:after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ========================================================
+   TRUSTGRADE LUXURY EDUCATIONAL LANDING PAGE (LAWNBUSTER-INSPIRED)
+   COLOR PALETTE:
+   - PRIMARY: #173D2B (Dark Forest Green)
+   - SECONDARY: #A8C98A (Sage)
+   - ACCENT: #C8F169 (Lime)
+   - BACKGROUND: #F8F9F4 (Warm White)
+   - TEXT: #202820 (Charcoal)
+   - CARD: #FFFFFF (Crisp White)
+   ======================================================== */
+
+.tg-landing {
+  min-height: 100vh;
+  background: #F8F9F4;
+  color: #202820;
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tg-container {
+  width: min(1240px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+/* 1. FLOATING PILL NAVBAR */
+.tg-pill-nav {
+  position: fixed;
+  top: 18px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.tg-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 8px 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 9999px;
+  box-shadow: 0 16px 40px rgba(15, 20, 31, 0.08), 0 2px 6px rgba(15, 20, 31, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: all 0.25s ease;
+}
+
+.tg-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #111827;
+}
+
+.tg-brand-symbol {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1f2937, #0f172a);
+  color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+}
+
+.tg-brand-name {
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #0f172a;
+}
+
+.tg-brand-name span {
+  color: #d97706;
+}
+
+.tg-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.tg-nav-links a {
+  font-size: 13px;
+  font-weight: 550;
+  color: #4b5563;
+  text-decoration: none;
+  transition: color 0.18s ease;
+}
+
+.tg-nav-links a:hover {
+  color: #d97706;
+}
+
+.tg-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tg-nav-call {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: #f8f6f2;
+  border: 1px solid #eae5dc;
+  color: #4b5563;
+  text-decoration: none;
+  font-size: 11px;
+  line-height: 1.2;
+  transition: background 0.18s;
+}
+
+.tg-nav-call svg {
+  color: #d97706;
+}
+
+.tg-nav-call strong {
+  display: block;
+  color: #111827;
+  font-size: 11px;
+}
+
+.tg-btn-ghost {
+  background: transparent;
+  border: none;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.tg-btn-ghost:hover {
+  color: #111827;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tg-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #111827;
+  color: #ffffff;
+  border: 1px solid #1f2937;
+  border-radius: 9999px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.16);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tg-btn-primary svg {
+  color: #f59e0b;
+}
+
+.tg-btn-primary:hover {
+  transform: translateY(-1px);
+  background: #000000;
+  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.25);
+}
+
+.tg-mobile-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #111827;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.tg-mobile-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(15, 20, 31, 0.15);
+}
+
+.tg-mobile-drawer a {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  text-decoration: none;
+  padding: 6px 0;
+}
+
+.tg-mobile-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #f0ede6;
+}
+
+/* 2. CINEMATIC HERO SECTION (VISUAL REDESIGN V2 — EDITORIAL EDTECH) */
+.tg-hero-wrapper {
+  padding: 88px 0 16px;
+  max-width: 1180px;
+  width: calc(100% - 64px);
+  margin: 0 auto;
+}
+
+.tg-hero-card {
+  position: relative;
+  min-height: 560px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #F8F9F4 url("https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1600&q=80") center/cover no-repeat;
+  box-shadow: 0 16px 40px rgba(23, 61, 43, 0.08), 0 2px 6px rgba(23, 61, 43, 0.04);
+  border: 1px solid rgba(23, 61, 43, 0.1);
+  display: flex;
+  align-items: center;
+}
+
+.tg-hero-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(248, 249, 244, 0.97) 0%, rgba(248, 249, 244, 0.93) 44%, rgba(248, 249, 244, 0.5) 72%, rgba(23, 61, 43, 0.22) 100%);
+  pointer-events: none;
+}
+
+.tg-hero-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: center;
+  gap: 36px;
+  padding: 44px 44px;
+  width: 100%;
+}
+
+/* Left Column: Editorial Academic Content */
+.tg-hero-left {
+  max-width: 520px;
+  animation: hero-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.tg-hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #173D2B;
+  margin-bottom: 16px;
+}
+
+.tg-lime-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #C8F169;
+  box-shadow: 0 0 6px rgba(200, 241, 105, 0.8);
+}
+
+.tg-hero-title {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(36px, 4vw, 50px);
+  line-height: 1.1;
+  font-weight: 850;
+  letter-spacing: -1.6px;
+  color: #173D2B;
+  margin: 0 0 18px;
+}
+
+.tg-hero-serif-fair {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 500;
+  color: #173D2B;
+  background: linear-gradient(120deg, rgba(200, 241, 105, 0.45) 0%, rgba(200, 241, 105, 0.18) 100%);
+  padding: 0 6px 2px;
+  border-radius: 6px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.tg-hero-dot {
+  color: #C8F169;
+}
+
+.tg-hero-desc {
+  color: #202820;
+  font-size: 14.5px;
+  line-height: 1.68;
+  max-width: 460px;
+  margin: 0 0 28px;
+  font-weight: 450;
+}
+
+.tg-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.tg-hero-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #173D2B;
+  color: #FFFFFF;
+  border: 1px solid #173D2B;
+  border-radius: 9999px;
+  padding: 12px 24px;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(23, 61, 43, 0.22);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tg-hero-btn-primary svg {
+  color: #C8F169;
+  transition: transform 0.2s;
+}
+
+.tg-hero-btn-primary:hover {
+  transform: translateY(-2px);
+  background: #102A20;
+  box-shadow: 0 10px 24px rgba(23, 61, 43, 0.3);
+}
+
+.tg-hero-btn-primary:hover svg {
+  transform: translate(1px, -1px);
+}
+
+.tg-hero-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(23, 61, 43, 0.2);
+  border-radius: 9999px;
+  padding: 12px 22px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #173D2B;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(23, 61, 43, 0.05);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tg-hero-btn-secondary:hover {
+  transform: translateY(-2px);
+  background: #FFFFFF;
+  border-color: #173D2B;
+  box-shadow: 0 6px 16px rgba(23, 61, 43, 0.12);
+}
+
+/* Right Column: Realistic Academic Product Preview */
+.tg-hero-right {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  animation: hero-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.tg-hero-preview-board {
+  width: 100%;
+  max-width: 440px;
+  background: #FFFFFF;
+  border: 1px solid rgba(23, 61, 43, 0.12);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(23, 61, 43, 0.12), 0 2px 6px rgba(23, 61, 43, 0.04);
+  padding: 18px 20px;
+  color: #202820;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.tg-hero-preview-board:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 54px rgba(23, 61, 43, 0.16);
+}
+
+/* Board Header */
+.tg-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #F0ECE6;
+  margin-bottom: 12px;
+}
+
+.tg-board-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tg-board-badge {
+  background: #173D2B;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 750;
+  padding: 3px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+}
+
+.tg-board-title-group strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 750;
+  color: #173D2B;
+}
+
+.tg-board-title-group small {
+  display: block;
+  font-size: 10px;
+  color: #64748B;
+}
+
+.tg-board-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  font-weight: 650;
+  color: #173D2B;
+  background: rgba(200, 241, 105, 0.25);
+  border: 1px solid rgba(200, 241, 105, 0.4);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.tg-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #173D2B;
+}
+
+/* Board Section: Student Answer */
+.tg-board-section {
+  margin-bottom: 12px;
+}
+
+.tg-section-label {
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #64748B;
+  margin-bottom: 5px;
+}
+
+.tg-answer-preview {
+  background: #F8F9F4;
+  border: 1px solid #ECE7DE;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.tg-answer-q {
+  font-size: 11px;
+  font-weight: 700;
+  color: #173D2B;
+  margin-bottom: 4px;
+}
+
+.tg-answer-text {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #475569;
+  margin: 0;
+}
+
+.tg-answer-text mark {
+  background: rgba(200, 241, 105, 0.35);
+  color: #173D2B;
+  font-weight: 600;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+/* Rubric & Concept row */
+.tg-board-rubric-row {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tg-rubric-mini {
+  background: #FAFAF7;
+  border: 1px solid #ECE7DE;
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+
+.tg-rubric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #64748B;
+  margin-bottom: 6px;
+}
+
+.tg-rubric-total {
+  color: #173D2B;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.tg-rubric-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tg-rubric-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #475569;
+}
+
+.tg-rubric-item strong {
+  color: #173D2B;
+  font-weight: 700;
+}
+
+.tg-concept-mini {
+  background: #FAFAF7;
+  border: 1px solid #ECE7DE;
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.tg-concept-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.tg-concept-percent {
+  font-size: 18px;
+  font-weight: 850;
+  color: #173D2B;
+  font-family: "Manrope", sans-serif;
+}
+
+.tg-concept-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(168, 201, 138, 0.3);
+  color: #173D2B;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tg-concept-mini small {
+  font-size: 9px;
+  color: #64748B;
+  line-height: 1.25;
+}
+
+/* Board Footer */
+.tg-board-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #F0ECE6;
+}
+
+.tg-board-feedback {
+  flex: 1;
+  min-width: 0;
+}
+
+.tg-feedback-label {
+  display: block;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #173D2B;
+  margin-bottom: 2px;
+}
+
+.tg-board-feedback p {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #334155;
+  margin: 0;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tg-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #F4F6EE;
+  border: 1px solid #E2E8D8;
+  color: #173D2B;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tg-confidence-badge svg {
+  color: #173D2B;
+}
+
+.tg-confidence-badge strong {
+  color: #173D2B;
+}
+
+/* Two Small Floating Information Cards */
+.tg-hero-float-chip {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(23, 61, 43, 0.12);
+  border-radius: 12px;
+  padding: 7px 12px;
+  box-shadow: 0 10px 24px rgba(23, 61, 43, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  z-index: 5;
+  will-change: transform;
+}
+
+.tg-chip-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(200, 241, 105, 0.28);
+  color: #173D2B;
+  flex-shrink: 0;
+}
+
+.tg-chip-text strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 750;
+  color: #173D2B;
+  line-height: 1.2;
+}
+
+.tg-chip-text small {
+  display: block;
+  font-size: 9.5px;
+  color: #64748B;
+}
+
+.tg-chip-tag {
+  font-size: 10px;
+  font-weight: 750;
+  color: #173D2B;
+  background: rgba(200, 241, 105, 0.28);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tg-chip-verified {
+  font-size: 10px;
+  font-weight: 700;
+  color: #173D2B;
+  background: rgba(168, 201, 138, 0.35);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tg-chip-top {
+  top: -12px;
+  right: 6px;
+  animation: chip-float-top 5.5s ease-in-out infinite alternate;
+}
+
+.tg-chip-bottom {
+  bottom: -12px;
+  left: 6px;
+  animation: chip-float-bottom 6s ease-in-out 0.8s infinite alternate;
+}
+
+@keyframes chip-float-top {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-7px); }
+}
+
+@keyframes chip-float-bottom {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(6px); }
+}
+
+@keyframes hero-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 3. TRUST / LOGO STRIP */
+.tg-trust-bar {
+  padding: 32px 0 20px;
+  border-bottom: 1px solid rgba(100, 36, 47, 0.08);
+}
+
+.tg-partner-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  color: #64748b;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+}
+
+.tg-partner-item strong {
+  color: #1e293b;
+  font-weight: 800;
+}
+
+.tg-partner-sep {
+  color: #cbd5e1;
+}
+
+/* 4. ABOUT SECTION (2-COLUMN) */
+.tg-about-section {
+  padding: 88px 0;
+}
+
+.tg-about-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 480px) 1fr;
+  align-items: center;
+  gap: 56px;
+}
+
+.tg-about-image-card {
+  position: relative;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.1);
+  min-height: 440px;
+  background: #1e293b;
+}
+
+.tg-about-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tg-about-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.1) 0%, rgba(15, 23, 42, 0.75) 100%);
+}
+
+.tg-about-img-badge {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tg-badge-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.tg-about-img-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+  backdrop-filter: blur(12px);
+}
+
+.tg-bullet {
+  color: #d97706;
+}
+
+.tg-section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #d97706;
+  margin-bottom: 12px;
+}
+
+.tg-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d97706;
+}
+
+.tg-about-headline {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(28px, 3.2vw, 42px);
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  line-height: 1.2;
+  color: #0f172a;
+  margin: 0 0 20px;
+}
+
+.tg-about-headline em {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #64242f;
+}
+
+.tg-about-p {
+  font-size: 15px;
+  line-height: 1.75;
+  color: #475569;
+  margin: 0 0 16px;
+}
+
+.tg-about-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.tg-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.18s;
+}
+
+.tg-btn-outline:hover {
+  border-color: #94a3b8;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+/* 5. CAPABILITIES GRID ("OUR SERVICES") */
+.tg-services-section {
+  padding: 80px 0;
+  background: #f4f0eb;
+}
+
+.tg-services-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.tg-services-headline {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(28px, 3.2vw, 42px);
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  line-height: 1.15;
+  color: #0f172a;
+  margin: 0;
+}
+
+.tg-services-headline em {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #64242f;
+}
+
+.tg-services-header-right {
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  text-align: right;
+}
+
+.tg-services-header-right p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.tg-carousel-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.tg-ctrl-btn {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.tg-ctrl-btn:hover {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.tg-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.tg-feature-card {
+  position: relative;
+  min-height: 390px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 22px;
+  background: #0f172a;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.tg-feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
+}
+
+.tg-card-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.tg-feature-card:hover .tg-card-bg-img {
+  transform: scale(1.05);
+}
+
+.tg-card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.2) 0%, rgba(15, 23, 42, 0.6) 45%, rgba(15, 23, 42, 0.94) 100%);
+}
+
+.tg-card-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tg-card-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  backdrop-filter: blur(8px);
+}
+
+.tg-card-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+}
+
+.tg-card-body {
+  position: relative;
+  z-index: 2;
+  color: #ffffff;
+}
+
+.tg-card-title {
+  font-family: "Manrope", sans-serif;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.4px;
+  margin: 0 0 8px;
+}
+
+.tg-card-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  margin: 0 0 18px;
+}
+
+.tg-card-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.18s;
+}
+
+.tg-card-pill-btn:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* 6. HOW IT WORKS / OUR PROCESS */
+.tg-process-section {
+  padding: 92px 0;
+  background: #ffffff;
+}
+
+.tg-process-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 48px;
+}
+
+.tg-process-headline {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(28px, 3.2vw, 42px);
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  line-height: 1.15;
+  color: #0f172a;
+  margin: 0;
+}
+
+.tg-process-headline em {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #64242f;
+}
+
+.tg-process-header-sub {
+  max-width: 420px;
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.tg-process-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.tg-step-card {
+  background: #fbf9f6;
+  border: 1px solid #ebe5dc;
+  border-radius: 24px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s;
+}
+
+.tg-step-card:hover {
+  transform: translateY(-2px);
+}
+
+.tg-step-num {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.8px;
+  color: #d97706;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.tg-step-title {
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.4px;
+  color: #0f172a;
+  margin: 0 0 10px;
+}
+
+.tg-step-desc {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #64748b;
+  margin: 0 0 20px;
+  flex-grow: 1;
+}
+
+.tg-step-img-box {
+  position: relative;
+  height: 160px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.tg-step-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tg-step-img-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 9999px;
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+.tg-step-metric-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  margin-top: auto;
+}
+
+.tg-chip-radar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #fef3c7;
+}
+
+.tg-radar-core {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d97706;
+}
+
+.tg-step-metric-chip strong {
+  display: block;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.tg-step-metric-chip small {
+  display: block;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.tg-step-confidence-badge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  margin-top: auto;
+}
+
+.tg-conf-val {
+  font-family: "Manrope", sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  color: #d97706;
+}
+
+.tg-step-confidence-badge strong {
+  display: block;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.tg-step-confidence-badge small {
+  display: block;
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* Step 04 Wide Banner Card */
+.tg-step-4-wide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  align-items: center;
+  gap: 32px;
+  background: #0f172a;
+  color: #ffffff;
+  border: 1px solid #1e293b;
+}
+
+.tg-step-4-wide .tg-step-num {
+  color: #f59e0b;
+}
+
+.tg-step-4-wide .tg-step-title {
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.tg-step-4-wide .tg-step-desc {
+  color: #cbd5e1;
+}
+
+.tg-step-4-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.tg-badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+.tg-badge-tag svg {
+  color: #f59e0b;
+}
+
+.tg-verification-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  padding: 18px;
+  backdrop-filter: blur(14px);
+}
+
+.tg-verif-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 12px;
+}
+
+.tg-stamp-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.tg-verif-top strong {
+  display: block;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.tg-verif-top small {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.tg-verif-criteria div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #cbd5e1;
+  padding: 4px 0;
+}
+
+.tg-verif-criteria strong {
+  color: #f59e0b;
+}
+
+/* 7. AI INTELLIGENCE SHOWCASE (REALISTIC DARK DASHBOARD) */
+.tg-showcase-section {
+  padding: 92px 0;
+  background: #090d16;
+  color: #ffffff;
+}
+
+.tg-showcase-header {
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 48px;
+}
+
+.tg-showcase-headline {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(30px, 3.5vw, 44px);
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  line-height: 1.15;
+  color: #ffffff;
+  margin: 0 0 14px;
+}
+
+.tg-showcase-headline em {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #f59e0b;
+}
+
+.tg-showcase-sub {
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.tg-showcase-container {
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0f1422;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.tg-showcase-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  background: #141a29;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tg-window-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.tg-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.tg-window-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.tg-status-pill {
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tg-window-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.tg-user-avatar {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #64242f;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.tg-showcase-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  padding: 32px;
+}
+
+.tg-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.tg-pane-tag {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.8px;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.tg-submission-id {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.tg-score-tag {
+  font-size: 12px;
+  font-weight: 750;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 2px 10px;
+  border-radius: 9999px;
+}
+
+.tg-student-snippet {
+  background: #141a29;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.tg-student-snippet h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 12px;
+}
+
+.tg-snippet-box p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #cbd5e1;
+  margin: 0 0 10px;
+}
+
+.tg-highlight {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fde68a;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.tg-citation-box {
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.tg-citation-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tg-citation-box p {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+.tg-citation-match {
+  font-size: 10px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.tg-rubric-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.tg-criterion-card {
+  background: #141a29;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.tg-crit-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.tg-crit-top strong {
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.tg-crit-score {
+  font-size: 12px;
+  font-weight: 750;
+  color: #f59e0b;
+}
+
+.tg-criterion-card p {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.tg-criterion-card small {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.tg-confidence-panel {
+  background: #141a29;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.tg-conf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tg-conf-row small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  color: #64748b;
+}
+
+.tg-conf-row strong {
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.tg-conf-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.tg-conf-meter {
+  height: 6px;
+  background: #1e293b;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.tg-conf-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+  border-radius: 9999px;
+}
+
+.tg-approval-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.tg-btn-approve {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #0f172a;
+  border: none;
+  border-radius: 9999px;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tg-btn-approve:hover {
+  filter: brightness(1.08);
+}
+
+.tg-btn-adjust {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-radius: 9999px;
+  padding: 12px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 8. FINAL CALL TO ACTION BANNER */
+.tg-cta-section {
+  padding: 88px 0;
+  background: #fbf9f6;
+}
+
+.tg-cta-banner {
+  position: relative;
+  border-radius: 32px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0f1422 0%, #1c1522 60%, #0f1422 100%);
+  padding: 72px 48px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(15, 20, 31, 0.18);
+}
+
+.tg-cta-glow {
+  position: absolute;
+  top: -50%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.tg-cta-content {
+  position: relative;
+  z-index: 2;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.tg-cta-headline {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(32px, 4.5vw, 52px);
+  font-weight: 800;
+  letter-spacing: -1.6px;
+  line-height: 1.1;
+  color: #ffffff;
+  margin: 12px 0 16px;
+}
+
+.tg-cta-headline em {
+  font-family: "Newsreader", "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: #f59e0b;
+}
+
+.tg-cta-sub {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #cbd5e1;
+  margin: 0 0 32px;
+}
+
+.tg-cta-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.tg-btn-glass-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 9999px;
+  padding: 13px 26px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tg-btn-glass-lg:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* 9. FOOTER */
+.tg-footer {
+  background: #090d16;
+  color: #94a3b8;
+  padding: 64px 0 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tg-footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr;
+  gap: 40px;
+  margin-bottom: 48px;
+}
+
+.tg-footer-brand-col .tg-nav-brand {
+  color: #ffffff;
+  margin-bottom: 14px;
+}
+
+.tg-footer-tagline {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #94a3b8;
+  margin: 0 0 20px;
+  max-width: 300px;
+}
+
+.tg-footer-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.tg-security-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+.tg-col-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 750;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+  margin-bottom: 18px;
+}
+
+.tg-footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tg-footer-links a,
+.tg-footer-links span {
+  font-size: 12px;
+  color: #94a3b8;
+  text-decoration: none;
+  transition: color 0.18s;
+}
+
+.tg-footer-links a:hover {
+  color: #f59e0b;
+}
+
+.tg-support-phone {
+  display: block;
+  font-size: 14px;
+  color: #ffffff;
+  margin: 2px 0;
+}
+
+.tg-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: #64748b;
+}
+
+.tg-bottom-links {
+  display: flex;
+  gap: 20px;
+}
+
+.tg-bottom-links a {
+  color: #64748b;
+  text-decoration: none;
+}
+
+.tg-bottom-links a:hover {
+  color: #94a3b8;
+}
+
+/* RESPONSIVE BREAKPOINTS */
+@media (max-width: 1024px) {
+  .tg-hero-wrapper {
+    padding: 82px 0 16px;
+    width: calc(100% - 40px);
+  }
+  .tg-hero-card {
+    min-height: auto;
+  }
+  .tg-hero-bg-overlay {
+    background: linear-gradient(180deg, rgba(248, 249, 244, 0.97) 0%, rgba(248, 249, 244, 0.92) 55%, rgba(248, 249, 244, 0.8) 100%);
+  }
+  .tg-hero-grid {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding: 36px 28px 44px;
+  }
+  .tg-hero-left {
+    max-width: 100%;
+  }
+  .tg-hero-right {
+    max-width: 500px;
+    width: 100%;
+    margin: 12px auto 0;
+  }
+  .tg-hero-preview-board {
+    max-width: 100%;
+  }
+  .tg-about-grid {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+  .tg-showcase-body {
+    grid-template-columns: 1fr;
+  }
+  .tg-process-grid {
+    grid-template-columns: 1fr;
+  }
+  .tg-step-4-wide {
+    grid-template-columns: 1fr;
+  }
+  .tg-footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .tg-nav-links,
+  .tg-nav-call {
+    display: none;
+  }
+  .tg-mobile-toggle {
+    display: block;
+  }
+  .tg-hero-wrapper {
+    width: calc(100% - 24px);
+    padding: 76px 0 12px;
+  }
+  .tg-services-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .tg-services-header-right {
+    text-align: left;
+    align-items: flex-start;
+  }
+  .tg-process-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .tg-process-header-sub {
+    text-align: left;
+  }
+  .tg-cta-banner {
+    padding: 48px 24px;
+  }
+  .tg-footer-grid {
+    grid-template-columns: 1fr;
+  }
+  .tg-footer-bottom {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .tg-hero-grid {
+    padding: 26px 16px 36px;
+    gap: 28px;
+  }
+  .tg-hero-title {
+    font-size: clamp(28px, 8vw, 38px);
+    letter-spacing: -1.2px;
+  }
+  .tg-hero-desc {
+    font-size: 13.5px;
+    margin-bottom: 22px;
+  }
+  .tg-hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .tg-hero-btn-primary,
+  .tg-hero-btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+  .tg-hero-right {
+    margin-top: 18px;
+  }
+  .tg-hero-float-chip {
+    padding: 6px 10px;
+  }
+  .tg-chip-top {
+    top: -14px;
+    right: 0;
+  }
+  .tg-chip-bottom {
+    bottom: -14px;
+    left: 0;
+  }
+  .tg-board-rubric-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
