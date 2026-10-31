@@ -5,14 +5,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
-import { isDemoSession } from "../../services/demo-session";
 import { formatDate } from "../../lib/utils";
 import type { Course, Submission } from "../../types/models";
 
 export function StudentAssignmentsPage({
-  courses: courseList,
-  joinedCourseIds,
-  setJoinedCourseIds,
+  courses: _courseList,
 }: {
   courses: Course[];
   joinedCourseIds: string[];
@@ -22,32 +19,13 @@ export function StudentAssignmentsPage({
   const { assignments: assignmentList } = useAppState();
   const navigate = useNavigate();
   const toast = useToast();
-  const demoSession = isDemoSession();
   const [dialogOpen, setDialogOpen] = useState(false);
   const visibleAssignments = assignmentList.filter((item) => item.state === "Published");
 
   const joinCourse = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!demoSession) {
-      toast("Course enrollment is managed by your instructor in the connected backend.", "info");
-      return;
-    }
-    const form = new FormData(event.currentTarget);
-    const code = String(form.get("inviteCode") ?? "").trim().toUpperCase();
-    const course = courseList.find(
-      (item) => item.code.toUpperCase() === code || item.name.toUpperCase().includes(code)
-    );
-    if (!course) {
-      toast("Course code not found. Confirm with your instructor.", "info");
-      return;
-    }
-    if (joinedCourseIds.includes(course.id)) {
-      toast(`You are already enrolled in ${course.name}.`, "info");
-      return;
-    }
-    setJoinedCourseIds((current) => [...current, course.id]);
-    setDialogOpen(false);
-    toast(`Enrolled in ${course.name}!`);
+    toast("Course enrollment is managed by your instructor in the connected workspace.", "info");
+    return;
   };
 
   return (
@@ -61,9 +39,9 @@ export function StudentAssignmentsPage({
         <div className="heading-actions">
           <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
             <Dialog.Trigger asChild>
-              <Button variant="secondary" disabled={!demoSession}>
+              <Button variant="secondary" disabled>
                 <Plus size={15} />
-                {demoSession ? "Join a course" : "Instructor enrollment"}
+                Instructor enrollment
               </Button>
             </Dialog.Trigger>
             <Dialog.Portal>
@@ -106,19 +84,19 @@ export function StudentAssignmentsPage({
         </div>
       </div>
 
-      {!demoSession && (
+      {
         <IntegrationNotice
           title="Course self-enrollment is unavailable"
           description="There is no student invite-code endpoint. Ask your instructor to add you; only backend-confirmed enrollments appear here."
           endpoint="Enrollment management is teacher-operated"
           tone="info"
         />
-      )}
+      }
 
       <div className="student-assignment-list">
         {visibleAssignments.length > 0 ? (
           visibleAssignments.map((item) => {
-            const course = courseList.find((c) => c.id === item.courseId);
+            const course = _courseList.find((c) => c.id === item.courseId);
             const actionLabel = item.submissionType === "MCQ" ? "Start assessment" : "Submit PDF";
             return (
               <Panel className="student-assignment-row" key={item.id}>

@@ -6,7 +6,6 @@ import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
 import { extractErrorMessage, submissionService } from "../../services/api";
-import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function GradingReviewPage({
@@ -20,15 +19,15 @@ export function GradingReviewPage({
   const navigate = useNavigate();
   const toast = useToast();
   const { assignments: assignmentList, people } = useAppState();
-  const demoSession = isDemoSession();
+  const backendGradingConnected = false;
 
   const submission = rows.find((item) => item.id === submissionId);
   const assignment = submission ? assignmentList.find((a) => a.id === submission.assignmentId) : undefined;
   const student = submission ? people.find((p) => p.id === submission.studentId) : undefined;
 
-  const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? (demoSession ? 18 : 0));
+  const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? 0);
   const [feedback, setFeedback] = useState<string>(
-    submission?.grading?.feedback?.comment ?? (demoSession ? "Demo feedback; not a persisted grade." : "")
+    submission?.grading?.feedback?.comment ?? ""
   );
   const [approving, setApproving] = useState(false);
   const [integrityReport, setIntegrityReport] = useState<Awaited<ReturnType<typeof submissionService.getIntegrity>> | null>(null);
@@ -36,7 +35,7 @@ export function GradingReviewPage({
   const [integrityLoading, setIntegrityLoading] = useState(false);
 
   useEffect(() => {
-    if (!submission || demoSession) {
+    if (!submission || backendGradingConnected) {
       setIntegrityReport(null);
       setIntegrityError("");
       return;
@@ -62,7 +61,7 @@ export function GradingReviewPage({
     return () => {
       active = false;
     };
-  }, [demoSession, submission?.id]);
+  }, [backendGradingConnected, submission?.id]);
 
   if (!submission) {
     return (
@@ -80,7 +79,7 @@ export function GradingReviewPage({
   }
 
   const approveGrade = () => {
-    if (!demoSession) return;
+    if (!backendGradingConnected) return;
     setApproving(true);
     setSubmissions((current) =>
       current.map((item) =>
@@ -189,7 +188,7 @@ export function GradingReviewPage({
             </div>
           )}
 
-          {!demoSession && (
+          {!backendGradingConnected && (
             <div style={{ marginTop: "18px" }}>
               <h3 style={{ fontSize: "13px" }}>Integrity review</h3>
               {integrityLoading && <p role="status">Loading authorized comparison evidence…</p>}
@@ -244,7 +243,7 @@ export function GradingReviewPage({
             </div>
           </div>
 
-          {!demoSession ? (
+          {!backendGradingConnected ? (
             <IntegrationNotice
               title="Grade review and publication are not connected"
               description="No grading-result, teacher-review, or publication API is mounted. No score or feedback has been generated, and this screen cannot publish a real grade."
@@ -254,8 +253,8 @@ export function GradingReviewPage({
           ) : (
             <>
           <IntegrationNotice
-            title="Demo-only grading preview"
-            description="This sample score and approval exist only in the demo session. They are not a real evaluation and are not persisted."
+            title="AI grading is not connected"
+            description="No grading-result endpoint is currently available. Scores and feedback are not generated or persisted here."
             tone="info"
           />
           <div className="rubric-criteria-list">

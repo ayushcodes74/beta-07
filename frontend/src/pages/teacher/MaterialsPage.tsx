@@ -3,7 +3,6 @@ import { CloudUpload, FileText, MoreHorizontal, Plus } from "lucide-react";
 import { Badge, Button, GlassPanel, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
-import { isDemoSession } from "../../services/demo-session";
 import type { CourseMaterial } from "../../types/models";
 
 export function MaterialsPage({
@@ -17,11 +16,11 @@ export function MaterialsPage({
   const [filter, setFilter] = useState("All files");
   const [dragging, setDragging] = useState(false);
   const toast = useToast();
-  const demoSession = isDemoSession();
+  const backendMaterialsConnected = false;
 
   const addFiles = (files: FileList | null) => {
     if (!files) return;
-    if (!demoSession) {
+    if (!backendMaterialsConnected) {
       toast("Course material uploads are not available in the connected backend yet.", "info");
       return;
     }
@@ -73,22 +72,18 @@ export function MaterialsPage({
           <p className="page-subtitle">Keep the knowledge behind every assignment in one place for AI grounding.</p>
         </div>
         <div className="heading-actions">
-          <Button disabled={!demoSession} onClick={() => inputRef.current?.click()}>
+          <Button disabled={!backendMaterialsConnected} onClick={() => inputRef.current?.click()}>
             <Plus size={15} />
-            {demoSession ? "Add materials" : "Uploads unavailable"}
+            Uploads unavailable
           </Button>
         </div>
       </div>
 
       <IntegrationNotice
-        title={demoSession ? "Demo-only local staging" : "Course materials are not connected"}
-        description={
-          demoSession
-            ? "Selected files remain in this browser session only. They are not uploaded or indexed."
-            : "The backend has no course-material upload or indexing endpoint. Files cannot be uploaded or used for AI grounding yet."
-        }
-        endpoint={demoSession ? undefined : "No course-material endpoint is currently available"}
-        tone={demoSession ? "info" : "warning"}
+        title="Course materials are not connected"
+        description="The backend has no course-material upload or indexing endpoint. Files cannot be uploaded or used for AI grounding yet."
+        endpoint="No course-material endpoint is currently available"
+        tone="warning"
       />
 
       <div className="toolbar">
@@ -122,7 +117,7 @@ export function MaterialsPage({
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          disabled={!demoSession}
+          disabled={!backendMaterialsConnected}
           multiple
           accept=".pdf,.ppt,.pptx,.doc,.docx,.txt"
           onChange={(event) => {
@@ -135,7 +130,7 @@ export function MaterialsPage({
         </span>
         <strong>Drop syllabus, lecture slides, or readings here</strong>
         <p>PDF, PPTX, DOCX, or TXT · Up to 25 MB per file</p>
-        <Button variant="secondary" size="sm" disabled={!demoSession} onClick={() => inputRef.current?.click()}>
+        <Button variant="secondary" size="sm" disabled={!backendMaterialsConnected} onClick={() => inputRef.current?.click()}>
           Browse files
         </Button>
       </GlassPanel>
@@ -143,7 +138,7 @@ export function MaterialsPage({
       <div className="section-heading" style={{ marginTop: "24px" }}>
         <div>
           <h2>Course repository library</h2>
-          <p>{demoSession ? "Demo-session documents" : "Backend-connected course documents"}</p>
+          <p>Backend-connected course documents</p>
         </div>
       </div>
 
@@ -179,9 +174,7 @@ export function MaterialsPage({
         ))}
         {!visible.length && (
           <div className="table-empty" style={{ padding: "2rem", textAlign: "center", color: "#5C6E61" }}>
-            {demoSession
-              ? "No demo materials staged yet. Drag and drop supported documents above."
-              : "No course materials are available from the connected backend."}
+            No course materials are available from the connected backend.
           </div>
         )}
       </Panel>

@@ -4,20 +4,18 @@ import {
   ArrowUpRight, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronRight,
   FileCheck2, FileText, GraduationCap, Menu, ShieldCheck, Sparkles, X,
 } from "lucide-react";
-import { isDemoMode } from "../../services/demo-session";
 
 export function LandingPage() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrollIndex, setScrollIndex] = useState(0);
-  const demoMode = isDemoMode();
 
   const handleGetStarted = () => {
-    navigate("/demo");
+    navigate("/login");
   };
 
   const handleSignIn = () => {
-    navigate("/demo");
+    navigate("/login");
   };
 
   const capabilities = [
@@ -94,22 +92,11 @@ export function LandingPage() {
           </nav>
 
           <div className="tg-nav-actions">
-            {demoMode && (
-              <span
-                className="demo-mode-pill"
-                style={{ cursor: "pointer" }}
-                onClick={() => navigate("/demo")}
-                title="Hackathon Demo Active - Click to select role"
-              >
-                <span className="demo-pulse-dot" />
-                DEMO MODE
-              </span>
-            )}
             <button className="tg-btn-ghost" onClick={handleSignIn}>
-              Demo Access
+              Sign in
             </button>
             <button className="tg-btn-primary" onClick={handleGetStarted}>
-              <span>Enter Demo</span>
+              <span>Get started</span>
               <ArrowUpRight size={15} />
             </button>
             <button
@@ -131,10 +118,10 @@ export function LandingPage() {
             <a href="#faculty" onClick={() => setMobileMenuOpen(false)}>For Faculty</a>
             <div className="tg-mobile-buttons">
               <button className="tg-btn-ghost" onClick={handleSignIn}>
-                Demo Access
+                Sign in
               </button>
               <button className="tg-btn-primary" onClick={handleGetStarted}>
-                <span>Enter Demo</span>
+                <span>Get started</span>
                 <ArrowUpRight size={15} />
               </button>
             </div>
@@ -166,14 +153,14 @@ export function LandingPage() {
 
               <div className="tg-hero-actions">
                 <button className="tg-hero-btn-primary" onClick={handleGetStarted}>
-                  <span>{demoMode ? "Explore Demo Platform" : "Explore Platform"}</span>
+                  <span>Explore Platform</span>
                   <ArrowUpRight size={15} />
                 </button>
                 <button
                   className="tg-hero-btn-secondary"
-                  onClick={() => navigate(demoMode ? "/demo" : "/login")}
+                  onClick={() => navigate("/login")}
                 >
-                  <span>{demoMode ? "Faculty Demo" : "For Educators"}</span>
+                  <span>For Educators</span>
                 </button>
               </div>
             </div>
@@ -649,14 +636,14 @@ export function LandingPage() {
               </p>
               <div className="tg-cta-buttons">
                 <button className="tg-btn-primary-lg" onClick={handleGetStarted}>
-                  <span>{demoMode ? "Enter Hackathon Demo" : "Get Started for Free"}</span>
+                  <span>Get Started for Free</span>
                   <ArrowUpRight size={16} />
                 </button>
                 <button
                   className="tg-btn-glass-lg"
-                  onClick={() => navigate(demoMode ? "/demo" : "/login")}
+                  onClick={() => navigate("/login")}
                 >
-                  <span>{demoMode ? "Role Selection" : "Schedule Faculty Demo"}</span>
+                  <span>Schedule a Faculty Consultation</span>
                   <ArrowUpRight size={16} />
                 </button>
               </div>

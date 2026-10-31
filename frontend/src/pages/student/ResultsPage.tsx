@@ -3,12 +3,10 @@ import { useAppState } from "../../App";
 import { Badge, Panel } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
-import { isDemoSession } from "../../services/demo-session";
 import type { Submission } from "../../types/models";
 
 export function ResultsPage({ submissions: rows }: { submissions: Submission[] }) {
   const { user, assignments: assignmentList } = useAppState();
-  const demoSession = isDemoSession();
   const student = user?.role === "student";
   const approved = student
     ? rows.filter((item) => item.studentId === user?.id && item.state === "Published")
@@ -28,21 +26,14 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
         </div>
       </div>
 
-      {!demoSession && (
+      {
         <IntegrationNotice
           title="Grade results are not connected"
           description="The backend does not expose grading-result or publication endpoints. This view will not invent scores or feedback."
           endpoint="No grade-result endpoint is currently available"
           tone="warning"
         />
-      )}
-      {demoSession && (
-        <IntegrationNotice
-          title="Demo results"
-          description="Any displayed evaluations are sample data and are not real student grades."
-          tone="info"
-        />
-      )}
+      }
 
       <div className="published-results" style={{ display: "grid", gap: "16px" }}>
         {approved.length > 0 ? (
