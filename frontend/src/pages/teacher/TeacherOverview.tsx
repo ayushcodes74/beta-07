@@ -214,7 +214,7 @@ export function TeacherOverview() {
   void TrendChart;
   void DistributionChart;
   const navigate = useNavigate();
-  const { user, courses: courseList, assignments: assignmentList, submissions, isDemo } = useAppState();
+  const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
   const recentSubmissions = [...submissions]
     .sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt))
     .slice(0, 5);
@@ -236,7 +236,7 @@ export function TeacherOverview() {
     <>
       <div className="welcome-row">
         <div>
-          <div className="eyebrow">{isDemo ? "DEMO · FACULTY WORKSPACE" : "FACULTY WORKSPACE"}</div>
+          <div className="eyebrow">FACULTY WORKSPACE</div>
           <h1>Good morning, {user?.name.split(" ")[0] ?? "Professor"}.</h1>
           <p className="page-subtitle">Your classroom, intelligently organized and grounded in academic authority.</p>
           <div className="welcome-context">
@@ -258,7 +258,7 @@ export function TeacherOverview() {
           {
             title: "Active courses",
             value: String(courseList.length),
-            note: isDemo ? "Demo workspace" : "Loaded from backend",
+            note: "Loaded from backend",
             change: `${courseList.length} registered`,
             icon: BookOpen,
             featured: true,
