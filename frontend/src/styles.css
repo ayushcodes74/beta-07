@@ -749,6 +749,7 @@ h1 { margin-bottom: 6px; font: 750 clamp(24px,2.25vw,31px)/1.2 var(--font-displa
 .role-picker button.active { border-color: #dfc5c4; color: var(--forest); background: #fcf3f2; }
 .role-picker button > svg { margin-left: auto; }
 .form-error { display: flex; align-items: center; gap: 6px; padding: 8px; margin: 0 0 10px; border: 1px solid #f0dfdc; border-radius: 7px; color: #935c55; background: #fbf1ef; font-size: 8px; }
+.form-success { padding: 8px; margin: 0 0 10px; border: 1px solid #dce8dc; border-radius: 7px; color: #4f7154; background: #f1f7f0; font-size: 8px; line-height: 1.5; }
 .auth-switch { padding-top: 12px; color: #86877f; font-size: 8px; text-align: center; }
 .auth-switch a { margin-left: 3px; color: var(--sage-dark); font-weight: 650; text-decoration: none; }
 .auth-demo-note { display: flex; align-items: flex-start; gap: 6px; padding: 8px; margin-top: 12px; border-radius: 7px; color: #82847b; background: #f5f5f1; font-size: 7px; line-height: 1.5; }
