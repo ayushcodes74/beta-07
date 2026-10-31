@@ -50,11 +50,12 @@ END $$;
 
 -- Function 1: Checks whether the authenticated caller owns the specified course.
 -- Security: Derives identity strictly from auth.uid(); accepts zero client user IDs.
+-- Hardened: SET search_path = '' with fully qualified schema references.
 CREATE OR REPLACE FUNCTION public.is_course_owner(check_course_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 STABLE
 AS $$
   SELECT EXISTS (
@@ -74,11 +75,12 @@ GRANT EXECUTE ON FUNCTION public.is_course_owner(UUID) TO authenticated;
 
 -- Function 2: Checks whether the authenticated caller has an active enrollment in the course.
 -- Security: Derives identity strictly from auth.uid(); accepts zero client user IDs.
+-- Hardened: SET search_path = '' with fully qualified schema references.
 CREATE OR REPLACE FUNCTION public.is_enrolled_student(check_course_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 STABLE
 AS $$
   SELECT EXISTS (
@@ -220,7 +222,7 @@ CREATE OR REPLACE FUNCTION public.validate_student_enrollment_target(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 STABLE
 AS $$
 DECLARE
@@ -231,7 +233,7 @@ DECLARE
 BEGIN
   -- 1. Verify caller authentication
   IF auth.uid() IS NULL THEN
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'unauthorized',
       'error_message', 'Authentication required.'
@@ -244,7 +246,7 @@ BEGIN
   WHERE id = auth.uid();
 
   IF caller_role IS NULL OR caller_role != 'teacher' OR caller_disabled IS TRUE THEN
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'forbidden',
       'error_message', 'Only active teachers can validate student accounts.'
@@ -258,7 +260,7 @@ BEGIN
 
   IF NOT FOUND OR course_teacher_id != auth.uid() THEN
     -- Return course_not_found to preserve privacy convention (do not confirm existence of unowned course)
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'course_not_found',
       'error_message', 'Course not found or caller is not the owner teacher.'
@@ -272,7 +274,7 @@ BEGIN
   WHERE id = target_student_id;
 
   IF NOT FOUND THEN
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'student_not_found',
       'error_message', 'The specified student profile was not found.'
@@ -281,7 +283,7 @@ BEGIN
 
   -- 5. Check role is student
   IF target_rec.role != 'student' THEN
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'invalid_role',
       'error_message', 'Only student accounts can be enrolled in courses.'
@@ -290,7 +292,7 @@ BEGIN
 
   -- 6. Check account is not disabled
   IF target_rec.is_disabled IS TRUE THEN
-    RETURN jsonb_build_object(
+    RETURN pg_catalog.jsonb_build_object(
       'is_valid', FALSE,
       'error_code', 'account_disabled',
       'error_message', 'Cannot enroll a disabled student account.'
@@ -298,7 +300,7 @@ BEGIN
   END IF;
 
   -- 7. Successful validation: return safe public details
-  RETURN jsonb_build_object(
+  RETURN pg_catalog.jsonb_build_object(
     'is_valid', TRUE,
     'student_id', target_rec.id,
     'role', target_rec.role,
@@ -316,10 +318,22 @@ GRANT EXECUTE ON FUNCTION public.validate_student_enrollment_target(UUID, UUID) 
 
 
 -- ----------------------------------------------------------------------------
--- STEP 5: Partial Unique Index for Enrollment Concurrency Protection
+-- STEP 5: Concurrency Protection & Index Verification
 -- ----------------------------------------------------------------------------
--- Enforces that at most ONE active enrollment record can exist for any given
--- (course_id, student_id) pair. Inactive historical records are preserved.
+-- Data Model & Constraint Note:
+-- The TrustGrade enrollment model maintains at most ONE row per student per course
+-- (soft deactivation updates status = 'inactive', and re-enrollment reactivates
+-- status = 'active' in-place).
+--
+-- Redundancy Check:
+-- If the database table already has the table-level constraint:
+--   UNIQUE (course_id, student_id)
+-- then active enrollment uniqueness is ALREADY strictly enforced across the table,
+-- and the partial index below is technically redundant.
+--
+-- However, if the table was initially created without that total constraint,
+-- this partial index is required to prevent concurrent race conditions from
+-- creating duplicate active enrollments.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_course_enrollments_unique_active
 ON public.course_enrollments (course_id, student_id)
 WHERE (status = 'active');
