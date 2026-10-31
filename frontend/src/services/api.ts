@@ -118,6 +118,59 @@ export interface BackendSubmissionStatus {
   updated_at: string;
 }
 
+export interface BackendOCRRegionReference {
+  page_number: number;
+  region_id: string | null;
+  bounding_box: { x1: number; y1: number; x2: number; y2: number } | null;
+  confidence: number | null;
+  original_text: string;
+}
+
+export interface BackendIntegrityEvidence {
+  submission_id: string;
+  answer_id: string;
+  source_submission_id: string;
+  source_answer_id: string;
+  source_type: "same_assignment_submission";
+  source_reference: string;
+  current_passage: string;
+  source_passage: string;
+  exact_match_score: number;
+  semantic_similarity_score: number | null;
+  current_regions: BackendOCRRegionReference[];
+  source_regions: BackendOCRRegionReference[];
+  method: "normalized_token_sequence";
+  ocr_uncertain: boolean;
+  context_note: string | null;
+  detected_at: string;
+}
+
+export interface BackendIntegrityReport {
+  submission_id: string;
+  review_status: "processing" | "needs_teacher_review" | "no_matches";
+  comparison_scope: "same_assignment";
+  comparisons_completed: number;
+  comparisons_skipped: number;
+  comparison_complete: boolean;
+  exact_matching: "normalized_token_sequence";
+  semantic_similarity: "unavailable";
+  handwriting_analysis: {
+    status: "unavailable";
+    calibrated_score: null;
+    model_name: null;
+    model_version: null;
+    reason: string;
+  };
+  ocr_quality: {
+    mean_confidence: number | null;
+    low_confidence_regions: BackendOCRRegionReference[];
+    unreadable_pages: number[];
+    missing_pages: number[];
+  };
+  evidence: BackendIntegrityEvidence[];
+  notes: string[];
+}
+
 export interface EnrolledStudentResponse {
   student_id: string;
   name: string | null;
@@ -232,10 +285,9 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
   let state: SubmissionState = "Submitted";
   if (b.status === "submitted" || b.status === "ocr_queued") state = "Submitted";
   else if (b.status === "ocr_processing") state = "In Progress";
-  else if (b.status === "ocr_completed") state = "Under Review";
-  else if (b.status === "ocr_failed") state = "Needs Review" as any;
+  else if (b.status.startsWith("ocr_completed") || ["ocr_failed", "ocr_degraded", "ocr_cancelled"].includes(b.status)) state = "Under Review";
 
-  let ocrState: OCRResult["state"] = "Verified";
+  let ocrState: OCRResult["state"] = "Needs review";
   if (b.status === "ocr_queued" || b.status === "ocr_processing") ocrState = "Needs review";
   else if (b.status === "ocr_degraded") ocrState = "Low confidence";
   else if (b.status === "ocr_failed") ocrState = "Needs review";
@@ -248,9 +300,9 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     deadline: b.created_at,
     state,
     ocr: {
-      confidence: b.ocr_progress ? b.ocr_progress / 100 : 0.85,
+      confidence: null,
       state: ocrState,
-      extractedText: b.ocr_stage ? `OCR stage: ${b.ocr_stage} (${b.ocr_progress}%)` : "Processing...",
+      extractedText: b.status.startsWith("ocr_") ? `OCR status: ${b.status.slice(4)}` : "Submission received.",
       warnings: b.warnings ?? [],
       expressions: [],
     },
@@ -458,6 +510,11 @@ export const assignmentService = {
 };
 
 export const submissionService = {
+  async getSubmissions(): Promise<Submission[]> {
+    const response = await api.get<BackendSubmissionStatus[]>("/submissions");
+    return (response.data || []).map((item) => adaptSubmissionStatus(item));
+  },
+
   async submitPdf(assignmentId: string, file: File): Promise<Submission> {
     const formData = new FormData();
     formData.append("file", file, file.name);
@@ -478,6 +535,11 @@ export const submissionService = {
 
   async getOcrResult(submissionId: string) {
     const response = await api.get(`/submissions/${submissionId}/ocr-result`);
+    return response.data;
+  },
+
+  async getIntegrity(submissionId: string): Promise<BackendIntegrityReport> {
+    const response = await api.get<BackendIntegrityReport>(`/submissions/${submissionId}/integrity`);
     return response.data;
   },
 

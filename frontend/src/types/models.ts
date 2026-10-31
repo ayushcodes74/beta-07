@@ -69,7 +69,7 @@ export interface Assignment {
 }
 
 export interface OCRResult {
-  confidence: number;
+  confidence: number | null;
   state: "High confidence" | "Needs review" | "Low confidence" | "Verified";
   extractedText: string;
   warnings: string[];
