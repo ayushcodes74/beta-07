@@ -29,12 +29,18 @@ class UserProfileResponse(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Fields a user may change on their own profile.
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
-    INTEGRATION PENDING: no editable fields are confirmed yet, so every field is
-    currently rejected. Add approved, non-sensitive fields here once the
-    database developer confirms them. Never add ``id``, ``role``, ``email`` or
-    other privileged account fields.
-    """
+    display_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+    )
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    avatar_url: str | None = Field(
+        default=None,
+        max_length=2048,
+    )

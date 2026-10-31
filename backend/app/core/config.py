@@ -1,4 +1,3 @@
-
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -7,7 +6,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "TrustGrade API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-
+        # Supabase connection
+    SUPABASE_URL: str | None = None
+    SUPABASE_KEY: SecretStr | None = None
+    SUPABASE_SERVICE_ROLE_KEY: SecretStr | None = None
     # Module 1 (auth): Supabase access-token verification.
     # No defaults on purpose: values must come from the Supabase project's
     # confirmed JWT configuration. While unset, protected routes return 503.
@@ -21,6 +23,14 @@ class Settings(BaseSettings):
     SUPABASE_JWT_ALGORITHMS: str | None = None
     SUPABASE_JWT_ISSUER: str | None = None
     SUPABASE_JWT_AUDIENCE: str | None = None
+
+    # Module 5 (OCR Engine Integration): Microservice configuration
+    OCR_SERVICE_URL: str = "http://127.0.0.1:8001"
+    OCR_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    OCR_READ_TIMEOUT_SECONDS: float = 30.0
+    OCR_POLL_TIMEOUT_SECONDS: float = 120.0
+    OCR_POLL_INTERVAL_SECONDS: float = 1.0
+    OCR_API_KEY: SecretStr | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
