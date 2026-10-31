@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, FileCheck2, FileText, GraduationCap,
+  ArrowRightLeft, Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, FileCheck2, FileText, GraduationCap,
   LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Sparkles, Upload, X,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
@@ -10,9 +10,20 @@ import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
 import { assignmentService, authService, courseService, submissionService } from "./services/api";
 import {
+  clearDemoSession,
+  DEMO_ASSIGNMENTS,
+  DEMO_COURSES,
+  DEMO_MATERIALS,
+  DEMO_PEOPLE,
+  DEMO_SUBMISSIONS,
+  getStoredDemoSession,
+  isDemoMode,
+  setDemoSession,
+} from "./services/demo-session";
+import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
   GradingReviewPage, LandingPage, LeaderboardPage, MaterialsPage, NotFoundPage, OCRReviewPage,
-  OverviewPage, ResultsPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
+  OverviewPage, ResultsPage, RoleSelectionPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage,
 } from "./pages";
 
@@ -53,6 +64,14 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshData = async () => {
+    if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
+      setCourses(DEMO_COURSES);
+      setAssignments(DEMO_ASSIGNMENTS);
+      setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
+      setSubmissions(DEMO_SUBMISSIONS);
+      setMaterials(DEMO_MATERIALS);
+      return;
+    }
     try {
       const [courses, assignments, submissions] = await Promise.all([
         courseService.getCourses().catch((err) => {
@@ -83,6 +102,19 @@ function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     async function initSession() {
       try {
+        if (isDemoMode()) {
+          const storedDemo = getStoredDemoSession();
+          if (storedDemo) {
+            setUserState(storedDemo);
+            setPeople(DEMO_PEOPLE);
+            setCourses(DEMO_COURSES);
+            setAssignments(DEMO_ASSIGNMENTS);
+            setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
+            setSubmissions(DEMO_SUBMISSIONS);
+            setMaterials(DEMO_MATERIALS);
+            return;
+          }
+        }
         const current = await authService.getCurrentUser();
         if (mounted && current) {
           setUserState(current);
@@ -104,9 +136,20 @@ function AppProvider({ children }: { children: ReactNode }) {
   const setUser = (nextUser: User | null) => {
     setUserState(nextUser);
     if (nextUser) {
-      setPeople((current) => (current.some((p) => p.id === nextUser.id) ? current : [...current, nextUser]));
-      void refreshData();
+      if (isDemoMode() && (nextUser.id === "demo-teacher-01" || nextUser.id === "demo-student-01")) {
+        setDemoSession(nextUser.role === "teacher" ? "teacher" : "student");
+        setPeople(DEMO_PEOPLE);
+        setCourses(DEMO_COURSES);
+        setAssignments(DEMO_ASSIGNMENTS);
+        setJoinedCourseIds(DEMO_COURSES.map((c) => c.id));
+        setSubmissions(DEMO_SUBMISSIONS);
+        setMaterials(DEMO_MATERIALS);
+      } else {
+        setPeople((current) => (current.some((p) => p.id === nextUser.id) ? current : [...current, nextUser]));
+        void refreshData();
+      }
     } else {
+      clearDemoSession();
       setCourses([]);
       setAssignments([]);
       setJoinedCourseIds([]);
@@ -193,7 +236,7 @@ function ApplicationShell() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to={isDemoMode() ? "/demo" : "/login"} replace state={{ from: location.pathname }} />;
 
   const isStudent = user.role === "student";
   const rawNavigation = isStudent ? studentNavigation : teacherNavigation;
@@ -224,6 +267,13 @@ function ApplicationShell() {
 
   const logout = async () => {
     try {
+      if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
+        clearDemoSession();
+        setUser(null);
+        navigate(isDemoMode() ? "/demo" : "/");
+        toast("Demo session cleared.", "info");
+        return;
+      }
       await authService.logout();
       setUser(null);
       navigate("/");
@@ -243,13 +293,22 @@ function ApplicationShell() {
         <button
           className="workspace-switch"
           onClick={() => {
+            if (isDemoMode() && sessionStorage.getItem("tg_demo_role")) {
+              const nextRole = isStudent ? "teacher" : "student";
+              const nextUser = setDemoSession(nextRole);
+              setUser(nextUser);
+              toast(`Switched demo role to ${nextRole === "teacher" ? "Professor Demo (Faculty)" : "Student Demo"}`, "success");
+              navigate("/app");
+              return;
+            }
             toast(`Role verified: ${isStudent ? "Student" : "Faculty"}. Managed by your trusted account profile.`, "info");
           }}
+          title={isDemoMode() && sessionStorage.getItem("tg_demo_role") ? "Click to switch persona" : undefined}
         >
           <span className="workspace-icon"><GraduationCap size={16} /></span>
           <span className="workspace-copy">
             <strong>{isStudent ? "Student workspace" : "Faculty workspace"}</strong>
-            <small>Spring term · 2026</small>
+            <small>{isDemoMode() && sessionStorage.getItem("tg_demo_role") ? "Demo Mode (Click to switch)" : "Spring term · 2026"}</small>
           </span>
           <ChevronDown size={14} />
         </button>
@@ -303,6 +362,27 @@ function ApplicationShell() {
             <span>TrustGrade</span><span className="crumb-separator">/</span><strong>{title}</strong>
           </div>
           <div className="topbar-actions">
+            {isDemoMode() && sessionStorage.getItem("tg_demo_role") && (
+              <div className="demo-mode-pill">
+                <span className="demo-pulse-dot" />
+                <span className="demo-mode-pill-text">DEMO MODE · {isStudent ? "STUDENT" : "FACULTY"}</span>
+                <button
+                  type="button"
+                  className="demo-switch-btn"
+                  onClick={() => {
+                    const nextRole = isStudent ? "teacher" : "student";
+                    const nextUser = setDemoSession(nextRole);
+                    setUser(nextUser);
+                    toast(`Switched demo role to ${nextRole === "teacher" ? "Professor Demo (Faculty)" : "Student Demo"}`, "success");
+                    navigate("/app");
+                  }}
+                  title="Switch Demo Persona"
+                >
+                  <ArrowRightLeft size={12} />
+                  <span>Switch to {isStudent ? "Faculty" : "Student"}</span>
+                </button>
+              </div>
+            )}
             {searchOpen ? (
               <form
                 className="search-box search-open"
@@ -383,7 +463,7 @@ function ApplicationShell() {
 function SessionRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAppState();
   if (loading) return null;
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  return user ? <>{children}</> : <Navigate to={isDemoMode() ? "/demo" : "/login"} replace />;
 }
 
 function AppRoutes() {
@@ -405,6 +485,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/demo" element={<RoleSelectionPage />} />
       <Route path="/login" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="login" onAuthenticated={setUser} />} />
       <Route path="/register" element={user ? <Navigate to="/app" replace /> : <AuthPage mode="register" onAuthenticated={setUser} />} />
       <Route path="/app" element={<SessionRoute><ApplicationShell /></SessionRoute>}>

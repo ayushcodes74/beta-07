@@ -24,236 +24,31 @@ import { mockService } from "./services/mock-service";
 import { rubrics } from "./lib/mock-data";
 import { formatDate } from "./lib/utils";
 import { useAppState } from "./App";
-import { Avatar, Badge, Button, ConfirmDialog, GlassPanel, Panel, StatusBadge, useToast } from "./components/ui";
-import type { Assignment, Course, CourseMaterial, Question, Submission, User } from "./types/models";
+import { TeacherOverview } from "./pages/teacher/TeacherOverview";
+import { StudentOverview } from "./pages/student/StudentOverview";
 
-function PageHeader({ eyebrow = "TRUSTGRADE WORKSPACE", title, subtitle, action }: { eyebrow?: string; title: string; subtitle: string; action?: React.ReactNode }) {
-  return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p className="page-subtitle">{subtitle}</p></div>{action && <div className="heading-actions">{action}</div>}</div>;
-}
+export { LandingPage } from "./pages/common/LandingPage";
+export { AuthPage } from "./pages/common/AuthPage";
+export { RoleSelectionPage } from "./pages/common/RoleSelectionPage";
+export { LeaderboardPage } from "./pages/common/LeaderboardPage";
+export { SettingsPage } from "./pages/common/SettingsPage";
+export { NotFoundPage } from "./pages/common/NotFoundPage";
 
-function SectionTitle({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
-  return <div className="section-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>;
-}
+export { TeacherOverview } from "./pages/teacher/TeacherOverview";
+export { CoursesPage } from "./pages/teacher/CoursesPage";
+export { CourseDetailPage } from "./pages/teacher/CourseDetailPage";
+export { AssignmentsPage } from "./pages/teacher/AssignmentsPage";
+export { AssignmentEditor } from "./pages/teacher/AssignmentEditor";
+export { SubmissionsPage } from "./pages/teacher/SubmissionsPage";
+export { GradingReviewPage } from "./pages/teacher/GradingReviewPage";
+export { OCRReviewPage } from "./pages/teacher/OCRReviewPage";
+export { MaterialsPage } from "./pages/teacher/MaterialsPage";
 
-function TrendChart({ height = 190 }: { height?: number }) {
-  const data = [
-    { week: "W1", average: 76 }, { week: "W2", average: 78 }, { week: "W3", average: 77 },
-    { week: "W4", average: 81 }, { week: "W5", average: 84 }, { week: "W6", average: 83 },
-    { week: "W7", average: 86 }, { week: "W8", average: 88 },
-  ];
-  return <div className="chart-area" style={{ height }}>
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: -20 }}>
-        <defs><linearGradient id="roseWash" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#b44446" stopOpacity={0.15} /><stop offset="95%" stopColor="#b44446" stopOpacity={0} /></linearGradient></defs>
-        <CartesianGrid vertical={false} stroke="#ecebe5" strokeDasharray="3 5" />
-        <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: "#96978f", fontSize: 10 }} dy={10} />
-        <YAxis domain={[60, 100]} ticks={[60, 70, 80, 90, 100]} axisLine={false} tickLine={false} tick={{ fill: "#96978f", fontSize: 9 }} />
-        <Tooltip cursor={{ stroke: "#d7d9d1", strokeDasharray: "3 4" }} contentStyle={{ borderRadius: 9, border: "1px solid #eeede8", boxShadow: "0 6px 20px #20231f12", fontSize: 10 }} formatter={(value) => [`${value} / 100`, "Average mark"]} />
-        <Area type="monotone" dataKey="average" stroke="#64242f" strokeWidth={2.2} fill="url(#roseWash)" activeDot={{ r: 4, fill: "#fff", stroke: "#64242f", strokeWidth: 2 }} />
-      </AreaChart>
-    </ResponsiveContainer>
-  </div>;
-}
-
-const distribution = [{ name: "A", value: 38, fill: "#64242f" }, { name: "B", value: 61, fill: "#8e4249" }, { name: "C", value: 74, fill: "#b44446" }, { name: "D", value: 51, fill: "#d68b88" }, { name: "F", value: 24, fill: "#ead4d2" }];
-
-function DistributionChart() {
-  return <div className="distribution-bars"><ResponsiveContainer width="100%" height="100%"><BarChart data={distribution} margin={{ top: 10, right: 4, bottom: 0, left: -20 }} barCategoryGap="28%">
-    <CartesianGrid vertical={false} stroke="#eee9e7" strokeDasharray="3 5" />
-    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#969091", fontSize: 10 }} dy={8} />
-    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#969091", fontSize: 9 }} />
-    <Tooltip cursor={{ fill: "#f8f2f1" }} contentStyle={{ borderRadius: 9, border: "1px solid #eee8e7", boxShadow: "0 6px 20px #29252512", fontSize: 10 }} formatter={(value) => [`${value} students`, "Grade"]} />
-    <Bar dataKey="value" radius={[4, 4, 0, 0]}>{distribution.map((item) => <Cell key={item.name} fill={item.fill} />)}</Bar>
-  </BarChart></ResponsiveContainer></div>;
-}
-
-function StatCard({ title, value, note, change, icon: Icon, featured = false, alert = false }: { title: string; value: string; note: string; change: string; icon: typeof Users; featured?: boolean; alert?: boolean }) {
-  return <Panel className={`stat-card ${featured ? "stat-feature" : ""} ${alert ? "stat-alert" : ""}`}><div className="stat-top"><span>{title}</span><span className="stat-icon"><Icon size={16} /></span></div><div className="stat-value-row"><strong>{value}</strong><span className="stat-change">{change}</span></div><div className="stat-foot">{note}</div><svg className="stat-spark" viewBox="0 0 84 30" aria-hidden="true"><polyline points="0,23 12,19 24,20 36,12 48,15 60,7 72,10 84,3" fill="none" stroke="#b44446" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></Panel>;
-}
-
-function RecentSubmissions({ rows }: { rows: Submission[] }) {
-  const { user, assignments: assignmentList, people } = useAppState();
-  const navigate = useNavigate();
-  if (!rows.length) {
-    return <div className="table-empty" style={{ padding: "1.5rem", textAlign: "center" }}>No student submissions received yet.</div>;
-  }
-  const submissionDetails = rows.map((submission) => ({
-    submission,
-    student: people.find((person) => person.id === submission.studentId),
-    assignment: assignmentList.find((item) => item.id === submission.assignmentId),
-  }));
-  return <div className="table-scroll"><table className="data-table"><thead><tr><th>Student</th><th>Assignment</th><th>Submitted</th><th>OCR</th><th>AI grade</th><th>Status</th><th>Action</th></tr></thead><tbody>
-    {submissionDetails.map(({ submission, student, assignment }) => <tr key={submission.id}>
-      <td><span className="student-name">{student && <Avatar name={student.name} initials={student.initials} />}{student?.name ?? "Student"}</span></td>
-      <td>{assignment?.title ?? "Assignment"}</td><td>{formatDate(submission.submittedAt)}</td>
-      <td><StatusBadge status={submission.ocr.state} /></td>
-      <td className="score-cell">{submission.grading ? `${submission.grading.suggestedScore} / ${assignment?.totalMarks ?? 20}` : "—"}</td>
-      <td><StatusBadge status={submission.state} /></td>
-      <td><button className="text-button" onClick={() => navigate(user?.role === "teacher" ? `/app/grading/${submission.id}` : `/app/student/submit/${submission.assignmentId}`)}>{user?.role === "teacher" ? "Review" : "Open"}<ChevronRight size={13} /></button></td>
-    </tr>)}
-  </tbody></table></div>;
-}
-
-function TeacherOverview() {
-  const navigate = useNavigate();
-  const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
-  const recentSubmissions = [...submissions].sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt)).slice(0, 4);
-  const activeAssignment = assignmentList[0];
-  const upcomingDeadlines = assignmentList.slice(0, 3);
-  const totalStudents = courseList.reduce((acc, c) => acc + (c.students || 0), 0);
-
-  return <>
-    <div className="welcome-row">
-      <div>
-        <div className="eyebrow">FACULTY WORKSPACE · SPRING TERM 2026</div>
-        <h1>Good morning, {user?.name.split(" ")[0] ?? "Professor"}.</h1>
-        <p className="page-subtitle">Your classroom, intelligently organized.</p>
-        <div className="welcome-context">
-          <span>{courseList.length} course{courseList.length === 1 ? "" : "s"}</span><i />
-          <span>{assignmentList.length} assignment{assignmentList.length === 1 ? "" : "s"}</span><i />
-          <span>{submissions.length} submission{submissions.length === 1 ? "" : "s"}</span>
-        </div>
-      </div>
-      <Button onClick={() => navigate("/app/assignment/new")}><Plus size={16} />Create assignment</Button>
-    </div>
-    <div className="stat-grid dashboard-stats">{[
-      { title: "Active courses", value: String(courseList.length), note: "Connected via backend", change: `${courseList.length} registered`, icon: BookOpen, featured: true },
-      { title: "Assignments", value: String(assignmentList.length), note: "Total created", change: `${assignmentList.filter(a => a.state === "Published").length} published`, icon: FileText, alert: assignmentList.length === 0 },
-      { title: "Enrolled students", value: String(totalStudents), note: "Across your courses", change: "Roster count", icon: Users },
-      { title: "Submissions", value: String(submissions.length), note: "In evaluation queue", change: "Live count", icon: Activity },
-    ].map((item) => <StatCard key={item.title} {...item} />)}</div>
-    <div className="dashboard-grid">
-      <Panel className="grading-feature">
-        <div className="feature-top">
-          <div className="feature-title"><span className="feature-symbol"><Sparkles size={16} /></span><span><strong>Assignment Velocity</strong><small>Review progress across active assignments.</small></span></div>
-          {activeAssignment && <Badge tone="sage"><i className="live-dot" />{activeAssignment.state}</Badge>}
-        </div>
-        {activeAssignment ? (
-          <>
-            <h2 className="feature-assignment">{activeAssignment.title}</h2>
-            <p className="feature-course">Due {formatDate(activeAssignment.dueAt)}</p>
-            <div className="progress-row"><span><strong>{submissions.length}</strong> submissions received</span><span>{activeAssignment.totalMarks} marks</span></div>
-            <div className="progress-track"><span style={{ width: submissions.length > 0 ? "40%" : "5%" }} /></div>
-            <div className="feature-bottom">
-              <div className="feature-meta"><span><CheckCircle2 size={13} />{activeAssignment.submissionType} format</span></div>
-              <Button variant="secondary" size="sm" onClick={() => navigate("/app/submissions")}>View queue<ArrowRight size={14} /></Button>
-            </div>
-          </>
-        ) : (
-          <div style={{ padding: "2rem 0", color: "var(--color-text-muted, #71717a)" }}>
-            <p>No assignments created yet. Set up an assignment to begin receiving submissions.</p>
-            <Button size="sm" onClick={() => navigate("/app/assignment/new")} style={{ marginTop: "1rem" }}><Plus size={14} />Create first assignment</Button>
-          </div>
-        )}
-        <span className="feature-watermark"><ShieldCheck size={138} strokeWidth={0.55} /></span>
-      </Panel>
-      <Panel className="deadline-card dashboard-deadlines">
-        <SectionTitle title="Upcoming deadlines" subtitle="Assignments created for your classes" action={<button className="text-button" onClick={() => navigate("/app/assignments")}>View all<ArrowRight size={13} /></button>} />
-        <div className="timeline">
-          {upcomingDeadlines.length > 0 ? (
-            upcomingDeadlines.map((item) => (
-              <div className="timeline-item" key={item.id}>
-                <strong>{item.title}</strong>
-                <div><span>{item.totalMarks} marks · {item.submissionType}</span><b>Due {formatDate(item.dueAt)}</b></div>
-              </div>
-            ))
-          ) : (
-            <p className="table-empty">No deadlines scheduled yet.</p>
-          )}
-        </div>
-      </Panel>
-    </div>
-    <div className="analytics-grid">
-      <Panel className="chart-card"><SectionTitle title="Class performance trend" subtitle="Weekly distribution" /><div className="chart-total">84.6 <span>↑ Stable</span></div><TrendChart /></Panel>
-      <Panel className="chart-card"><SectionTitle title="Grade distribution" subtitle="Class grade overview" /><DistributionChart /></Panel>
-    </div>
-    <Panel className="recent-card dashboard-recent">
-      <SectionTitle title="Recent submissions" subtitle="Your latest classroom activity" action={<button className="text-button" onClick={() => navigate("/app/submissions")}>View all<ArrowRight size={13} /></button>} />
-      <RecentSubmissions rows={recentSubmissions} />
-    </Panel>
-  </>;
-}
-
-function StudentOverview() {
-  const navigate = useNavigate();
-  const { user, courses: courseList, assignments: assignmentList, joinedCourseIds, submissions: studentRows } = useAppState();
-  const myCourses = courseList.filter((course) => joinedCourseIds.includes(course.id) || joinedCourseIds.length === 0);
-  const myAssignments = assignmentList.filter((assignment) => assignment.state === "Published");
-  const published = studentRows.filter((item) => item.studentId === user?.id && item.state === "Published" && item.grading?.teacherApproved);
-  const latestPublished = published[0];
-  const latestAssignment = latestPublished && assignmentList.find((item) => item.id === latestPublished.assignmentId);
-
-  return <>
-    <div className="page-heading">
-      <div>
-        <div className="eyebrow">STUDENT WORKSPACE · SPRING TERM 2026</div>
-        <h1>Welcome back, {user?.name.split(" ")[0] ?? "there"}.</h1>
-        <p className="page-subtitle">Stay on top of your coursework. You’re making steady progress.</p>
-      </div>
-      <Button variant="secondary" onClick={() => navigate("/app/student/assignments")}><Plus size={15} />Join a course</Button>
-    </div>
-    <Panel className="student-welcome">
-      <div className="student-welcome-copy">
-        <span className="eyebrow">YOUR ACADEMIC JOURNEY</span>
-        <h2>Small steps add up.</h2>
-        <p>{latestPublished ? "Your teacher has published feedback. Take a moment to review what went well and what to try next." : "Your coursework and teacher feedback will appear here as your classes get underway."}</p>
-        <Button variant="secondary" size="sm" onClick={() => navigate("/app/student/assignments")}>See assignments<ArrowRight size={14} /></Button>
-      </div>
-      <div className="student-progress-orb"><span>{myAssignments.length}</span><small>tasks ready</small><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" /><circle className="progress-circle" cx="60" cy="60" r="52" /></svg></div>
-    </Panel>
-    <div className="student-stat-row">
-      <Panel className="student-stat"><span>Enrolled courses</span><strong>{myCourses.length}</strong><small>Active this term</small></Panel>
-      <Panel className="student-stat"><span>Assignments available</span><strong>{myAssignments.length}</strong><small>Published for study</small></Panel>
-      <Panel className="student-stat"><span>Submissions made</span><strong>{studentRows.length}</strong><small>Handed in for review</small></Panel>
-    </div>
-    <div className="student-columns">
-      <div>
-        <SectionTitle title="Coming up" subtitle="Plan your next study session" action={<button className="text-button" onClick={() => navigate("/app/student/assignments")}>All assignments<ArrowRight size={13} /></button>} />
-        {myAssignments.slice(0, 3).map((assignment) => {
-          const ownSubmission = studentRows.find((item) => item.studentId === user?.id && item.assignmentId === assignment.id);
-          const status = ownSubmission?.state ?? "Not Started";
-          const destination = status === "Published" ? "/app/results" : assignment.submissionType === "MCQ" ? `/app/student/assessment/${assignment.id}` : `/app/student/submit/${assignment.id}`;
-          return (
-            <Panel key={assignment.id} className="student-assignment-card">
-              <span className="course-icon"><FileText size={16} /></span>
-              <span className="assignment-card-copy">
-                <strong>{assignment.title}</strong>
-                <small>{courseList.find((course) => course.id === assignment.courseId)?.code ?? "Course"} · Due {formatDate(assignment.dueAt)}</small>
-              </span>
-              <StatusBadge status={status} />
-              <Button size="sm" variant="secondary" onClick={() => navigate(destination)}>{status === "Published" ? "View feedback" : "Open"}<ChevronRight size={13} /></Button>
-            </Panel>
-          );
-        })}
-        {!myAssignments.length && <Panel className="empty-state">No published assignments at the moment.</Panel>}
-        <SectionTitle title="Recently published" subtitle="Only teacher-approved results appear here" />
-        {latestPublished && latestAssignment ? (
-          <Panel className="published-result-card">
-            <span className="result-seal"><Check size={16} /></span>
-            <span><strong>{latestAssignment.title}</strong><small>Teacher approved</small></span>
-            <strong className="result-score">{latestPublished.grading?.suggestedScore} <small>/ {latestAssignment.totalMarks}</small></strong>
-            <Button size="sm" variant="secondary" onClick={() => navigate("/app/results")}>View feedback<ChevronRight size={13} /></Button>
-          </Panel>
-        ) : (
-          <Panel className="empty-state">No published feedback available yet.</Panel>
-        )}
-      </div>
-      <aside>
-        <SectionTitle title="Your courses" subtitle="This term" />
-        <div className="course-summary-list">
-          {myCourses.slice(0, 3).map((course) => (
-            <Panel className="course-summary" key={course.id}>
-              <span className="course-summary-icon"><BookOpen size={15} /></span>
-              <span><strong>{course.name}</strong><small>{course.code}</small></span>
-              <ChevronRight size={15} />
-            </Panel>
-          ))}
-          {!myCourses.length && <Panel className="empty-state">Join a course to see your classes here.</Panel>}
-        </div>
-      </aside>
-    </div>
-  </>;
-}
+export { StudentOverview } from "./pages/student/StudentOverview";
+export { StudentAssignmentsPage } from "./pages/student/StudentAssignmentsPage";
+export { StudentSubmissionPage } from "./pages/student/StudentSubmissionPage";
+export { AssessmentPage } from "./pages/student/AssessmentPage";
+export { ResultsPage } from "./pages/student/ResultsPage";
 
 export function OverviewPage() {
   const { user } = useAppState();
