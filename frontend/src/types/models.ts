@@ -31,6 +31,8 @@ export interface Question {
   expectedAnswer: string;
   options?: string[];
   correctOption?: number;
+  /** Subjective only: the teacher's answering instructions for this question (shown to students). */
+  instructions?: string;
 }
 
 export interface RubricCriterion {
@@ -89,6 +91,9 @@ export interface QuestionResult {
   teacherComment: string | null;
   /** The teacher's expected answer, once released to students. */
   expectedSolution: string | null;
+  /** Extra marks the teacher awarded on this question (e.g. a correct method beyond the course). */
+  bonusMarks?: number | null;
+  bonusReason?: string | null;
 }
 
 export interface GradingResult {
@@ -103,6 +108,8 @@ export interface GradingResult {
   questionResults?: QuestionResult[];
   /** While expected solutions are still withheld from the student: when they will appear. */
   solutionsAvailableAt?: string | null;
+  /** Bonus marks included in suggestedScore (the total may then exceed maxScore). */
+  bonusMarks?: number | null;
 }
 
 export interface Submission {

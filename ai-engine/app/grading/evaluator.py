@@ -26,6 +26,8 @@ from app.schemas.grading import (
     GradingRequest,
     GradingResult,
     GradingStatus,
+    MethodApproach,
+    MethodAssessment,
     QuestionGrade,
 )
 
@@ -56,6 +58,29 @@ class _LLMQuestionGradeResponse(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     review_required: bool = False
     review_reasons: List[str] = Field(default_factory=list)
+    # Method check (system rule 6). Plain strings: LLMs sometimes vary enum casing; normalised below.
+    approach: str = "taught"
+    method_name: str = ""
+    taught_method: str = ""
+    method_explanation: str = ""
+
+
+def _method_assessment(llm_response: _LLMQuestionGradeResponse) -> MethodAssessment:
+    """Normalise the LLM's method fields; anything unrecognised counts as the taught method."""
+    raw = (llm_response.approach or "").strip().lower().replace("-", "_").replace(" ", "_")
+    try:
+        approach = MethodApproach(raw)
+    except ValueError:
+        approach = MethodApproach.TAUGHT
+    if approach in (MethodApproach.ALTERNATIVE_VALID, MethodApproach.ALTERNATIVE_INVALID) and not llm_response.method_name.strip():
+        approach = MethodApproach.UNCLEAR  # an "alternative" the model could not even name is not one
+    alternative = approach is not MethodApproach.TAUGHT
+    return MethodAssessment(
+        approach=approach,
+        method_name=llm_response.method_name.strip()[:200] if alternative else "",
+        taught_method=llm_response.taught_method.strip()[:200] if alternative else "",
+        explanation=llm_response.method_explanation.strip()[:2000] if alternative else "",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +248,7 @@ class AnswerEvaluator:
             confidence=llm_response.confidence,
             review_required=review_required_flag,
             review_reasons=review_reasons_list,
+            method_assessment=_method_assessment(llm_response),
         )
 
         # 10. Run unified Trust & Confidence assessment

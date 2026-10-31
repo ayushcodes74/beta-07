@@ -15,6 +15,7 @@ import { NotificationBell } from "./components/common/NotificationBell";
 import { useUnreadMessages } from "./components/common/useUnreadMessages";
 import { HeaderSearch } from "./components/common/HeaderSearch";
 import { useSubmissionStatusSync } from "./lib/useSubmissionStatusSync";
+import { useAutoAnswerChecks } from "./lib/autoAnswerCheck";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
   GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, MessagesPage, NotFoundPage, OCRReviewPage,
@@ -251,6 +252,8 @@ function ApplicationShell() {
   const unreadMessages = useUnreadMessages(!!user);
   // Lists otherwise keep showing "In Progress" after OCR has finished (see the hook).
   useSubmissionStatusSync(submissions, setSubmissions, !!user);
+  // Teachers: AI-check new work in the background once its OCR has finished (suggestions only).
+  useAutoAnswerChecks(user?.role === "teacher", submissions, setSubmissions);
 
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 

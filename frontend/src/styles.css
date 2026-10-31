@@ -9582,3 +9582,88 @@ html { -webkit-tap-highlight-color: transparent; }
 .formatted-text li {
   margin: 2px 0;
 }
+
+/* ---- Student submit page: the assignment's questions ---- */
+.submit-questions {
+  margin-top: 14px;
+}
+
+.submit-questions-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.submit-questions-head h2 {
+  margin: 0;
+}
+
+.submit-questions-head span,
+.submit-questions-hint,
+.submit-questions-empty {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.submit-questions-hint {
+  margin: 0 0 10px;
+}
+
+.submit-question-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.submit-question {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.submit-question-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.submit-question-top strong {
+  color: var(--sage-dark);
+  font: 700 12px var(--font-display);
+}
+
+.submit-question-top span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.submit-question-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.submit-question-options {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.submit-question-options b {
+  color: var(--sage-dark);
+}
+
+.submit-question-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}

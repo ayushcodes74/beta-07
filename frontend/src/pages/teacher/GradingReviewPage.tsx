@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { claimAutoCheck } from "../../lib/autoAnswerCheck";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { FormattedText, cleanAiFeedback } from "../../components/common/FormattedText";
+import { AlternativeMethodCard, type BonusDraft } from "../../components/grading/AlternativeMethodCard";
+import { formatMarks } from "../../lib/grades";
 import { formatDate } from "../../lib/utils";
 import { useStudentNames } from "../../lib/useStudentNames";
 import {
@@ -97,7 +100,26 @@ export function GradingReviewPage({
   const assignment = submission ? assignmentList.find((a) => a.id === submission.assignmentId) : undefined;
   const student = submission ? names[submission.studentId] : undefined;
 
-  const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? 0);
+  // A published total may include bonus marks; the score box holds the mark out of the maximum.
+  const [score, setScore] = useState<number>(
+    (submission?.grading?.suggestedScore ?? 0) - (submission?.grading?.bonusMarks ?? 0)
+  );
+  // Bonus marks per question number (e.g. for a correct method the course did not teach). Pre-filled from
+  // an already-published grade so re-publishing keeps them unless the teacher removes them.
+  const [bonuses, setBonuses] = useState<Record<number, BonusDraft>>(() =>
+    Object.fromEntries(
+      (submission?.grading?.questionResults ?? [])
+        .filter((q) => (q.bonusMarks ?? 0) > 0)
+        .map((q) => [q.number, { marks: q.bonusMarks as number, reason: q.bonusReason ?? "" }])
+    )
+  );
+  const setBonus = (questionNumber: number, bonus: BonusDraft | null) =>
+    setBonuses((current) => {
+      const next = { ...current };
+      if (bonus) next[questionNumber] = bonus;
+      else delete next[questionNumber];
+      return next;
+    });
   const [feedback, setFeedback] = useState<string>(
     submission?.grading?.feedback?.comment ?? ""
   );
@@ -113,7 +135,6 @@ export function GradingReviewPage({
   const [answerCheck, setAnswerCheck] = useState<BackendGradingSuggestion | null>(null);
   const [answerCheckError, setAnswerCheckError] = useState("");
   const [checkingAnswers, setCheckingAnswers] = useState(false);
-  const autoCheckedIds = useRef(new Set<string>());
   // Teacher corrections of the AI check: stored per submission and given to future AI checks.
   const [corrections, setCorrections] = useState<BackendGradingCorrection[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
@@ -144,9 +165,29 @@ export function GradingReviewPage({
             setScore(totalWithCorrections(saved, savedCorrections));
             setFeedback((current) => current || cleanAiFeedback(saved.overall_feedback));
           }
-        } else if (!autoCheckedIds.current.has(id)) {
-          autoCheckedIds.current.add(id);
+        } else if (claimAutoCheck(id)) {
           void runAnswerCheck();
+        } else {
+          // A background check of this submission is running (or ran): show its result when it is saved.
+          let attempts = 0;
+          const poll = () => {
+            if (!active || attempts++ >= 12) return;
+            submissionService
+              .getAnswerCheck(id)
+              .then((result) => {
+                if (!active) return;
+                if (result) {
+                  setAnswerCheck(result);
+                  setCorrections(result.teacher_corrections ?? []);
+                  if (submission.state !== "Published") setScore(totalWithCorrections(result, result.teacher_corrections ?? []));
+                  setFeedback((current) => current || cleanAiFeedback(result.overall_feedback));
+                } else {
+                  window.setTimeout(poll, 5_000);
+                }
+              })
+              .catch(() => undefined);
+          };
+          window.setTimeout(poll, 3_000);
         }
       })
       .catch(() => {
@@ -316,18 +357,28 @@ export function GradingReviewPage({
   const late = submission.late;
   const lateBlocksPublish = late?.status === "pending" || late?.status === "rejected";
   const latePenalty = late?.status === "accepted" ? late.penaltyPercent ?? 0 : 0;
-  const publishedScorePreview = lateAdjustedScore(Number.isFinite(score) ? score : 0, latePenalty);
+  const bonusList = Object.entries(bonuses)
+    .map(([number, bonus]) => ({ question_number: Number(number), marks: bonus.marks, reason: bonus.reason.trim() }))
+    .sort((a, b) => a.question_number - b.question_number);
+  const bonusTotal = bonusList.reduce((sum, b) => sum + (Number.isFinite(b.marks) ? b.marks : 0), 0);
+  const bonusCap = (questionNumber: number) => {
+    const q = answerCheck?.questions.find((item) => item.number === questionNumber);
+    return q?.alternative_method?.max_bonus ?? (q ? q.max_marks / 2 : Infinity);
+  };
+  const bonusInvalid = bonusList.some((b) => !(b.marks > 0) || b.marks > bonusCap(b.question_number) + 1e-9);
+  const publishedScorePreview = lateAdjustedScore((Number.isFinite(score) ? score : 0) + bonusTotal, latePenalty);
 
   const approveGrade = async () => {
-    if (scoreInvalid) return;
+    if (scoreInvalid || bonusInvalid) return;
     setApproving(true);
     setPublishError("");
     try {
-      const grade = await submissionService.publishGrade(submission.id, score, feedback, showSolutions);
+      const grade = await submissionService.publishGrade(submission.id, score, feedback, showSolutions, bonusList);
       setSubmissions((current) =>
         current.map((item) => (item.id === submission.id ? withPublishedGrade(item, grade) : item))
       );
-      toast(`Grade (${grade.final_score}/${grade.max_score ?? maxMarks}) published to ${student?.name ?? "the student"}.`);
+      const bonusNote = grade.bonus_marks ? `, including +${formatMarks(grade.bonus_marks)} bonus` : "";
+      toast(`Grade (${grade.final_score}/${grade.max_score ?? maxMarks}${bonusNote}) published to ${student?.name ?? "the student"}.`);
       navigate("/app/submissions");
     } catch (error) {
       setPublishError(extractErrorMessage(error, "Could not publish the grade."));
@@ -523,6 +574,14 @@ export function GradingReviewPage({
                           {q.teacher_corrections_used === 1 ? "" : "s"} of this question
                         </p>
                       )}
+                      {q.alternative_method && (
+                        <AlternativeMethodCard
+                          method={q.alternative_method}
+                          bonus={bonuses[q.number] ?? null}
+                          onBonusChange={(bonus) => setBonus(q.number, bonus)}
+                          disabled={approving}
+                        />
+                      )}
 
                       {editingQuestion === q.number ? (
                         <div className="answer-check-correction">
@@ -664,9 +723,17 @@ export function GradingReviewPage({
                     Maximum marks: {maxMarks || "—"}
                     {answerCheck && ` · AI suggested ${answerCheck.total_awarded_marks}`}
                   </p>
+                  {bonusTotal > 0 && !scoreInvalid && !bonusInvalid && (
+                    <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#2E7D4F" }}>
+                      Bonus +{formatMarks(bonusTotal)} on{" "}
+                      {bonusList.map((b) => `Q${b.question_number}`).join(", ")}: the student will receive{" "}
+                      {formatMarks(publishedScorePreview)} / {maxMarks || "—"}
+                    </p>
+                  )}
                   {latePenalty > 0 && !scoreInvalid && (
                     <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#b5524b" }}>
-                      Late deduction −{latePenalty}%: the student will receive {publishedScorePreview} / {maxMarks || "—"}
+                      Late deduction −{latePenalty}%{bonusTotal > 0 ? " (applied to the total with bonus)" : ""}: the
+                      student will receive {formatMarks(publishedScorePreview)} / {maxMarks || "—"}
                     </p>
                   )}
                 </div>
@@ -707,7 +774,7 @@ export function GradingReviewPage({
               Show expected solutions (after the due date)
             </label>
             <Button
-              disabled={approving || scoreInvalid || lateBlocksPublish}
+              disabled={approving || scoreInvalid || bonusInvalid || lateBlocksPublish}
               title={lateBlocksPublish ? "Decide on this late submission first." : undefined}
               onClick={() => void approveGrade()}
             >
@@ -716,6 +783,7 @@ export function GradingReviewPage({
             </Button>
           </div>
           {scoreInvalid && <p className="answer-check-error">Score must be between 0 and {maxMarks}.</p>}
+          {bonusInvalid && <p className="answer-check-error">Fix the bonus marks on the highlighted question before publishing.</p>}
           {publishError && <p className="answer-check-error">{publishError}</p>}
           </div>
         </Panel>

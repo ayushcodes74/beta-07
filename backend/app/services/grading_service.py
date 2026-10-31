@@ -32,14 +32,17 @@ from app.database.grading_repository import (
     GradingStatus,
 )
 from app.schemas.grading import (
+    AlternativeMethod,
     CourseEvidence,
     GradingCorrection,
     GradingCorrectionIn,
     GradingSuggestionResponse,
     PublishedGradeResponse,
     PublishedQuestionResult,
+    QuestionBonusIn,
     QuestionGradeSuggestion,
 )
+from app.services.method_search import MethodSearchClient, MethodSearchUnavailable
 from app.schemas.user import Role
 from app.schemas.ocr import JobStatusResponse, OCRDocumentResult
 from app.services.ai_generation_service import (
@@ -74,11 +77,13 @@ class GradingService:
         *,
         ai_base_url: Optional[str] = None,
         transport: Optional[httpx.AsyncBaseTransport] = None,
+        method_search: Optional[MethodSearchClient] = None,
     ) -> None:
         self.submissions = submissions
         self.assignment_service = assignment_service
         self.ocr_client = ocr_client
         self.grading_repo = grading_repo
+        self.method_search = method_search or MethodSearchClient()
         self.ai_base_url = (ai_base_url or settings.AI_SERVICE_URL).rstrip("/")
         self._transport = transport
         self._timeout = httpx.Timeout(settings.AI_READ_TIMEOUT_SECONDS, connect=settings.AI_CONNECT_TIMEOUT_SECONDS)
@@ -180,6 +185,8 @@ class GradingService:
                 suggestions, threshold, total_max, overall_feedback
             )
             scoring = {"full_marks_at": threshold, "raw_total": round(raw_total, 2)}
+        # After the scoring policy, so the bonus suggestion sees the marks the teacher will see.
+        await self._attach_alternative_methods(suggestions, by_id)
 
         response = GradingSuggestionResponse(
             submission_id=submission.id,
@@ -312,6 +319,7 @@ class GradingService:
         *,
         access_token: str,
         show_solutions: bool = True,
+        bonuses: Optional[list[QuestionBonusIn]] = None,
     ) -> PublishedGradeResponse:
         """Teacher approves a final score/feedback and publishes it to the student.
 
@@ -320,6 +328,11 @@ class GradingService:
 
         Late submissions need the teacher's decision first. For accepted late work, ``final_score`` is
         the teacher's mark before the late deduction; the stored/published score has it applied.
+
+        ``bonuses`` are extra marks on individual questions (e.g. for a correct method the course did not
+        teach), each at most METHOD_BONUS_MAX_SHARE of that question's marks. They are added on top of
+        ``final_score``, so the published total may exceed the assignment's maximum; the late deduction,
+        if any, applies to the total. Re-publishing without bonuses removes them.
         """
         if self.grading_repo is None:
             raise GradingRepositoryError("Grading storage is not configured")
@@ -346,7 +359,9 @@ class GradingService:
                 "This late submission was rejected, so no grade can be published. Change the decision on the "
                 "Late submissions page to grade it.",
             )
-        raw_score = round(final_score, 2)
+        bonus_list = _validated_bonuses(bonuses or [], list(assignment.content.questions))
+        bonus_total = round(sum(b.marks for b in bonus_list), 2)
+        raw_score = round(final_score + bonus_total, 2)
         penalty = submission.late_penalty_percent if submission.late_status == "accepted" else None
         penalty = penalty if penalty else None  # 0% deduction = no penalty
         score = Decimal(str(late_adjusted_score(raw_score, penalty)))
@@ -378,9 +393,19 @@ class GradingService:
             else:
                 flags.pop("late_penalty_percent", None)
                 flags.pop("score_before_late_penalty", None)
+            if bonus_list:
+                flags[_BONUS_TOTAL_KEY] = bonus_total
+                flags[_BONUSES_KEY] = [b.model_dump(mode="json") for b in bonus_list]
+            else:
+                flags.pop(_BONUS_TOTAL_KEY, None)
+                flags.pop(_BONUSES_KEY, None)
             # Freeze what the student sees per question: later re-checks/corrections need a re-publish.
-            breakdown = _student_breakdown(
-                existing.evidence if existing else None, flags, assignment.content.questions, show_solutions
+            breakdown = _with_bonuses(
+                _student_breakdown(
+                    existing.evidence if existing else None, flags, assignment.content.questions, show_solutions
+                ),
+                bonus_list,
+                assignment.content.questions,
             )
             if show_solutions:
                 # Students see solutions only after the due date (classmates may not have submitted yet).
@@ -482,6 +507,55 @@ class GradingService:
 
     # ------------------------------------------------------------------ helpers
 
+    async def _attach_alternative_methods(
+        self, suggestions: list[QuestionGradeSuggestion], graded_by_id: dict[str, dict]
+    ) -> None:
+        """Mark questions answered with a method the course did not teach (from the AI's method check).
+
+        Valid alternatives get web sources (TinyFish, searched in parallel, question text + method name
+        only) and a suggested bonus when the answer scored highly. Never changes the marks themselves.
+        """
+        pending: list[tuple[QuestionGradeSuggestion, AlternativeMethod]] = []
+        for q in suggestions:
+            method = graded_by_id.get(f"q{q.number}", {}).get("method_assessment") or {}
+            approach = method.get("approach")
+            if approach not in ("alternative_valid", "alternative_invalid", "unclear"):
+                continue
+            if approach == "unclear" and not str(method.get("method_name") or "").strip():
+                continue  # "not enough working to tell" with nothing to show the teacher
+            alt = AlternativeMethod(
+                approach=approach,
+                method_name=str(method.get("method_name") or "")[:200],
+                taught_method=str(method.get("taught_method") or "")[:200],
+                explanation=str(method.get("explanation") or "")[:2000],
+                max_bonus=_max_bonus(q.max_marks),
+            )
+            if approach == "alternative_valid":
+                alt.suggested_bonus = _suggested_bonus(q.awarded_marks, q.max_marks)
+                if alt.method_name.strip():
+                    pending.append((q, alt))
+            q.alternative_method = alt
+
+        if not pending:
+            return
+        if not self.method_search.configured:
+            for _, alt in pending:
+                alt.search_status = "not_configured"
+            return
+        results = await asyncio.gather(
+            *(self.method_search.find_sources(alt.method_name, q.question_text) for q, alt in pending),
+            return_exceptions=True,
+        )
+        for (_, alt), result in zip(pending, results):
+            if isinstance(result, MethodSearchUnavailable):
+                alt.search_status = "unavailable"
+            elif isinstance(result, BaseException):
+                logger.warning("Method search failed: %s", type(result).__name__)
+                alt.search_status = "unavailable"
+            else:
+                alt.sources = result
+                alt.search_status = "found" if result else "no_results"
+
     def _corrections_by_question(self, assignment: Any, access_token: str) -> dict[int, list[dict]]:
         """Teacher corrections recorded on any submission of this assignment, per question number.
 
@@ -580,6 +654,21 @@ class GradingService:
             return False
 
 
+def _max_bonus(question_marks: float) -> float:
+    """Most extra marks a teacher may award on one question."""
+    return round(question_marks * settings.METHOD_BONUS_MAX_SHARE, 2)
+
+
+def _suggested_bonus(awarded: float, question_marks: float) -> float:
+    """Suggested reward for a high-scoring answer by a valid untaught method: a share of the question's
+    marks rounded to the nearest half mark (at least half a mark), never above the per-question cap."""
+    share = settings.METHOD_BONUS_SUGGESTED_SHARE
+    if share <= 0 or question_marks <= 0 or awarded < settings.METHOD_BONUS_MIN_SCORE * question_marks - 1e-9:
+        return 0.0
+    bonus = max(0.5, round(question_marks * share * 2) / 2)
+    return min(bonus, _max_bonus(question_marks))
+
+
 def late_adjusted_score(score: float, penalty_percent: Optional[float]) -> float:
     """Apply a late deduction: 8 marks with a 50% penalty -> 4 marks."""
     if not penalty_percent:
@@ -597,7 +686,10 @@ def _published_response(
     flags = record.flags or {}
     max_score = flags.get("max_score")
     before_penalty = _number(flags.get("score_before_late_penalty"))
-    teacher_score = before_penalty if before_penalty is not None else float(record.final_score)
+    bonus_total = _number(flags.get(_BONUS_TOTAL_KEY)) or 0.0
+    # The teacher's mark out of the maximum: per-question marks and AI feedback are checked against this,
+    # not against the total that includes bonus marks.
+    teacher_score = (before_penalty if before_penalty is not None else float(record.final_score)) - bonus_total
     questions = _consistent_breakdown(_stored_breakdown(flags), teacher_score)
     solutions_at = _solutions_release(flags)
     withheld_until = None
@@ -616,11 +708,54 @@ def _published_response(
         late_penalty_percent=_number(flags.get("late_penalty_percent")),
         score_before_late_penalty=_number(flags.get("score_before_late_penalty")),
         questions=questions,
+        bonus_marks=bonus_total or None,
     )
 
 
 _BREAKDOWN_KEY = "student_breakdown"
 _SOLUTIONS_FROM_KEY = "solutions_visible_from"
+_BONUS_TOTAL_KEY = "bonus_marks"
+_BONUSES_KEY = "question_bonuses"
+
+
+def _validated_bonuses(bonuses: list[QuestionBonusIn], questions: list[Any]) -> list[QuestionBonusIn]:
+    """One bonus per existing question, each within the per-question cap; sorted by question number."""
+    if len({b.question_number for b in bonuses}) != len(bonuses):
+        raise SubmissionValidationError("duplicate_bonus", "Each question can have only one bonus.")
+    cleaned: list[QuestionBonusIn] = []
+    for b in sorted(bonuses, key=lambda b: b.question_number):
+        if b.question_number > len(questions):
+            raise SubmissionValidationError(
+                "invalid_question", f"Question {b.question_number} does not exist in this assignment."
+            )
+        cap = _max_bonus(float(questions[b.question_number - 1].marks))
+        if b.marks > cap + 1e-9:
+            raise SubmissionValidationError(
+                "bonus_out_of_range",
+                f"Question {b.question_number} can earn at most {cap:g} bonus marks.",
+            )
+        cleaned.append(b.model_copy(update={"marks": round(b.marks, 2), "reason": b.reason.strip()}))
+    return cleaned
+
+
+def _with_bonuses(
+    breakdown: list[PublishedQuestionResult], bonuses: list[QuestionBonusIn], questions: Any
+) -> list[PublishedQuestionResult]:
+    """Show each bonus on its question (adding a bare entry when the breakdown has none for it)."""
+    if not bonuses:
+        return breakdown
+    by_number = {q.number: q for q in breakdown}
+    questions = list(questions)
+    for b in bonuses:
+        update = {"bonus_marks": b.marks, "bonus_reason": b.reason or None}
+        if b.question_number in by_number:
+            by_number[b.question_number] = by_number[b.question_number].model_copy(update=update)
+        else:
+            question = questions[b.question_number - 1]
+            by_number[b.question_number] = PublishedQuestionResult(
+                number=b.question_number, question_text=question.text, max_marks=float(question.marks), **update
+            )
+    return [by_number[n] for n in sorted(by_number)]
 
 
 def _solutions_release(flags: dict) -> Optional[datetime]:

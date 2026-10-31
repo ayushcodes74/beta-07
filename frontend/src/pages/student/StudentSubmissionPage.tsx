@@ -135,6 +135,49 @@ export function StudentSubmissionPage({
             </div>
           </Panel>
 
+          <Panel className="submit-questions">
+            <div className="submit-questions-head">
+              <h2>Questions</h2>
+              <span>
+                {assignment.questions.length} question{assignment.questions.length === 1 ? "" : "s"} ·{" "}
+                {assignment.totalMarks} marks
+              </span>
+            </div>
+            {assignment.questions.length === 0 ? (
+              <p className="submit-questions-empty">Your teacher hasn't added any questions to this assignment.</p>
+            ) : (
+              <>
+                <p className="submit-questions-hint">
+                  Label each answer in your PDF with its question number (e.g. "Q1") so it can be matched and graded.
+                </p>
+                <ol className="submit-question-list">
+                  {assignment.questions.map((question, index) => (
+                    <li key={question.id} className="submit-question">
+                      <div className="submit-question-top">
+                        <strong>Q{index + 1}</strong>
+                        <span>
+                          {question.type === "MCQ" ? "Multiple choice · " : ""}
+                          {question.marks} mark{question.marks === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <p className="submit-question-text">{question.prompt}</p>
+                      {question.type === "MCQ" && question.options && question.options.length > 0 && (
+                        <ul className="submit-question-options">
+                          {question.options.map((option, optionIndex) => (
+                            <li key={optionIndex}>
+                              <b>{String.fromCharCode(65 + optionIndex)})</b> {option}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {question.instructions && <p className="submit-question-note">{question.instructions}</p>}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </Panel>
+
           {existing?.late ? (
             <div style={{ marginTop: "14px" }}>
               <IntegrationNotice

@@ -51,6 +51,20 @@ class Settings(BaseSettings):
     # (matches the AI Engine's review_threshold in ai-engine/app/trust/confidence.py).
     REVIEW_TRUST_THRESHOLD: float = Field(default=0.70, ge=0.0, le=1.0)
 
+    # Untaught-but-valid methods (AI answer check). When the AI verifies that a student answered a question
+    # correctly with a method the course did not teach, the backend looks the method up on the web (TinyFish
+    # Search) so the teacher can see it is a recognised technique, and suggests bonus marks for that question.
+    # Only the question text and the method's name are searched for; never the student's answer or identity.
+    # Without a key the check still runs; the teacher just sees no web sources.
+    TINYFISH_API_KEY: SecretStr | None = None
+    TINYFISH_SEARCH_URL: str = "https://api.search.tinyfish.ai"
+    TINYFISH_TIMEOUT_SECONDS: float = 12.0
+    # Suggested bonus = this share of the question's marks (rounded to 0.5), for an answer scoring at least
+    # METHOD_BONUS_MIN_SCORE of the question. Teachers may award up to METHOD_BONUS_MAX_SHARE per question.
+    METHOD_BONUS_SUGGESTED_SHARE: float = Field(default=0.2, ge=0.0, le=1.0)
+    METHOD_BONUS_MIN_SCORE: float = Field(default=0.9, ge=0.0, le=1.0)
+    METHOD_BONUS_MAX_SHARE: float = Field(default=0.5, ge=0.0, le=1.0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore"

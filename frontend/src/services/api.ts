@@ -146,6 +146,40 @@ export interface BackendQuestionGradeSuggestion {
   review_reasons: string[];
   /** How many earlier teacher corrections of this question the AI was given. */
   teacher_corrections_used?: number;
+  /** Set when the student used a method the course did not teach (teacher-only). */
+  alternative_method?: BackendAlternativeMethod | null;
+}
+
+/** A web page (TinyFish Search) describing the student's untaught method. */
+export interface BackendMethodSource {
+  title: string;
+  url: string;
+  snippet: string;
+  site_name?: string | null;
+}
+
+/**
+ * The student answered with a method the course did not teach. `alternative_valid` = the AI checked the
+ * working step by step and found it correct; the web sources only show the method is a recognised one.
+ */
+export interface BackendAlternativeMethod {
+  approach: "alternative_valid" | "alternative_invalid" | "unclear";
+  method_name: string;
+  taught_method: string;
+  explanation: string;
+  sources: BackendMethodSource[];
+  search_status: "found" | "no_results" | "unavailable" | "not_configured" | "not_searched";
+  /** Bonus marks the AI suggests for this question (0 = none). The teacher decides. */
+  suggested_bonus: number;
+  /** Most bonus marks a teacher may award on this question. */
+  max_bonus: number;
+}
+
+/** Extra marks on one question, added on top of the teacher's score when publishing. */
+export interface QuestionBonus {
+  question_number: number;
+  marks: number;
+  reason: string;
 }
 
 /** A teacher's correction of the AI's grading of one question; reused by future AI checks. */
@@ -190,6 +224,8 @@ export interface BackendPublishedGrade {
   score_before_late_penalty?: number | null;
   questions?: BackendPublishedQuestion[];
   solutions_available_at?: string | null;
+  /** Total bonus marks included in final_score (which may then exceed max_score). */
+  bonus_marks?: number | null;
 }
 
 export interface BackendPublishedQuestion {
@@ -202,6 +238,8 @@ export interface BackendPublishedQuestion {
   areas_for_improvement: string[];
   teacher_comment: string | null;
   expected_solution?: string | null;
+  bonus_marks?: number | null;
+  bonus_reason?: string | null;
 }
 
 /** Attach a published grade to a submission so result views can render it. */
@@ -228,8 +266,11 @@ export function withPublishedGrade(submission: Submission, grade: BackendPublish
         areasForImprovement: q.areas_for_improvement ?? [],
         teacherComment: q.teacher_comment,
         expectedSolution: q.expected_solution ?? null,
+        bonusMarks: q.bonus_marks ?? null,
+        bonusReason: q.bonus_reason ?? null,
       })),
       solutionsAvailableAt: grade.solutions_available_at ?? null,
+      bonusMarks: grade.bonus_marks ?? null,
     },
   };
 }
@@ -370,6 +411,7 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
       expectedAnswer: q.expected_answer || "",
       options,
       correctOption,
+      instructions: q.instructions || undefined,
     };
   });
 
@@ -421,7 +463,8 @@ export function toBackendAssignmentCreate(a: {
         type: "subjective" as const,
         text: q.prompt.trim() || "Subjective Question",
         marks: Number(q.marks) || 1,
-        instructions: null,
+        // Kept on edit (it used to be reset to null, wiping instructions the AI generator wrote).
+        instructions: q.instructions?.trim() || null,
         expected_answer: q.expectedAnswer ? q.expectedAnswer.trim() : null,
       };
     }
@@ -805,12 +848,14 @@ export const submissionService = {
     submissionId: string,
     finalScore: number,
     finalFeedback: string,
-    showSolutions = true
+    showSolutions = true,
+    bonuses: QuestionBonus[] = []
   ): Promise<BackendPublishedGrade> {
     const response = await api.post<BackendPublishedGrade>(`/submissions/${submissionId}/grading/publish`, {
       final_score: finalScore,
       final_feedback: finalFeedback,
       show_solutions: showSolutions,
+      bonuses,
     });
     return response.data;
   },

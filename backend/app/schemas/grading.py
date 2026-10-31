@@ -23,6 +23,33 @@ class CourseEvidence(BaseModel):
     content: str
 
 
+class MethodSource(BaseModel):
+    """A web page (TinyFish Search) describing the method the student used."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    site_name: Optional[str] = None
+
+
+class AlternativeMethod(BaseModel):
+    """The student answered with a method the course did not teach (teacher-only review evidence).
+
+    ``valid`` means the AI checked the student's working step by step and found it correct; web
+    sources only show that the method is a recognised technique, they are not proof the answer is
+    right. A bonus is only ever a suggestion: the teacher applies it when publishing.
+    """
+
+    approach: Literal["alternative_valid", "alternative_invalid", "unclear"]
+    method_name: str = ""
+    taught_method: str = ""
+    explanation: str = ""
+    sources: List[MethodSource] = Field(default_factory=list)
+    search_status: Literal["found", "no_results", "unavailable", "not_configured", "not_searched"] = "not_searched"
+    suggested_bonus: float = Field(default=0.0, ge=0, description="Bonus marks the AI suggests for this question")
+    max_bonus: float = Field(default=0.0, ge=0, description="Most bonus marks a teacher may award on this question")
+
+
 class QuestionGradeSuggestion(BaseModel):
     number: int = Field(ge=1, description="1-based question position in the assignment")
     question_text: str
@@ -48,6 +75,9 @@ class QuestionGradeSuggestion(BaseModel):
     evidence: List[CourseEvidence] = Field(default_factory=list)
     teacher_corrections_used: int = Field(
         default=0, description="How many earlier teacher corrections of this question the AI was given"
+    )
+    alternative_method: Optional[AlternativeMethod] = Field(
+        default=None, description="Set when the student used a method the course did not teach"
     )
 
 
@@ -106,14 +136,28 @@ class GradingCorrection(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class QuestionBonusIn(BaseModel):
+    """Extra marks on one question, e.g. a reward for a correct method beyond what the course taught."""
+
+    question_number: int = Field(ge=1)
+    marks: float = Field(gt=0)
+    reason: str = Field(default="", max_length=500, description="Shown to the student next to the bonus")
+
+
 class GradePublishRequest(BaseModel):
     """Teacher's final, reviewed grade. Publishing makes it visible to the student."""
 
-    final_score: float = Field(ge=0, description="Teacher-approved score; may differ from the AI suggestion")
+    final_score: float = Field(
+        ge=0, description="Teacher-approved score out of the assignment's total, before any bonus marks"
+    )
     final_feedback: str = Field(default="", max_length=10_000, description="Feedback shown to the student")
     show_solutions: bool = Field(
         default=True,
         description="Show each question's expected solution to the student once the assignment's due date has passed",
+    )
+    bonuses: List[QuestionBonusIn] = Field(
+        default_factory=list, max_length=50,
+        description="Extra marks per question, added on top of final_score (the total may exceed the maximum)",
     )
 
 
@@ -137,6 +181,8 @@ class PublishedQuestionResult(BaseModel):
     expected_solution: Optional[str] = Field(
         default=None, description="The teacher's expected answer / correct option (once solutions are released)"
     )
+    bonus_marks: Optional[float] = Field(default=None, description="Extra marks the teacher awarded on this question")
+    bonus_reason: Optional[str] = None
 
 
 class PublishedGradeResponse(BaseModel):
@@ -160,6 +206,9 @@ class PublishedGradeResponse(BaseModel):
         default=None, description="Late-submission deduction applied to final_score, if any"
     )
     score_before_late_penalty: Optional[float] = None
+    bonus_marks: Optional[float] = Field(
+        default=None, description="Total extra marks included in final_score (it may then exceed max_score)"
+    )
 
 
 class LateDecisionRequest(BaseModel):

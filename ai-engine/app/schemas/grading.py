@@ -112,6 +112,28 @@ class CriterionEvaluation(BaseSchema):
         return self
 
 
+class MethodApproach(str, Enum):
+    """How the student's method relates to what the course taught for this question."""
+
+    TAUGHT = "taught"  # the method in the answer key / course material
+    ALTERNATIVE_VALID = "alternative_valid"  # a different method, and its working is correct
+    ALTERNATIVE_INVALID = "alternative_invalid"  # a different method, but the working is wrong
+    UNCLEAR = "unclear"  # cannot tell (too little working, unreadable, off-topic)
+
+
+class MethodAssessment(BaseSchema):
+    """Whether the student solved the question with a method the course did not teach.
+
+    A valid untaught method is graded on correctness like any other answer; this record lets the
+    teacher see it, check web sources for the method, and decide on a bonus for that question.
+    """
+
+    approach: MethodApproach = Field(default=MethodApproach.TAUGHT)
+    method_name: str = Field(default="", description="Short name of the student's method, e.g. 'integration by parts'.")
+    taught_method: str = Field(default="", description="The method the answer key / course material expects.")
+    explanation: str = Field(default="", description="Why the student's method is (in)valid, step by step.")
+
+
 class QuestionGrade(BaseSchema):
     """Grading result for an individual question."""
 
@@ -156,6 +178,10 @@ class QuestionGrade(BaseSchema):
     evidence: List[SourceReference] = Field(
         default_factory=list,
         description="Course passages retrieved for this question, with similarity scores, passed to the grader.",
+    )
+    method_assessment: Optional[MethodAssessment] = Field(
+        default=None,
+        description="Set for subjective questions the LLM graded: taught method or a (valid) alternative one.",
     )
 
     @model_validator(mode="after")

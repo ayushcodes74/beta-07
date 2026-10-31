@@ -27,9 +27,19 @@ function QuestionResultRow({
     <div className={`answer-check-question answer-check-${verdict}`}>
       <div className="answer-check-question-top">
         <strong>Question {result.number}</strong>
-        <span>{marks === null ? `${result.maxMarks} marks` : `${marks} / ${result.maxMarks}`}</span>
+        <span>
+          {marks === null ? `${result.maxMarks} marks` : `${marks} / ${result.maxMarks}`}
+          {(result.bonusMarks ?? 0) > 0 && (
+            <b style={{ marginLeft: 6, color: "#2E7D4F" }}>+{result.bonusMarks} bonus</b>
+          )}
+        </span>
       </div>
       {result.questionText && <p className="answer-check-question-text">{result.questionText}</p>}
+      {(result.bonusMarks ?? 0) > 0 && (
+        <p className="result-question-good">
+          <strong>Bonus +{result.bonusMarks}:</strong> {result.bonusReason || "Awarded by your teacher."}
+        </p>
+      )}
       {result.teacherComment ? (
         <p>
           <strong>Teacher's note:</strong> {result.teacherComment}
@@ -248,6 +258,11 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                       ? `${item.grading.suggestedScore} / ${assignment?.totalMarks ?? "—"}`
                       : "No grade record"}
                   </strong>
+                  {(item.grading?.bonusMarks ?? 0) > 0 && (
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#2E7D4F" }}>
+                      includes +{item.grading!.bonusMarks} bonus
+                    </span>
+                  )}
                   {item.grading?.teacherApproved && (
                     <span style={{ fontSize: "10px", color: "#5C6E61", marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                       <ShieldCheck size={14} style={{ color: "#173D2B" }} />

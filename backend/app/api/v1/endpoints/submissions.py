@@ -509,7 +509,7 @@ async def publish_submission_grade(
     try:
         published = await grading.publish_grade(
             teacher, submission_id, body.final_score, body.final_feedback, access_token=token,
-            show_solutions=body.show_solutions,
+            show_solutions=body.show_solutions, bonuses=body.bonuses,
         )
     except Exception as exc:
         _handle_grading_error(exc)
