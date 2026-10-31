@@ -179,7 +179,12 @@ function ApplicationShell() {
         <div className="topbar-actions">
           {searchOpen ? <form className="search-box search-open" onSubmit={(event) => { event.preventDefault(); search(new FormData(event.currentTarget).get("query")?.toString() ?? ""); }}>
             <Search size={15} /><input autoFocus name="query" placeholder="Search courses, assignments..." aria-label="Search courses and assignments" /><button className="icon-button" type="button" onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={14} /></button>
-          </form> : <button className="icon-button search-trigger" aria-label="Search" onClick={() => setSearchOpen(true)}><Search size={17} /></button>}
+          </form> : <>
+            <form className="search-box desktop-search" onSubmit={(event) => { event.preventDefault(); search(new FormData(event.currentTarget).get("query")?.toString() ?? ""); }}>
+              <Search size={15} /><input name="query" placeholder="Search courses, assignments..." aria-label="Search courses and assignments" />
+            </form>
+            <button className="icon-button search-trigger mobile-search-trigger" aria-label="Search" onClick={() => setSearchOpen(true)}><Search size={17} /></button>
+          </>}
           <span className="topbar-divider" />
           <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotificationsOpen((open) => !open)}><span className="notification-dot" /><Bell size={17} /></button>
             {notificationsOpen && <div className="notification-popover glass-panel"><strong>Notifications</strong><p><b>3 submissions need OCR review</b><span>Check handwritten pages before grading.</span></p><p><b>Assignment due tomorrow</b><span>Operating Systems — Assignment 02.</span></p></div>}

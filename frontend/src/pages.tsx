@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch, type DragEvent, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type DragEvent, type FormEvent, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Activity, AlertCircle, ArrowDownToLine, ArrowLeft, ArrowRight, Award, BookOpen, CalendarDays,
@@ -8,14 +8,14 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import { motion } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { authService } from "./services/api";
 import { mockService } from "./services/mock-service";
-import { assignments, courses, leaderboard, publishedResults, rubrics, submissions as mockSubmissions, users } from "./lib/mock-data";
+import { assignments, courses, leaderboard, publishedResults, rubrics, users } from "./lib/mock-data";
 import { formatDate } from "./lib/utils";
 import { useAppState } from "./App";
 import { Avatar, Badge, Button, ConfirmDialog, GlassPanel, Panel, StatusBadge, useToast } from "./components/ui";
@@ -47,25 +47,31 @@ function TrendChart({ height = 190 }: { height?: number }) {
   return <div className="chart-area" style={{ height }}>
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: -20 }}>
-        <defs><linearGradient id="sageWash" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#81927f" stopOpacity={0.17} /><stop offset="95%" stopColor="#81927f" stopOpacity={0} /></linearGradient></defs>
+        <defs><linearGradient id="roseWash" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#b44446" stopOpacity={0.15} /><stop offset="95%" stopColor="#b44446" stopOpacity={0} /></linearGradient></defs>
         <CartesianGrid vertical={false} stroke="#ecebe5" strokeDasharray="3 5" />
         <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: "#96978f", fontSize: 10 }} dy={10} />
         <YAxis domain={[60, 100]} ticks={[60, 70, 80, 90, 100]} axisLine={false} tickLine={false} tick={{ fill: "#96978f", fontSize: 9 }} />
         <Tooltip cursor={{ stroke: "#d7d9d1", strokeDasharray: "3 4" }} contentStyle={{ borderRadius: 9, border: "1px solid #eeede8", boxShadow: "0 6px 20px #20231f12", fontSize: 10 }} formatter={(value) => [`${value} / 100`, "Average mark"]} />
-        <Area type="monotone" dataKey="average" stroke="#34483b" strokeWidth={2.2} fill="url(#sageWash)" activeDot={{ r: 4, fill: "#fff", stroke: "#34483b", strokeWidth: 2 }} />
+        <Area type="monotone" dataKey="average" stroke="#64242f" strokeWidth={2.2} fill="url(#roseWash)" activeDot={{ r: 4, fill: "#fff", stroke: "#64242f", strokeWidth: 2 }} />
       </AreaChart>
     </ResponsiveContainer>
   </div>;
 }
 
-const distribution = [{ name: "A", value: 38, fill: "#435b48" }, { name: "B", value: 61, fill: "#657b66" }, { name: "C", value: 74, fill: "#91a18b" }, { name: "D", value: 51, fill: "#becbb9" }, { name: "F", value: 24, fill: "#e1e6dc" }];
+const distribution = [{ name: "A", value: 38, fill: "#64242f" }, { name: "B", value: 61, fill: "#8e4249" }, { name: "C", value: 74, fill: "#b44446" }, { name: "D", value: 51, fill: "#d68b88" }, { name: "F", value: 24, fill: "#ead4d2" }];
 
 function DistributionChart() {
-  return <div className="distribution-layout"><div className="donut-wrap"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={distribution} dataKey="value" nameKey="name" innerRadius="69%" outerRadius="92%" paddingAngle={3} stroke="none">{distribution.map((item) => <Cell key={item.name} fill={item.fill} />)}</Pie><Tooltip contentStyle={{ borderRadius: 9, border: "1px solid #eeede8", fontSize: 10 }} /></PieChart></ResponsiveContainer><div className="donut-center"><strong>248</strong><span>students</span></div></div><div className="distribution-legend">{distribution.map((item) => <div className="distribution-row" key={item.name}><span className="legend-key" style={{ background: item.fill }} /><span>{item.name}</span><strong>{item.value}</strong></div>)}</div></div>;
+  return <div className="distribution-bars"><ResponsiveContainer width="100%" height="100%"><BarChart data={distribution} margin={{ top: 10, right: 4, bottom: 0, left: -20 }} barCategoryGap="28%">
+    <CartesianGrid vertical={false} stroke="#eee9e7" strokeDasharray="3 5" />
+    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#969091", fontSize: 10 }} dy={8} />
+    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#969091", fontSize: 9 }} />
+    <Tooltip cursor={{ fill: "#f8f2f1" }} contentStyle={{ borderRadius: 9, border: "1px solid #eee8e7", boxShadow: "0 6px 20px #29252512", fontSize: 10 }} formatter={(value) => [`${value} students`, "Grade"]} />
+    <Bar dataKey="value" radius={[4, 4, 0, 0]}>{distribution.map((item) => <Cell key={item.name} fill={item.fill} />)}</Bar>
+  </BarChart></ResponsiveContainer></div>;
 }
 
 function StatCard({ title, value, note, change, icon: Icon, featured = false, alert = false }: { title: string; value: string; note: string; change: string; icon: typeof Users; featured?: boolean; alert?: boolean }) {
-  return <Panel className={`stat-card ${featured ? "stat-feature" : ""} ${alert ? "stat-alert" : ""}`}><div className="stat-top"><span>{title}</span><span className="stat-icon"><Icon size={16} /></span></div><div className="stat-value-row"><strong>{value}</strong><span className="stat-change">{change}</span></div><div className="stat-foot">{note}</div><svg className="stat-spark" viewBox="0 0 84 30" aria-hidden="true"><polyline points="0,23 12,19 24,20 36,12 48,15 60,7 72,10 84,3" fill="none" stroke="#82927d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></Panel>;
+  return <Panel className={`stat-card ${featured ? "stat-feature" : ""} ${alert ? "stat-alert" : ""}`}><div className="stat-top"><span>{title}</span><span className="stat-icon"><Icon size={16} /></span></div><div className="stat-value-row"><strong>{value}</strong><span className="stat-change">{change}</span></div><div className="stat-foot">{note}</div><svg className="stat-spark" viewBox="0 0 84 30" aria-hidden="true"><polyline points="0,23 12,19 24,20 36,12 48,15 60,7 72,10 84,3" fill="none" stroke="#b44446" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></Panel>;
 }
 
 function RecentSubmissions({ rows }: { rows: Submission[] }) {
@@ -86,33 +92,33 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 
 function TeacherOverview() {
   const navigate = useNavigate();
+  const { submissions } = useAppState();
+  const recentSubmissions = [...submissions].sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt)).slice(0, 4);
   return <>
-    <div className="welcome-row"><div><div className="eyebrow">SATURDAY, OCTOBER 31, 2026</div><h1>Good morning, Alex.</h1><p className="page-subtitle">Your classroom, intelligently organized.</p><div className="welcome-context"><span>12 assignments</span><i /><span>248 students</span><i /><span>18 pending reviews</span></div></div><Button onClick={() => navigate("/app/assignment/new")}><Plus size={16} />Create assignment</Button></div>
-    <div className="stat-grid">{[
+    <div className="welcome-row"><div><div className="eyebrow">SATURDAY, OCTOBER 31, 2026 <span className="eyebrow-separator">·</span> DEMO DATA</div><h1>Good morning, Alex.</h1><p className="page-subtitle">Your classroom, intelligently organized.</p><div className="welcome-context"><span>12 assignments</span><i /><span>248 students</span><i /><span>18 pending reviews</span></div></div><Button onClick={() => navigate("/app/assignment/new")}><Plus size={16} />Create assignment</Button></div>
+    <div className="stat-grid dashboard-stats">{[
       { title: "Active courses", value: "8", note: "Across 3 departments", change: "+2 this term", icon: BookOpen, featured: true },
-      { title: "Students", value: "248", note: "Across all courses", change: "+12 this month", icon: Users },
       { title: "Pending reviews", value: "18", note: "6 need your attention", change: "3 due today", icon: Clock3, alert: true },
-      { title: "Published assignments", value: "24", note: "Feedback shared", change: "+4 this month", icon: CheckCircle2 },
+      { title: "Enrolled students", value: "248", note: "Across all courses", change: "+12 this month", icon: Users },
+      { title: "Class performance", value: "84.6", note: "Average across active courses", change: "+3.2% this term", icon: Activity },
     ].map((item) => <StatCard key={item.title} {...item} />)}</div>
     <div className="dashboard-grid">
-      <Panel className="grading-feature"><div className="feature-top"><div className="feature-title"><span className="feature-symbol"><Sparkles size={16} /></span><span><strong>AI Grading Activity</strong><small>A little help with the heavy lifting.</small></span></div><Badge tone="sage"><i className="live-dot" />In progress</Badge></div>
+      <Panel className="grading-feature"><div className="feature-top"><div className="feature-title"><span className="feature-symbol"><Sparkles size={16} /></span><span><strong>AI Grading Velocity</strong><small>Review progress across your active assignment.</small></span></div><Badge tone="sage"><i className="live-dot" />In progress</Badge></div>
         <h2 className="feature-assignment">Data Structures — Assignment 03</h2><p className="feature-course">CS 204 <i /> Due Oct 31, 11:59 PM</p>
         <div className="progress-row"><span><strong>72 / 96</strong> submissions reviewed</span><span>75%</span></div><div className="progress-track"><span style={{ width: "75%" }} /></div>
         <div className="feature-bottom"><AvatarStack ids={["student-maya", "student-ethan", "student-sofia", "student-noah"]} /><div className="feature-meta"><span><CheckCircle2 size={13} />Avg. confidence 91%</span><span><Clock3 size={13} />24 awaiting review</span></div><Button variant="secondary" size="sm" onClick={() => navigate("/app/grading/sub-maya-ds")}>Continue review<ArrowRight size={14} /></Button></div>
         <span className="feature-watermark"><ShieldCheck size={138} strokeWidth={0.55} /></span>
       </Panel>
-      <div className="side-stack"><Panel className="mini-card"><div className="mini-head"><span>Class performance</span><Activity size={15} /></div><strong className="mini-number">84.6 <small>/ 100</small></strong><p>Average across active courses</p><div className="mini-meter"><span style={{ width: "84.6%" }} /></div><span className="mini-foot">↑ 3.2% this term</span></Panel>
-        <Panel className="mini-card"><div className="mini-head"><span>Students to check in with</span><Users size={15} /></div><strong className="mini-number">6</strong><p>May benefit from a little support</p><AvatarStack ids={["student-maya", "student-ethan", "student-sofia"]} /></Panel></div>
+      <Panel className="deadline-card dashboard-deadlines"><SectionTitle title="Upcoming deadlines" subtitle="A clear view of what’s next" action={<button className="text-button" onClick={() => navigate("/app/assignments")}>View all<ArrowRight size={13} /></button>} /><div className="timeline">
+        {[
+          ["Operating Systems — Assignment 02", "CS 301 · 31 submissions", "Tomorrow, 11:59 PM", true],
+          ["Database Systems — Project 01", "CS 220 · 38 submissions", "Nov 03, 11:59 PM", false],
+          ["Data Structures — Quiz 04", "CS 204 · 42 submissions", "Nov 05, 9:00 AM", false],
+        ].map(([title, detail, due, urgent]) => <div className={`timeline-item ${urgent ? "urgent" : ""}`} key={title.toString()}><strong>{title}</strong><div><span>{detail}</span><b>{due}</b></div></div>)}
+      </div></Panel>
     </div>
     <div className="analytics-grid"><Panel className="chart-card"><SectionTitle title="Performance trend" subtitle="Average marks across all courses" action={<select className="filter-select"><option>Last 8 weeks</option><option>This term</option></select>} /><div className="chart-total">84.6 <span>↑ 3.2% this term</span></div><TrendChart /></Panel><Panel className="chart-card"><SectionTitle title="Grade distribution" subtitle="248 students · all active courses" action={demoLabel} /><DistributionChart /></Panel></div>
-    <div className="lower-grid"><Panel className="deadline-card"><SectionTitle title="Upcoming deadlines" subtitle="A clear view of what’s next" action={<button className="text-button" onClick={() => navigate("/app/assignments")}>View all<ArrowRight size={13} /></button>} /><div className="timeline">
-      {[
-        ["Operating Systems — Assignment 02", "CS 301 · 31 submissions", "Tomorrow, 11:59 PM", true],
-        ["Database Systems — Project 01", "CS 220 · 38 submissions", "Nov 03, 11:59 PM", false],
-        ["Data Structures — Quiz 04", "CS 204 · 42 submissions", "Nov 05, 9:00 AM", false],
-      ].map(([title, detail, due, urgent]) => <div className={`timeline-item ${urgent ? "urgent" : ""}`} key={title.toString()}><strong>{title}</strong><div><span>{detail}</span><b>{due}</b></div></div>)}
-    </div></Panel>
-    <Panel className="recent-card"><SectionTitle title="Recent submissions" subtitle="Your latest classroom activity" action={<button className="text-button" onClick={() => navigate("/app/submissions")}>View all<ArrowRight size={13} /></button>} /><RecentSubmissions rows={mockSubmissions.slice(0, 3)} /></Panel></div>
+    <Panel className="recent-card dashboard-recent"><SectionTitle title="Recent submissions" subtitle="Your latest classroom activity" action={<button className="text-button" onClick={() => navigate("/app/submissions")}>View all<ArrowRight size={13} /></button>} /><RecentSubmissions rows={recentSubmissions} /></Panel>
   </>;
 }
 
@@ -365,35 +371,91 @@ export function GradingReviewPage({ submissions: rows, setSubmissions }: { submi
   const submission = rows.find((item) => item.id === submissionId) ?? rows[0];
   const student = submission && people.find((item) => item.id === submission.studentId);
   const assignment = submission && assignmentList.find((item) => item.id === submission.assignmentId);
-  const [scores, setScores] = useState([3, 2, 1.5, 1]);
+  const initialRubric = submission?.grading?.rubric.length ? submission.grading.rubric : rubrics.find((item) => item.id === assignment?.rubricId)?.criteria ?? rubrics[0].criteria;
+  const [scores, setScores] = useState(() => initialRubric.map((item) => submission?.grading ? item.score : 0));
   const [feedback, setFeedback] = useState(submission?.grading?.feedback.comment ?? "");
   const [question, setQuestion] = useState(0);
+  const [flagged, setFlagged] = useState(false);
+  useEffect(() => {
+    if (!submission) return;
+    const currentRubric = submission.grading?.rubric.length
+      ? submission.grading.rubric
+      : rubrics.find((item) => item.id === assignment?.rubricId)?.criteria ?? rubrics[0].criteria;
+    setScores(currentRubric.map((item) => submission.grading ? item.score : 0));
+    setFeedback(submission.grading?.feedback.comment ?? "");
+    setQuestion(0);
+    setFlagged(false);
+  }, [submission?.id]);
   if (!submission || !student || !assignment) return <NotFoundPage />;
+  const rubric = submission.grading?.rubric.length ? submission.grading.rubric : rubrics.find((item) => item.id === assignment.rubricId)?.criteria ?? rubrics[0].criteria;
+  const rubricMaximum = rubric.reduce((sum, item) => sum + item.maximum, 0);
   const total = scores.reduce((sum, value) => sum + value, 0);
+  const finalScore = rubricMaximum ? Math.round((total / rubricMaximum) * assignment.totalMarks * 10) / 10 : 0;
+  const confidence = submission.grading?.confidence ?? 0;
+  const hasSuggestion = Boolean(submission.grading && confidence > 0);
   const questionCount = assignment.questions.length;
-  const maximum = 10;
 
+  const updateGrade = (teacherApproved: boolean) => {
+    const savedRubric = rubric.map((criterion, index) => ({ ...criterion, score: scores[index] ?? criterion.score }));
+    setSubmissions((current) => current.map((item) => item.id === submission.id ? {
+      ...item,
+      ...(teacherApproved ? { state: "Published" as const } : item.state === "Published" ? { state: "Under Review" as const } : {}),
+      grading: {
+        ...(item.grading ?? {
+          suggestedScore: teacherApproved ? finalScore : 0,
+          confidence,
+          reasoning: "",
+          rubric: [],
+          feedback: { id: crypto.randomUUID(), comment: feedback, deductions: [], courseReferences: [] },
+          teacherApproved: false,
+        }),
+        suggestedScore: teacherApproved ? finalScore : item.grading?.suggestedScore ?? 0,
+        teacherScore: finalScore,
+        rubric: savedRubric,
+        teacherApproved,
+        feedback: { ...(item.grading?.feedback ?? { id: crypto.randomUUID(), deductions: [], courseReferences: [] }), comment: feedback },
+      },
+    } : item));
+  };
+  const saveDraft = () => {
+    updateGrade(false);
+    toast("Draft saved to this demo session.");
+  };
   const approve = () => {
-    setSubmissions((current) => current.map((item) => item.id === submission.id ? { ...item, state: "Published", grading: { ...(item.grading ?? { suggestedScore: total, confidence: 0.91, reasoning: "", rubric: rubrics[0].criteria, feedback: { id: crypto.randomUUID(), comment: feedback, deductions: [], courseReferences: ["Lecture 04 — Trees", "Course Notes — Binary Search Trees"] }, teacherApproved: true }), suggestedScore: total, teacherApproved: true, feedback: { ...(item.grading?.feedback ?? { id: crypto.randomUUID(), deductions: [], courseReferences: [] }), comment: feedback } } } : item));
-    toast("Grade approved and feedback published in the demo.");
+    updateGrade(true);
+    toast("Grade approved and feedback published in this demo session.");
     navigate("/app/submissions");
   };
   const selectQuestion = (next: number) => setQuestion(Math.max(0, Math.min(questionCount - 1, next)));
 
-  return <><PageHeader title="AI grading review" subtitle="A second set of eyes. The final grade is always your call." action={<div className="review-pagination"><button className="icon-button" aria-label="Previous question" onClick={() => selectQuestion(question - 1)}><ChevronLeft size={15} /></button><span>Question {question + 1} of {questionCount}</span><button className="icon-button" aria-label="Next question" onClick={() => selectQuestion(question + 1)}><ChevronRight size={15} /></button></div>} />
+  return <><PageHeader title="AI grading review" subtitle="A second set of eyes. The final grade is always your call." action={<div className="review-heading-controls"><Button size="sm" variant="secondary" aria-pressed={flagged} onClick={() => { setFlagged((current) => !current); toast(flagged ? "Review flag removed." : "Review flagged for follow-up in this demo."); }}><AlertCircle size={13} />{flagged ? "Flagged" : "Flag"}</Button><div className="review-pagination"><button className="icon-button" aria-label="Previous question" onClick={() => selectQuestion(question - 1)}><ChevronLeft size={15} /></button><span>Question {question + 1} of {questionCount}</span><button className="icon-button" aria-label="Next question" onClick={() => selectQuestion(question + 1)}><ChevronRight size={15} /></button></div></div>} />
     <div className="review-breadcrumb"><span>{courses.find((item) => item.id === assignment.courseId)?.name}</span><ChevronRight size={12} /><span>{assignment.title}</span><ChevronRight size={12} /><strong>{student.name}</strong>{submission.state === "Late Submission" && <StatusBadge status="Late · decision needed" />}</div>
-    <div className="review-workspace"><div className="review-left"><Panel className="review-panel document-panel"><div className="review-panel-head"><span className="submission-person"><Avatar name={student.name} initials={student.initials} /><span><strong>{student.name}</strong><small>{formatDate(submission.submittedAt)} · {submission.state === "Late Submission" ? "Late · decision needed" : "On time"} · {submission.fileName}</small></span></span><Button variant="secondary" size="sm" onClick={() => toast("PDF preview is represented with sample text in this demo.", "info")}><ArrowDownToLine size={13} />Original PDF</Button></div>
-      <div className="document-frame"><div className="document-meta"><span>{submission.fileName ?? "submission.pdf"}</span><span>Page 1 of 4</span></div><div className="paper-preview"><div className="paper-university">TRUSTGRADE · STUDENT SUBMISSION</div><h3>{assignment.questions[question]?.prompt}</h3><div className="ocr-caption">EXTRACTED TEXT · <span>{submission.ocr.state}</span></div><p>{question === 0 ? <>{submission.answer.slice(0, 168)} <mark>rotation</mark> {submission.answer.slice(168)}</> : submission.ocr.extractedText}</p><p className="paper-placeholder">[Handwritten diagram detected in original PDF]</p></div></div>
-      <div className="document-footer"><div className="page-thumbnails"><button className="page-thumb active">01</button><button className="page-thumb">02</button><button className="page-thumb">03</button><button className="page-thumb">04</button></div><div className="question-tabs">{assignment.questions.map((item, index) => <button key={item.id} className={question === index ? "question-tab active" : "question-tab"} onClick={() => selectQuestion(index)}>Q{index + 1}<small>{item.marks} pts</small></button>)}</div></div>
-    </Panel>
-    <Panel className="ocr-extract-panel"><div className="review-panel-head"><span><strong>OCR transcription</strong><small>Source text is a reading aid. Check the original when uncertain.</small></span><StatusBadge status={submission.ocr.state} /></div><div className="ocr-text">{submission.ocr.extractedText}</div><div className="ocr-confidence"><span>OCR confidence</span><strong>{Math.round(submission.ocr.confidence * 100)}%</strong><span className="confidence-track"><i style={{ width: `${submission.ocr.confidence * 100}%` }} /></span></div>{submission.ocr.warnings.map((warning) => <div className="ocr-warning" key={warning}><AlertCircle size={14} />{warning}</div>)}</Panel>
+    <div className="review-summary">
+      <Panel className="review-fact"><span>STUDENT</span><strong>{student.name}</strong><small>Submitted {formatDate(submission.submittedAt)} · {submission.state === "Late Submission" ? "Late" : "On time"}</small></Panel>
+      <Panel className="review-fact"><span>OCR REVIEW</span><strong><StatusBadge status={submission.ocr.state} /></strong><small>Sample confidence · {Math.round(submission.ocr.confidence * 100)}%</small></Panel>
+      <Panel className="review-fact"><span>ASSIGNMENT</span><strong>{assignment.totalMarks} points</strong><small>{questionCount} questions · {courses.find((item) => item.id === assignment.courseId)?.code}</small></Panel>
     </div>
-    <aside className="review-right"><Panel className="ai-analysis-panel"><div className="ai-analysis-head"><span className="feature-symbol"><Sparkles size={15} /></span><div><strong>AI suggested grade</strong><small>Based on selected rubric and available evidence</small></div></div><div className="ai-vs-teacher"><ShieldCheck size={15} /><span>AI suggestion <b>≠</b> final grade</span><span>Teacher decides</span></div><div className="suggested-score"><span>Suggested score</span><strong>7.5 <small>/ 10</small></strong><Badge tone="sage">High confidence · 91%</Badge></div><div className="confidence-track confidence-large"><i style={{ width: "91%" }} /></div>
+    <div className="review-workspace"><div className="review-left">
+      <Panel className="review-panel document-panel">
+        <div className="review-panel-head"><span className="submission-person"><Avatar name={student.name} initials={student.initials} /><span><strong>{student.name}</strong><small>{assignment.title} · Submitted {formatDate(submission.submittedAt)}</small></span></span><Badge tone="rose">DEMO SUBMISSION</Badge></div>
+        <div className="submission-document">
+          <div className="document-meta"><span><FileText size={13} />{submission.fileName ?? "Submission file unavailable"}</span><span>Text preview · Original PDF unavailable</span></div>
+          <div className="question-tabs">{assignment.questions.map((item, index) => <button key={item.id} className={question === index ? "question-tab active" : "question-tab"} onClick={() => selectQuestion(index)}>Question {index + 1}<small>{item.marks} points</small></button>)}</div>
+          <div className="question-prompt"><span>QUESTION {question + 1} · {assignment.questions[question]?.marks} POINTS</span><h2>{assignment.questions[question]?.prompt}</h2></div>
+          <div className="student-answer"><div className="answer-heading"><strong>Student response</strong><Badge tone="neutral">Sample text</Badge></div><p>{question === 0 ? submission.answer : submission.ocr.extractedText}</p></div>
+          {submission.ocr.expressions.length > 0 && <div className="answer-expression"><span>DETECTED EXPRESSION · SAMPLE</span><code>{submission.ocr.expressions.join(" · ")}</code></div>}
+          <p className="paper-placeholder">This demo displays sample text only. Original PDF pages and handwritten work are not available.</p>
+        </div>
+      </Panel>
+      <Panel className="ocr-extract-panel"><div className="review-panel-head"><span><strong>OCR transcription</strong><small>Sample extraction · compare against the original when available.</small></span><StatusBadge status={submission.ocr.state} /></div><div className="ocr-text">{submission.ocr.extractedText}</div><div className="ocr-confidence"><span>Sample OCR confidence</span><strong>{Math.round(submission.ocr.confidence * 100)}%</strong><span className="confidence-track"><i style={{ width: `${submission.ocr.confidence * 100}%` }} /></span></div>{submission.ocr.warnings.map((warning) => <div className="ocr-warning" key={warning}><AlertCircle size={14} />{warning}</div>)}</Panel>
+    </div>
+    <aside className="review-right"><Panel className="ai-analysis-panel"><div className="ai-analysis-head"><span className="feature-symbol"><Sparkles size={15} /></span><div><strong>AI suggested grade</strong><small>Sample suggestion · review before use</small></div></div><div className="ai-vs-teacher"><ShieldCheck size={15} /><span>AI suggestion <b>≠</b> final grade</span><span>Teacher decides</span></div><div className="suggested-score"><span>Suggested score</span><strong>{hasSuggestion ? `${submission.grading?.suggestedScore.toFixed(1)} / ${assignment.totalMarks}` : "Unavailable"}</strong>{hasSuggestion && <Badge tone="sage">Sample · {Math.round(confidence * 100)}% confidence</Badge>}</div>{hasSuggestion && <div className="confidence-track confidence-large"><i style={{ width: `${confidence * 100}%` }} /></div>}
       <div className="rubric-heading">RUBRIC BREAKDOWN <button className="text-button" onClick={() => toast("Rubric criteria can be edited in assignment settings.", "info")}>Edit rubric</button></div>
-      {[["Concept accuracy", "Core concepts are correct.", 4], ["Method", "Method is sound; example lacks detail.", 3], ["Explanation", "Reasoning is clear and supported.", 2], ["Presentation", "Terminology and organization.", 1]].map(([label, detail, max], index) => <div className="rubric-row" key={label.toString()}><span><strong>{label}</strong><small>{detail}</small></span><input aria-label={`${label} score`} type="number" min="0" max={Number(max)} step="0.5" value={scores[index]} onChange={(event) => setScores((current) => current.map((score, item) => item === index ? Number(event.target.value) : score))} /><span className="rubric-max">/ {max}</span></div>)}
-      <div className="grade-total"><span>Teacher-edited total</span><strong>{total.toFixed(1)} <small>/ {maximum}</small></strong></div></Panel>
-      <Panel className="reasoning-panel"><SectionTitle title="Why this was suggested" subtitle="Reasoning is reviewable—not a final decision." /><p>{submission.grading?.reasoning ?? "Course-grounded grading suggestions are unavailable for this submission. Review the rubric and evidence manually."}</p><div className="evidence-heading">COURSE EVIDENCE</div>{["Lecture 04 — Trees", "Course Notes — Binary Search Trees"].map((reference) => <button className="evidence-link" key={reference} onClick={() => toast("Course evidence preview is sample data.", "info")}><FileText size={13} />{reference}<ChevronRight size={13} /></button>)}<p className="evidence-caveat">Evidence is sample prototype content. If course references are unavailable, verify the answer manually.</p></Panel>
-      <Panel className="feedback-panel"><SectionTitle title="Feedback for student" subtitle="Editable before publication." /><textarea className="field-textarea feedback-edit" value={feedback} onChange={(event) => setFeedback(event.target.value)} /><div className="review-actions"><Button variant="secondary" onClick={() => toast("Submission remains in your review queue.", "info")}>Return for review</Button><Button onClick={approve}><Check size={14} />Approve &amp; publish</Button></div><small className="approval-note">Only approved feedback is visible to the student.</small></Panel>
+      {rubric.map((criterion, index) => <div className="rubric-row" key={criterion.id}><span><strong>{criterion.name}</strong><small>{criterion.description}</small></span><input aria-label={`${criterion.name} score`} type="number" min="0" max={criterion.maximum} step="0.5" value={scores[index] ?? criterion.score} onChange={(event) => setScores((current) => current.map((score, item) => item === index ? Math.min(criterion.maximum, Math.max(0, Number(event.target.value))) : score))} /><span className="rubric-max">/ {criterion.maximum}</span></div>)}
+      <div className="grade-total"><span>Teacher-edited total</span><strong>{total.toFixed(1)} <small>/ {rubricMaximum}</small></strong></div><div className="grade-conversion">Final score on assignment scale: <strong>{finalScore.toFixed(1)} / {assignment.totalMarks}</strong></div></Panel>
+      <Panel className="reasoning-panel"><SectionTitle title="Grading rationale" subtitle="Review the explanation; it is not a final decision." /><p>{submission.grading?.reasoning ?? "A grading suggestion is unavailable. Review the rubric and evidence manually."}</p></Panel>
+      <Panel className="materials-evidence-panel"><SectionTitle title="Course materials" subtitle="Sample references associated with this review." action={<Badge tone="rose">DEMO DATA</Badge>} /><div className="evidence-list">{(submission.grading?.feedback.courseReferences.length ? submission.grading.feedback.courseReferences : ["No course references available"]).map((reference) => <button className="evidence-link" key={reference} onClick={() => toast("Course material preview is not connected in this demo.", "info")}><FileText size={15} /><span><strong>{reference}</strong><small>Course reference · preview unavailable</small></span><ChevronRight size={14} /></button>)}</div><p className="evidence-caveat">Verify sample references against course materials before relying on them.</p></Panel>
+      <Panel className="feedback-panel"><SectionTitle title="Teacher decision & sign-off" subtitle="Adjust the rubric and feedback before publishing." /><label className="feedback-label" htmlFor="student-feedback">Feedback for student</label><textarea id="student-feedback" className="field-textarea feedback-edit" value={feedback} onChange={(event) => setFeedback(event.target.value)} /><div className="decision-summary"><span><ShieldCheck size={15} />Final teacher score</span><strong>{finalScore.toFixed(1)} <small>/ {assignment.totalMarks}</small></strong></div><div className="review-actions"><Button variant="secondary" onClick={saveDraft}>Save draft</Button><Button onClick={approve}><Check size={14} />Approve &amp; publish</Button></div><small className="approval-note">Only approved feedback is visible to the student. Demo changes are not saved to a server.</small></Panel>
     </aside></div>
   </>;
 }
@@ -413,7 +475,7 @@ export function OCRReviewPage({ submissions: rows, setSubmissions }: { submissio
   };
   return <><PageHeader title="OCR review" subtitle="Verify uncertain text before it reaches the grading workflow." action={<Button variant="secondary" onClick={() => toast("OCR retry is simulated in this demo.", "info")}><Activity size={14} />Retry OCR</Button>} />
     <div className="late-note"><AlertCircle size={15} /><span>OCR is a reading aid, not a source of truth. OCR failure does not equal zero marks. Confirm the original student submission whenever text is uncertain.</span></div>
-    <div className="ocr-workspace"><Panel className="review-panel"><div className="submission-person"><Avatar name={person.name} initials={person.initials} /><span><strong>{person.name}</strong><small>{assignment.title} · Submitted {formatDate(submission.submittedAt)}</small></span></div><div className="document-frame ocr-document"><div className="document-meta"><span>{submission.fileName}</span><span>Page 2 of 4</span></div><div className="paper-preview"><div className="paper-university">ORIGINAL DOCUMENT · PAGE IMAGE PLACEHOLDER</div><h3>Question response</h3><p>{submission.answer}</p><div className="math-detected"><span>DETECTED MATHEMATICAL EXPRESSION</span><code>{submission.ocr.expressions.join(" · ") || "No expressions detected"}</code></div></div></div></Panel>
+    <div className="ocr-workspace"><Panel className="review-panel"><div className="submission-person"><Avatar name={person.name} initials={person.initials} /><span><strong>{person.name}</strong><small>{assignment.title} · Submitted {formatDate(submission.submittedAt)} · Demo data</small></span></div><div className="document-frame ocr-document"><div className="document-meta"><span>{submission.fileName ?? "Submission file unavailable"}</span><span>Text-only sample · PDF unavailable</span></div><div className="paper-preview"><div className="paper-university">DEMO DATA · TEXT-ONLY SUBMISSION PREVIEW</div><h3>Question response</h3><p>{submission.answer}</p><div className="math-detected"><span>SAMPLE MATHEMATICAL EXPRESSION</span><code>{submission.ocr.expressions.join(" · ") || "No expressions detected"}</code></div></div></div></Panel>
       <Panel className="review-panel"><div className="review-panel-head"><span><strong>Extracted text</strong><small>Correct transcription errors before verification.</small></span><StatusBadge status={submission.ocr.state} /></div><div className="confidence-summary"><span>OCR confidence</span><strong>{Math.round(submission.ocr.confidence * 100)}%</strong><span className="confidence-track"><i style={{ width: `${submission.ocr.confidence * 100}%` }} /></span></div><textarea className="field-textarea ocr-edit" value={text} onChange={(event) => setText(event.target.value)} aria-label="Correct OCR text" />{submission.ocr.warnings.map((warning) => <div className="ocr-warning" key={warning}><AlertCircle size={14} />{warning}</div>)}<div className="ocr-actions"><Button variant="secondary" onClick={() => setText(submission.ocr.extractedText)}>Reset correction</Button><Button onClick={verify}><Check size={14} />Verify transcription</Button></div></Panel></div>
   </>;
 }
@@ -621,7 +683,7 @@ export function LandingPage() {
               <span className="eyebrow">SATURDAY, OCTOBER 31, 2026</span><strong className="product-greeting">Good morning, Alex.</strong>
               <div className="product-stat-row"><span><small>ACTIVE COURSES</small><b>8</b></span><span><small>STUDENTS</small><b>248</b></span><span><small>TO REVIEW</small><b>18</b></span></div>
               <div className="product-grade-card"><span className="feature-symbol"><Sparkles size={12} /></span><span><small>AI GRADING ACTIVITY</small><b>Data Structures — Assignment 03</b><span className="product-progress"><i /></span><small>72 / 96 submissions reviewed</small></span><Badge tone="sage">In progress</Badge></div>
-              <div className="product-chart-row"><span className="product-chart"><small>PERFORMANCE TREND</small><svg viewBox="0 0 180 48"><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6" fill="none" stroke="#34483b" strokeWidth="2" /><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6L178 48H2Z" fill="#81927f" fillOpacity=".08" /></svg></span><span className="product-confidence"><CheckCircle2 size={15} /><span><small>TEACHER IN CONTROL</small><b>Every grade reviewed</b></span></span></div>
+              <div className="product-chart-row"><span className="product-chart"><small>PERFORMANCE TREND</small><svg viewBox="0 0 180 48"><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6" fill="none" stroke="#64242f" strokeWidth="2" /><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6L178 48H2Z" fill="#b44446" fillOpacity=".08" /></svg></span><span className="product-confidence"><CheckCircle2 size={15} /><span><small>TEACHER IN CONTROL</small><b>Every grade reviewed</b></span></span></div>
             </div>
           </div>
         </div>
