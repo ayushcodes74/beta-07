@@ -236,6 +236,8 @@ def setup_app(verifier, profiles, assignment_repo, submission_repo):
         test_app.dependency_overrides[get_profile_repository] = lambda: profiles
         test_app.dependency_overrides[get_assignment_repository] = lambda: assignment_repo
         test_app.dependency_overrides[get_submission_repository] = lambda: submission_repo
+        # No real grading_results lookup in tests (tests that need it override this again).
+        test_app.dependency_overrides[submissions.get_grading_status_repository] = lambda: None
 
         if custom_ocr_client:
             test_app.dependency_overrides[get_ocr_client] = lambda: custom_ocr_client
@@ -819,6 +821,48 @@ def test_submission_listing_is_scoped_for_students_and_assignment_owners(
     assert {item["submission_id"] for item in teacher_response.json()} == {str(own.id), str(peer.id)}
     assert {item["submission_id"] for item in student_a_response.json()} == {str(own.id), str(unrelated.id)}
     assert {item["submission_id"] for item in student_b_response.json()} == {str(peer.id)}
+
+
+def test_submission_listing_includes_grading_status_for_teachers_only(
+    setup_app, assignment_repo, submission_repo, make_user
+):
+    """AI-checked work keeps its OCR submission status until publish; the list exposes the grade's
+    status so the teacher dashboard can count 'needs approval' (class analytics, Graded filter)."""
+    from types import SimpleNamespace
+
+    from app.api.v1.endpoints.submissions import get_grading_status_repository
+
+    teacher_id, teacher_auth = make_user("teacher")
+    student_id, student_auth = make_user("student")
+    assignment = assignment_repo.add(teacher_id)
+    checked = submission_repo.create(
+        uuid4(), assignment.id, student_id, "a.pdf", "job-a", "ocr_completed", access_token="test"
+    )
+    fresh = submission_repo.create(
+        uuid4(), assignment.id, student_id, "b.pdf", "job-b", "ocr_completed", access_token="test"
+    )
+
+    class GradingRepo:
+        def __init__(self):
+            self.calls = 0
+
+        def list_by_submission_ids(self, ids, *, access_token):
+            self.calls += 1
+            return [SimpleNamespace(submission_id=checked.id, status="pending_review")] if checked.id in ids else []
+
+    repo = GradingRepo()
+    client = setup_app()
+    client.app.dependency_overrides[get_grading_status_repository] = lambda: repo
+
+    teacher = {i["submission_id"]: i for i in client.get("/api/v1/submissions", headers=teacher_auth).json()}
+    assert teacher[str(checked.id)]["grading_status"] == "pending_review"
+    assert teacher[str(fresh.id)]["grading_status"] is None
+    assert teacher[str(checked.id)]["status"] == "ocr_completed"
+
+    calls_before = repo.calls
+    student = client.get("/api/v1/submissions", headers=student_auth).json()
+    assert all(item["grading_status"] is None for item in student)
+    assert repo.calls == calls_before  # students never trigger the grading lookup
 
 
 # --------------------------------------------------------------------------

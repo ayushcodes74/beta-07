@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, MessageSquareWarning, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Button, Panel, useToast } from "../../components/ui";
+import { FormattedText } from "../../components/common/FormattedText";
 import { formatDate } from "../../lib/utils";
 import { useStudentNames } from "../../lib/useStudentNames";
 import { extractErrorMessage, reviewService, type ReviewRequest } from "../../services/api";
 import type { QuestionResult, Submission } from "../../types/models";
+import { MyProgressChart } from "./MyProgressChart";
 
 const MIN_REASON = 10;
 
@@ -196,6 +198,7 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
       </div>
 
       <div className="published-results" style={{ display: "grid", gap: "16px" }}>
+        {student && <MyProgressChart submissions={rows} />}
         {approved.length > 0 ? (
           approved.map((item) => {
             const assignment = assignmentList.find((a) => a.id === item.assignmentId);
@@ -265,7 +268,7 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                     <strong style={{ display: "block", marginBottom: "4px", fontSize: "11px" }}>
                       Instructor Comments:
                     </strong>
-                    <p
+                    <div
                       style={{
                         margin: 0,
                         padding: "10px 14px",
@@ -277,14 +280,20 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                         color: "#202820",
                       }}
                     >
-                      {item.grading.reasoning}
-                    </p>
+                      <FormattedText text={item.grading.reasoning} />
+                    </div>
                   </div>
                 )}
 
                 {(item.grading?.questionResults?.length ?? 0) > 0 && (
                   <div className="result-questions">
                     <strong className="result-questions-title">How each question was marked</strong>
+                    {item.grading!.questionResults!.every((result) => result.awardedMarks === null) && (
+                      <p className="result-questions-note">
+                        Your teacher marked this assignment as a whole, so there is no per-question score. The
+                        final score above is your grade.
+                      </p>
+                    )}
                     {item.grading?.solutionsAvailableAt && (
                       <p className="result-questions-note">
                         Expected solutions will appear here after the due date (

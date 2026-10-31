@@ -87,6 +87,8 @@ export interface BackendSubmissionStatus {
   late_penalty_percent?: number | null;
   late_decision_note?: string | null;
   late_decided_at?: string | null;
+  /** Teachers only: status of the grade in grading_results ("pending_review" = AI-checked, awaiting approval). */
+  grading_status?: "pending_review" | "approved" | "published" | "rejected" | null;
 }
 
 export interface BackendOCRTextBlock {
@@ -447,6 +449,11 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
   else if (b.status.startsWith("ocr_completed") || ["ocr_failed", "ocr_degraded", "ocr_cancelled", "under_review"].includes(b.status)) state = "Under Review";
   else if (b.status === "graded") state = "Graded";
   else if (b.status === "published") state = "Published";
+  // The submission row keeps its OCR status until the grade is published; an AI-checked grade awaiting
+  // the teacher's approval only shows in grading_results (sent to teachers as grading_status).
+  if (state !== "Published" && (b.grading_status === "pending_review" || b.grading_status === "approved")) {
+    state = "Graded";
+  }
 
   let ocrState: OCRResult["state"] = "Needs review";
   if (b.status === "ocr_queued" || b.status === "ocr_processing") ocrState = "Needs review";

@@ -14,7 +14,7 @@ export function CoursesPage({
   courses: Course[];
   setCourses: Dispatch<SetStateAction<Course[]>>;
 }) {
-  const { user, joinedCourseIds } = useAppState();
+  const { user, joinedCourseIds, assignments } = useAppState();
   const [query, setQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -24,6 +24,9 @@ export function CoursesPage({
   const visibleCourses = student
     ? courseList.filter((course) => joinedCourseIds.includes(course.id))
     : courseList;
+  // Count from the loaded assignments (same source as the course page); the course row's own
+  // counter isn't kept up to date by the backend.
+  const assignmentCount = (courseId: string) => assignments.filter((a) => a.courseId === courseId).length;
   const filtered = visibleCourses.filter((course) =>
     `${course.name} ${course.code} ${course.instructor}`.toLowerCase().includes(query.toLowerCase())
   );
@@ -154,11 +157,15 @@ export function CoursesPage({
                     <small>Students</small>
                   </div>
                   <div>
-                    <strong>{course.assignments}</strong>
+                    <strong>{assignmentCount(course.id)}</strong>
                     <small>Assignments</small>
                   </div>
                 </div>
-                <button className="text-button" onClick={() => navigate(`/app/courses/${course.id}`)}>
+                <button
+                  className="text-button"
+                  // The course page (roster, enrolment) is for teachers; students go to the course's assignments.
+                  onClick={() => navigate(student ? "/app/student/assignments" : `/app/courses/${course.id}`)}
+                >
                   Open course
                   <ArrowRight size={13} />
                 </button>

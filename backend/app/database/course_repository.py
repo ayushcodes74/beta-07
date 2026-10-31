@@ -149,17 +149,24 @@ class SupabaseCourseRepository:
                 .execute()
             )
             rows = resp.data or []
-            records: list[CourseRecord] = []
-            for row in rows:
-                c_id = str(row["id"])
+            # One enrollment query for all courses (was one per course: N+1 round trips).
+            counts: dict[str, int] = {}
+            course_ids = [str(row["id"]) for row in rows]
+            for start in range(0, len(course_ids), 100):  # keep the in.(...) filter URL short
                 enroll_resp = (
                     client.table("course_enrollments")
-                    .select("id")
-                    .eq("course_id", c_id)
+                    .select("course_id")
+                    .in_("course_id", course_ids[start : start + 100])
                     .eq("status", "active")
                     .execute()
                 )
-                students_count = len(enroll_resp.data or [])
+                for enrollment in enroll_resp.data or []:
+                    key = str(enrollment.get("course_id"))
+                    counts[key] = counts.get(key, 0) + 1
+            records: list[CourseRecord] = []
+            for row in rows:
+                c_id = str(row["id"])
+                students_count = counts.get(c_id, 0)
                 records.append(
                     CourseRecord(
                         id=UUID(c_id),

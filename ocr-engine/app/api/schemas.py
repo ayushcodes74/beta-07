@@ -159,4 +159,8 @@ class HealthResponse(BaseModel):
         description="Readiness status of deep-learning models ('loaded', 'unavailable', 'failed')",
     )
     active_jobs: int = Field(default=0, description="Number of currently executing background jobs")
+    model_errors: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Why a model is not 'loaded' (e.g. OCR.space rejected the API key), keyed like `models`",
+    )
 

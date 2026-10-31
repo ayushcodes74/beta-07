@@ -4,7 +4,9 @@ import { ArrowLeft, Check, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import { FormattedText, cleanAiFeedback } from "../../components/common/FormattedText";
 import { formatDate } from "../../lib/utils";
+import { useStudentNames } from "../../lib/useStudentNames";
 import {
   extractErrorMessage,
   lateAdjustedScore,
@@ -67,6 +69,8 @@ function HandwritingCheck({ analysis }: { analysis: BackendIntegrityReport["hand
   return <p className="handwriting-check">{message}</p>;
 }
 
+const NO_OCR_TEXT_NOTICE = "OCR finished but found no readable text in this submission.";
+
 /** AI total with the teacher's corrected marks substituted for the questions they corrected. */
 function totalWithCorrections(check: BackendGradingSuggestion, corrections: BackendGradingCorrection[]): number {
   const delta = corrections.reduce((sum, c) => {
@@ -86,11 +90,12 @@ export function GradingReviewPage({
   const { submissionId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { assignments: assignmentList, people } = useAppState();
+  const { assignments: assignmentList, courses } = useAppState();
+  const names = useStudentNames(courses);
 
   const submission = rows.find((item) => item.id === submissionId);
   const assignment = submission ? assignmentList.find((a) => a.id === submission.assignmentId) : undefined;
-  const student = submission ? people.find((p) => p.id === submission.studentId) : undefined;
+  const student = submission ? names[submission.studentId] : undefined;
 
   const [score, setScore] = useState<number>(submission?.grading?.suggestedScore ?? 0);
   const [feedback, setFeedback] = useState<string>(
@@ -137,7 +142,7 @@ export function GradingReviewPage({
           setCorrections(savedCorrections);
           if (submission.state !== "Published") {
             setScore(totalWithCorrections(saved, savedCorrections));
-            setFeedback((current) => current || saved.overall_feedback);
+            setFeedback((current) => current || cleanAiFeedback(saved.overall_feedback));
           }
         } else if (!autoCheckedIds.current.has(id)) {
           autoCheckedIds.current.add(id);
@@ -172,7 +177,7 @@ export function GradingReviewPage({
       const result = await submissionService.checkAnswers(submission.id);
       setAnswerCheck(result);
       if (submission.state !== "Published") setScore(totalWithCorrections(result, corrections));
-      if (!feedback.trim()) setFeedback(result.overall_feedback);
+      if (!feedback.trim()) setFeedback(cleanAiFeedback(result.overall_feedback));
     } catch (error) {
       setAnswerCheckError(extractErrorMessage(error, "Could not check the answers."));
     } finally {
@@ -249,7 +254,7 @@ export function GradingReviewPage({
         );
         setOcrText(text);
         setOcrConfidence(confidences.length ? confidences.reduce((sum, c) => sum + c, 0) / confidences.length : null);
-        setOcrNotice(text ? "" : "OCR finished but found no readable text in this submission.");
+        setOcrNotice(text ? "" : NO_OCR_TEXT_NOTICE);
       })
       .catch((error: unknown) => {
         if (active) setOcrNotice(extractErrorMessage(error, "Could not load OCR text."));
@@ -483,7 +488,15 @@ export function GradingReviewPage({
                   </span>
                   {answerCheck.review_required && <Badge tone="gold">Needs teacher review</Badge>}
                 </div>
-                {answerCheck.overall_feedback && <p className="answer-check-feedback">{answerCheck.overall_feedback}</p>}
+                {ocrNotice === NO_OCR_TEXT_NOTICE && (
+                  <p className="answer-check-error">
+                    OCR could not read any text from this submission, so this AI check is unreliable (it may say no
+                    answer was given). Grade it from the PDF instead.
+                  </p>
+                )}
+                {cleanAiFeedback(answerCheck.overall_feedback) && (
+                  <FormattedText className="answer-check-feedback" text={cleanAiFeedback(answerCheck.overall_feedback)} />
+                )}
 
                 {answerCheck.questions.map((q) => {
                   const correction = corrections.find((c) => c.question_number === q.number);

@@ -9529,3 +9529,56 @@ html { -webkit-tap-highlight-color: transparent; }
 .perf-tooltip small { color: var(--faint); font-size: 10.5px; margin-bottom: 2px; }
 .perf-tooltip span { display: flex; align-items: center; gap: 7px; }
 .perf-tooltip b { margin-left: auto; padding-left: 12px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---- Header search results ------------------------------------------------------------------- */
+.header-search { position: relative; }
+.header-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: max(100%, 320px);
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(16, 42, 32, .12);
+}
+.header-search-results li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); }
+.header-search-results li svg { margin-top: 2px; flex: 0 0 auto; }
+.header-search-results li span { display: flex; flex-direction: column; min-width: 0; }
+.header-search-results li strong { color: var(--ink); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-search-results li small { font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-search-results li.active { background: var(--surface-soft); }
+.header-search-results .header-search-empty { cursor: default; font-size: 12px; }
+.search-open .header-search-results { width: 100%; }
+@media (max-width: 660px) {
+  .header-search-results { position: fixed; top: 58px; left: 12px; right: 12px; width: auto; }
+}
+
+/* ---- Formatted feedback (light markdown from the AI / teacher) ---- */
+.formatted-text p {
+  margin: 0 0 6px;
+}
+
+.formatted-text p:last-child,
+.formatted-text ul:last-child {
+  margin-bottom: 0;
+}
+
+.formatted-text .formatted-text-heading {
+  font-weight: 700;
+}
+
+.formatted-text ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.formatted-text li {
+  margin: 2px 0;
+}

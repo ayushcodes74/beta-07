@@ -14,9 +14,10 @@ from app.database import supabase as sb
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, options=None):
         self.tokens = []
         self.postgrest = self
+        self.http = options.httpx_client if options is not None else None
 
     def auth(self, token):
         self.tokens.append(token)
@@ -26,8 +27,8 @@ class FakeClient:
 def fake_create(monkeypatch):
     created = []
 
-    def create_client(url, key):
-        client = FakeClient()
+    def create_client(url, key, options=None):
+        client = FakeClient(options)
         created.append(client)
         return client
 
@@ -61,6 +62,49 @@ def test_not_shared_between_threads(fake_create):
 
     assert clients["t1"][0] is not clients["t2"][0]
     assert clients["t1"][1] is not clients["t2"][1]
+
+
+def test_one_connection_pool_per_thread_shared_by_all_tokens(fake_create):
+    """A new token (new user, refreshed session) must not pay a fresh TLS handshake."""
+    a = sb.get_user_supabase("token-a")
+    b = sb.get_user_supabase("token-b")
+    admin = sb.get_admin_supabase()
+    assert isinstance(a.http, httpx.Client)
+    assert a.http is b.http is admin.http
+
+
+def test_connection_pool_not_shared_between_threads(fake_create):
+    pools = {}
+
+    def worker(name):
+        pools[name] = sb.get_user_supabase("same-token").http
+
+    threads = [threading.Thread(target=worker, args=(n,)) for n in ("t1", "t2")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert pools["t1"] is not pools["t2"]
+
+
+def test_shared_pool_keeps_each_tokens_authorization(monkeypatch):
+    """Requests built from different tokens' clients on one pool carry their own bearer token."""
+    from supabase import create_client as real_create
+
+    seen = []
+    monkeypatch.setattr(sb, "create_client", real_create)
+    monkeypatch.setattr(sb, "_get_required_value", lambda value, name: (
+        "https://example.supabase.co" if name == "SUPABASE_URL" else "anon-key"
+    ))
+    monkeypatch.setattr(sb, "_local", threading.local())
+    sb._local.http = httpx.Client(transport=httpx.MockTransport(
+        lambda request: seen.append(request.headers.get("authorization")) or httpx.Response(200, json=[])
+    ))
+    query_a = sb.get_user_supabase("token-a").table("courses").select("id")
+    query_b = sb.get_user_supabase("token-b").table("courses").select("id")
+    query_b.execute()
+    query_a.execute()
+    assert seen == ["Bearer token-b", "Bearer token-a"]
 
 
 def test_per_thread_cache_is_bounded(fake_create):

@@ -54,7 +54,11 @@ export function NotificationBell({ onNew }: NotificationBellProps) {
   const onNewRef = useRef(onNew);
   onNewRef.current = onNew;
 
+  // 503 = notifications aren't set up on the server (migration not applied): stop polling until
+  // reload instead of failing a request every 20 s on every page.
+  const serverMissing = useRef(false);
   const refresh = useCallback(async () => {
+    if (serverMissing.current) return;
     try {
       const data = await notificationService.list();
       setItems(data.items);
@@ -67,7 +71,8 @@ export function NotificationBell({ onNew }: NotificationBellProps) {
         toast(fresh.length === 1 ? fresh[0].title : `${fresh.length} new notifications`, "info");
         onNewRef.current?.(fresh);
       }
-    } catch {
+    } catch (error) {
+      if ((error as { response?: { status?: number } })?.response?.status === 503) serverMissing.current = true;
       setUnavailable(true);
     } finally {
       setLoaded(true);

@@ -175,6 +175,13 @@ class SubmissionOCRStatusResponse(BaseModel):
     )
     late_decision_note: Optional[str] = None
     late_decided_at: Optional[str] = None
+    grading_status: Optional[Literal["pending_review", "approved", "published", "rejected"]] = Field(
+        default=None,
+        description=(
+            "Teachers only: status of the AI/teacher grade in grading_results ('pending_review' = AI-checked, "
+            "awaiting approval). Null when there is no grade yet, or for students."
+        ),
+    )
 
 
 class AIGradingPageContent(BaseModel):

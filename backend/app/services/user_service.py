@@ -11,9 +11,12 @@ Disabled accounts (``is_disabled=True``) are rejected immediately during profile
 validation before any valid ``UserProfile`` or authenticated identity is returned.
 """
 
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 import logging
+import threading
+import time
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -92,6 +95,46 @@ class UnconfiguredProfileRepository:
         raise ProfileIntegrationNotConfiguredError("profile repository is not configured")
 
 
+# Every authenticated request resolves the caller's role from their profile, which cost one Supabase
+# round trip (~0.3-0.6s from the hosted project) on top of the request's own queries. Profiles are
+# cached briefly per (user, access token): the token is still verified on every request, the cache key
+# changes whenever the token does, and a profile update drops the user's entries at once. A role change
+# or disable done directly in the database takes effect within PROFILE_CACHE_TTL_SECONDS.
+PROFILE_CACHE_TTL_SECONDS = 30.0
+_PROFILE_CACHE_MAX_ENTRIES = 2048
+_profile_cache: "OrderedDict[tuple[UUID, str], tuple[float, ProfileRecord]]" = OrderedDict()
+_profile_cache_lock = threading.Lock()
+
+
+def _cached_profile(user_id: UUID, access_token: str) -> ProfileRecord | None:
+    with _profile_cache_lock:
+        entry = _profile_cache.get((user_id, access_token))
+        if entry is None:
+            return None
+        if entry[0] <= time.monotonic():
+            del _profile_cache[(user_id, access_token)]
+            return None
+        return entry[1]
+
+
+def _store_profile(user_id: UUID, access_token: str, record: ProfileRecord) -> None:
+    with _profile_cache_lock:
+        _profile_cache[(user_id, access_token)] = (time.monotonic() + PROFILE_CACHE_TTL_SECONDS, record)
+        _profile_cache.move_to_end((user_id, access_token))
+        while len(_profile_cache) > _PROFILE_CACHE_MAX_ENTRIES:
+            _profile_cache.popitem(last=False)
+
+
+def invalidate_profile_cache(user_id: UUID | None = None) -> None:
+    """Forget cached profiles for one user (after a profile change), or all of them."""
+    with _profile_cache_lock:
+        if user_id is None:
+            _profile_cache.clear()
+            return
+        for key in [key for key in _profile_cache if key[0] == user_id]:
+            del _profile_cache[key]
+
+
 class SupabaseProfileRepository:
     """Supabase implementation using the authenticated user's JWT."""
 
@@ -130,6 +173,9 @@ class SupabaseProfileRepository:
     def get_profile(
         self, user_id: UUID, *, access_token: str
     ) -> ProfileRecord | None:
+        cached = _cached_profile(user_id, access_token)
+        if cached is not None:
+            return cached
         try:
             client = get_user_supabase(access_token)
 
@@ -140,7 +186,10 @@ class SupabaseProfileRepository:
                 .execute()
             )
 
-            return self._to_record(response.data)
+            record = self._to_record(response.data)
+            if record is not None and record.user_id == user_id:
+                _store_profile(user_id, access_token, record)
+            return record
 
         except ProfileRepositoryError:
             raise
@@ -155,6 +204,7 @@ class SupabaseProfileRepository:
         *,
         access_token: str,
     ) -> ProfileRecord | None:
+        invalidate_profile_cache(user_id)
         try:
             client = get_user_supabase(access_token)
 
@@ -166,6 +216,8 @@ class SupabaseProfileRepository:
                 .execute()
             )
 
+            # Again after the write, in case a concurrent lookup re-cached the old profile meanwhile.
+            invalidate_profile_cache(user_id)
             return self._to_record(response.data)
 
         except ProfileRepositoryError:

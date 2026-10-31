@@ -167,6 +167,7 @@ def _recognize_page_with_paddle(
 _OCR_SPACE_COOLDOWN_SECONDS = 600
 _OCR_SPACE_HARD_ERROR_MARKERS = ("http 401", "http 403", "http 429", "limit", "quota", "exceeded", "api key")
 _ocr_space_disabled_until = 0.0
+_ocr_space_last_error = ""
 
 
 def _recognize_page_with_ocr_space(
@@ -177,17 +178,24 @@ def _recognize_page_with_ocr_space(
     model_mgr: ModelManager,
 ) -> PageRecognitionResult:
     """OCR.space (cloud) path. Raises OCRSpaceError so the caller can fall back to PaddleOCR."""
-    global _ocr_space_disabled_until
+    global _ocr_space_disabled_until, _ocr_space_last_error
     client = model_mgr.ocr_space_client
     if time.monotonic() < _ocr_space_disabled_until:
-        raise OCRSpaceError("OCR.space temporarily skipped after a key/quota error")
+        raise OCRSpaceError(f"OCR.space temporarily skipped after: {_ocr_space_last_error}")
     try:
         lines = client.recognize_lines(image)
     except OCRSpaceError as e:
         if any(marker in str(e).lower() for marker in _OCR_SPACE_HARD_ERROR_MARKERS):
             _ocr_space_disabled_until = time.monotonic() + _OCR_SPACE_COOLDOWN_SECONDS
+            _ocr_space_last_error = str(e)
+            # A rejected key or exhausted quota is not "loaded": surface it in /health.
+            model_mgr.ocr_space_status = "failed"
+            model_mgr.ocr_space_error_msg = str(e)
             logger.warning("OCR.space disabled for %ds after: %s", _OCR_SPACE_COOLDOWN_SECONDS, e)
         raise
+    if model_mgr.ocr_space_status == "failed":
+        model_mgr.ocr_space_status = "loaded"
+        model_mgr.ocr_space_error_msg = None
     return _build_page_from_lines(
         image, lines, submission_id, page_number, cfg, model_mgr,
         engine="ocrspace", model_version=client.model_version, device="cloud",
@@ -557,6 +565,12 @@ def recognize_page(
     # Legacy path (backend 'auto'/'trocr', or PaddleOCR unavailable -> degraded layout-only mode)
     h, w = image.shape[:2]
     page_warnings: List[str] = []
+    if ocr_space_failure:
+        # Without this the page silently comes back empty and nobody learns the cloud OCR failed.
+        page_warnings.append(
+            f"OCR.space unavailable ({ocr_space_failure}) and no local OCR engine is installed; "
+            "this page could not be read."
+        )
 
     # 1. Detect Text Regions
     detector = TextDetector(config=cfg)
@@ -567,16 +581,18 @@ def recognize_page(
         return PageRecognitionResult(
             submission_id=submission_id,
             page_number=page_number,
-            status="completed",
+            # An empty page is only "completed" if an OCR engine actually looked at it.
+            status="degraded" if ocr_space_failure else "completed",
             text_blocks=[],
             full_text="",
             warnings=page_warnings,
             metadata={
                 "total_blocks": 0,
                 "engine_used": ["none"],
-                "is_fallback": False,
+                "is_fallback": bool(ocr_space_failure),
                 "recognition_mode": "empty_page",
-                "recognition_available": True,
+                "recognition_available": not ocr_space_failure,
+                **({"ocr_space_error": ocr_space_failure} if ocr_space_failure else {}),
             },
         )
 

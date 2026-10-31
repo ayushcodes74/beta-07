@@ -215,3 +215,35 @@ def test_no_api_key_uses_paddle_without_network(monkeypatch, mixed_assignment_pa
     mgr._init_ocr_space()
     assert mgr.ocr_space_status == "unavailable"
     assert not mgr.uses_ocr_space
+
+
+def test_rejected_key_without_local_ocr_is_reported_not_silent(mixed_assignment_page: Path):
+    """E555 with no PaddleOCR installed: the page says why it is empty and /health stops saying 'loaded'."""
+    from app.api.v1.endpoints.health import get_health
+
+    client = MagicMock(spec=OCRSpaceClient)
+    client.recognize_lines.side_effect = OCRSpaceError("OCR.space error (exit 99): E555: API key not valid")
+    mgr = _manager_with(client=client)  # no paddle_lines: no local OCR engine
+
+    result = recognize_page(str(mixed_assignment_page), "sub-badkey", 1)
+
+    assert any("OCR.space unavailable" in w and "E555" in w for w in result.warnings)
+    assert mgr.ocr_space_status == "failed"
+    health = get_health()
+    assert health.models["ocr_space_engine"] == "failed"
+    assert "E555" in health.model_errors["ocr_space_engine"]
+    assert health.status == "degraded"
+
+
+def test_ocr_space_recovers_to_loaded_after_a_good_page(mixed_assignment_page: Path):
+    client = MagicMock(spec=OCRSpaceClient)
+    client.model_version = "ocr.space-engine3"
+    client.recognize_lines.return_value = [{"text": "Answer", "score": None, "box": (50, 50, 300, 80)}]
+    mgr = _manager_with(client=client)
+    mgr.ocr_space_status = "failed"
+    mgr.ocr_space_error_msg = "E555: API key not valid"
+
+    recognize_page(str(mixed_assignment_page), "sub-recovered", 1)
+
+    assert mgr.ocr_space_status == "loaded"
+    assert mgr.ocr_space_error_msg is None

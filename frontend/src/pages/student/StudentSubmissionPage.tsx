@@ -8,6 +8,13 @@ import { formatDate } from "../../lib/utils";
 import { canReplaceSubmission, describeLate, type Submission } from "../../types/models";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 
+/** 1 KB -> "1 KB", 2.4 MB -> "2.4 MB" (a small file used to show as "0.00 MB"). */
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function StudentSubmissionPage({
   submissions: studentRows,
   setSubmissions,
@@ -25,6 +32,8 @@ export function StudentSubmissionPage({
   const locked = Boolean(existing) && !replacing;
   const pastDue = assignment ? Date.parse(assignment.dueAt) < Date.now() : false;
   const [file, setFile] = useState<File | null>(null);
+  // Shown under the drop zone until a valid file is picked (a toast lingered after the fix).
+  const [fileError, setFileError] = useState("");
   const [drag, setDrag] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedItem, setSubmittedItem] = useState<Submission | null>(null);
@@ -45,13 +54,14 @@ export function StudentSubmissionPage({
   const chooseFile = (candidate?: File) => {
     if (!candidate) return;
     if (candidate.type !== "application/pdf" && !candidate.name.toLowerCase().endsWith(".pdf")) {
-      toast("Please select a valid PDF file.", "info");
+      setFileError(`“${candidate.name}” is not a PDF. Please choose a PDF file.`);
       return;
     }
     if (candidate.size > 20 * 1024 * 1024) {
-      toast("File exceeds the 20 MB size limit.", "info");
+      setFileError(`“${candidate.name}” is ${formatFileSize(candidate.size)}; the limit is 20 MB.`);
       return;
     }
+    setFileError("");
     setFile(candidate);
   };
 
@@ -180,7 +190,10 @@ export function StudentSubmissionPage({
               accept=".pdf,application/pdf"
               id="student-pdf"
               className="visually-hidden"
-              onChange={(event) => chooseFile(event.target.files?.[0])}
+              onChange={(event) => {
+                chooseFile(event.target.files?.[0]);
+                event.target.value = ""; // so picking the same file again still fires a change
+              }}
             />
             {file ? (
               <>
@@ -188,7 +201,7 @@ export function StudentSubmissionPage({
                   <FileCheck2 size={24} style={{ color: "#173D2B" }} />
                 </span>
                 <strong>{file.name}</strong>
-                <p>{(file.size / 1024 / 1024).toFixed(2)} MB · Ready to submit</p>
+                <p>{formatFileSize(file.size)} · Ready to submit</p>
                 <button className="text-button" type="button" onClick={() => setFile(null)}>
                   Choose another file
                 </button>
@@ -211,6 +224,11 @@ export function StudentSubmissionPage({
               </>
             )}
           </GlassPanel>
+          {fileError && (
+            <p className="form-error" role="alert" style={{ marginTop: 10 }}>
+              {fileError}
+            </p>
+          )}
 
           <div className="submit-actions" style={{ marginTop: "16px" }}>
             <span style={{ fontSize: "10px", color: "#5C6E61", display: "inline-flex", alignItems: "center", gap: "6px" }}>

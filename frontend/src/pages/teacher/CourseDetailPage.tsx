@@ -7,6 +7,7 @@ import { formatDate } from "../../lib/utils";
 import { courseService, extractErrorMessage, type EnrolledStudentResponse } from "../../services/api";
 import type { Course } from "../../types/models";
 import { StudentPerformanceDialog } from "./StudentPerformance";
+import { clearStudentNameCache } from "../../lib/useStudentNames";
 
 function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountChange: (count: number) => void }) {
   const toast = useToast();
@@ -40,6 +41,7 @@ function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountC
     setBusy(true);
     try {
       await courseService.enrollStudentByEmail(courseId, email);
+      clearStudentNameCache();
       toast(`Enrolled ${email.trim()}. They can now see this course's published assignments.`);
       setEmail("");
       await load();
@@ -55,6 +57,7 @@ function StudentsPanel({ courseId, onCountChange }: { courseId: string; onCountC
     if (!window.confirm(`Remove ${label} from this course? They will stop seeing its assignments.`)) return;
     try {
       await courseService.removeStudent(courseId, student.student_id);
+      clearStudentNameCache();
       toast(`Removed ${label}.`, "info");
       await load();
     } catch (err) {

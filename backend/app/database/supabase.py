@@ -2,7 +2,7 @@ from collections import OrderedDict
 import threading
 
 import httpx
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 from app.core.config import settings
 
@@ -39,7 +39,16 @@ def get_user_supabase(access_token: str) -> Client:
 # be completed immediately" read errors (503s) when a page fired several requests at once.
 # Pool threads are long-lived, so connection reuse is kept. Tokens expire within about an hour, so a
 # small per-thread LRU bounds memory.
+#
+# The HTTP connection pool is per THREAD, not per (thread, token): every client created on a thread
+# (each user's token, and the admin client) shares that thread's httpx.Client. Previously each token
+# got its own connection, so a new user, a refreshed token, or a request landing on a different pool
+# thread paid a fresh TLS handshake (~0.7s to the hosted project; measured 2-4 per request). Sharing is
+# safe: requests carry their headers (incl. Authorization) individually, copied from the token's own
+# client when the query is built, and the pool is never used from two threads.
 _PER_THREAD_MAX_CLIENTS = 32
+# Matches supabase-py's default PostgREST client timeout.
+_HTTP_TIMEOUT_SECONDS = 120
 _local = threading.local()
 
 # Errors meaning a reused keep-alive connection was already closed by Supabase/its proxy while idle
@@ -77,6 +86,22 @@ def _install_read_retry(client: Client) -> None:
         pass
 
 
+def _thread_http_client() -> httpx.Client:
+    """This thread's shared keep-alive connection pool to Supabase (HTTP/2 like supabase-py's default)."""
+    http = getattr(_local, "http", None)
+    if http is None:
+        http = _local.http = httpx.Client(
+            transport=_RetryStaleReadsTransport(httpx.HTTPTransport(http2=True)),
+            timeout=_HTTP_TIMEOUT_SECONDS,
+            follow_redirects=True,
+        )
+    return http
+
+
+def _client_options() -> ClientOptions:
+    return ClientOptions(httpx_client=_thread_http_client())
+
+
 def _thread_cache() -> "OrderedDict[str, Client]":
     cache = getattr(_local, "clients", None)
     if cache is None:
@@ -93,7 +118,7 @@ def _user_client(access_token: str) -> Client:
 
     url = _get_required_value(settings.SUPABASE_URL, "SUPABASE_URL")
     key = _get_required_value(settings.SUPABASE_KEY, "SUPABASE_KEY")
-    client = create_client(url, key)
+    client = create_client(url, key, options=_client_options())
     client.postgrest.auth(access_token)
     _install_read_retry(client)
 
@@ -112,6 +137,6 @@ def get_admin_supabase() -> Client:
             settings.SUPABASE_SERVICE_ROLE_KEY,
             "SUPABASE_SERVICE_ROLE_KEY",
         )
-        client = _local.admin = create_client(url, service_key)
+        client = _local.admin = create_client(url, service_key, options=_client_options())
         _install_read_retry(client)
     return client

@@ -3,16 +3,20 @@ import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useAppState } from "../../App";
 import { Button } from "../../components/ui";
-import { formatPercent, scorePercent } from "../../lib/grades";
+import { commonTotal, formatMarks, marksAvailable, percentToMarks, scorePercent } from "../../lib/grades";
 import { formatDate } from "../../lib/utils";
 
-/** One assignment on the x-axis: the student's published score and the class average (both 0–100). */
-interface PerformancePoint {
+/**
+ * One assignment on the x-axis: the student's published score and the class average, stored as
+ * 0–100 so assignments with different totals share the chart, and shown in marks out of `outOf`.
+ */
+export interface PerformancePoint {
   id: string;
   title: string;
   dueAt: string;
   student: number | null;
   classAverage: number | null;
+  outOf: number;
 }
 
 /**
@@ -41,6 +45,7 @@ function usePerformance(courseId: string, studentId: string): PerformancePoint[]
         dueAt: assignment.dueAt,
         student: own ? own.percent : null,
         classAverage: graded.reduce((sum, item) => sum + item.percent, 0) / graded.length,
+        outOf: commonTotal(graded.map((item) => marksAvailable(item.submission, assignment))) ?? assignment.totalMarks,
       }];
     });
   }, [assignments, submissions, courseId, studentId]);
@@ -62,8 +67,8 @@ function useWidth<T extends HTMLElement>() {
 
 const HEIGHT = 250;
 const MARGIN = { top: 14, right: 46, bottom: 42, left: 40 };
-const TICKS = [0, 25, 50, 75, 100];
-const STUDENT_COLOR = "#2E7D4F"; // validated series hue (shared with Class analytics)
+const TICKS = [0, 25, 50, 75, 100]; // % of the scale; labelled in marks (0, 5, 10, 15, 20 out of 20)
+export const STUDENT_COLOR = "#2E7D4F"; // validated series hue (shared with Class analytics)
 const AVERAGE_COLOR = "#A3AFA6"; // de-emphasised reference line
 
 const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, Math.max(1, max - 1))}…` : text);
@@ -83,7 +88,24 @@ function linePath(values: (number | null)[], x: (i: number) => number, y: (v: nu
   return path;
 }
 
-function PerformanceLineChart({ points, studentName }: { points: PerformancePoint[]; studentName: string }) {
+/** A point's score in its own assignment's marks, e.g. "10.3 / 20". */
+export const pointMarks = (percent: number, point: PerformancePoint) => formatMarks(percentToMarks(percent, point.outOf), point.outOf);
+
+/**
+ * Line chart of one student's marks by assignment, plus the class average where `classAverage` is
+ * set (the student's own view has no class data, so that line and tooltip row are simply absent).
+ */
+export function PerformanceLineChart({
+  points,
+  studentName,
+  scale,
+  ariaLabel,
+}: {
+  points: PerformancePoint[];
+  studentName: string;
+  scale: number;
+  ariaLabel?: string;
+}) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const plotWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
@@ -124,7 +146,7 @@ function PerformanceLineChart({ points, studentName }: { points: PerformancePoin
       className="perf-chart"
       tabIndex={0}
       role="img"
-      aria-label={`${studentName}'s score by assignment. Use the arrow keys to read each assignment.`}
+      aria-label={`${ariaLabel ?? `${studentName}'s marks by assignment`}, out of ${scale}. Use the arrow keys to read each assignment.`}
       onKeyDown={onKeyDown}
       onBlur={() => setActive(null)}
       onMouseLeave={() => setActive(null)}
@@ -134,7 +156,7 @@ function PerformanceLineChart({ points, studentName }: { points: PerformancePoin
           {TICKS.map((tick) => (
             <g key={tick}>
               <line x1={MARGIN.left} x2={MARGIN.left + plotWidth} y1={y(tick)} y2={y(tick)} className={tick === 0 ? "perf-baseline" : "perf-grid"} />
-              <text x={MARGIN.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="perf-tick">{tick}%</text>
+              <text x={MARGIN.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="perf-tick">{formatMarks(percentToMarks(tick, scale))}</text>
             </g>
           ))}
           {points.map((point, index) =>
@@ -166,7 +188,7 @@ function PerformanceLineChart({ points, studentName }: { points: PerformancePoin
           {/* Direct label on the student's latest score only. */}
           {lastStudentIndex >= 0 && points[lastStudentIndex].student !== null && (
             <text x={x(lastStudentIndex) + 10} y={y(points[lastStudentIndex].student!)} dy="0.32em" className="perf-end-label">
-              {formatPercent(points[lastStudentIndex].student!)}
+              {formatMarks(percentToMarks(points[lastStudentIndex].student!, scale))}
             </text>
           )}
 
@@ -192,22 +214,25 @@ function PerformanceLineChart({ points, studentName }: { points: PerformancePoin
           <span>
             <i style={{ background: STUDENT_COLOR }} />
             {studentName}
-            <b>{activePoint.student === null ? "No grade" : formatPercent(activePoint.student)}</b>
+            <b>{activePoint.student === null ? "No grade" : pointMarks(activePoint.student, activePoint)}</b>
           </span>
-          <span>
-            <i style={{ background: AVERAGE_COLOR }} />
-            Class average
-            <b>{activePoint.classAverage === null ? "—" : formatPercent(activePoint.classAverage)}</b>
-          </span>
+          {activePoint.classAverage !== null && (
+            <span>
+              <i style={{ background: AVERAGE_COLOR }} />
+              Class average
+              <b>{pointMarks(activePoint.classAverage, activePoint)}</b>
+            </span>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function signedPoints(value: number) {
-  const rounded = Math.round(value);
-  return `${rounded > 0 ? "+" : rounded < 0 ? "−" : "±"}${Math.abs(rounded)} pts`;
+/** A difference between two 0–100 scores, in marks out of `outOf`: "+1.5 marks". */
+function signedMarks(percentDiff: number, outOf: number) {
+  const value = Math.round(percentToMarks(percentDiff, outOf) * 10) / 10;
+  return `${value > 0 ? "+" : value < 0 ? "−" : "±"}${formatMarks(Math.abs(value))} mark${Math.abs(value) === 1 ? "" : "s"}`;
 }
 
 export function StudentPerformanceDialog({
@@ -240,13 +265,19 @@ function PerformanceBody({ courseId, student }: { courseId: string; student: { i
   const vsClass = graded.length
     ? graded.reduce((sum, point) => sum + (point.student - (point.classAverage ?? point.student)), 0) / graded.length
     : null;
+  // The chart and course-wide figures are in marks out of the total most assignments use (e.g. 20).
+  const scale = commonTotal(points.map((point) => point.outOf)) ?? 0;
+  const scaled = points.some((point) => point.outOf !== scale);
 
   return (
     <>
       <div className="modal-head">
         <div>
           <Dialog.Title className="modal-title">{student.name}</Dialog.Title>
-          <p className="perf-subtitle">Score on each assignment in this course, from published grades</p>
+          <p className="perf-subtitle">
+            Marks on each assignment in this course{points.length > 0 && ` (out of ${scale})`}, from published grades
+            {scaled && `. Assignments with a different total are scaled to ${scale} on the chart.`}
+          </p>
         </div>
         <Dialog.Close asChild>
           <Button variant="quiet" size="icon" aria-label="Close">
@@ -262,17 +293,17 @@ function PerformanceBody({ courseId, student }: { courseId: string; student: { i
           <div className="perf-tiles">
             <div>
               <span>Average</span>
-              <strong>{average === null ? "—" : formatPercent(average)}</strong>
+              <strong>{average === null ? "—" : formatMarks(percentToMarks(average, scale), scale)}</strong>
               <small>{graded.length} of {points.length} assignment{points.length === 1 ? "" : "s"} graded</small>
             </div>
             <div>
               <span>Latest</span>
-              <strong>{latest ? formatPercent(latest.student) : "—"}</strong>
-              <small>{latest && previous ? `${signedPoints(latest.student - previous.student)} vs previous` : latest ? truncate(latest.title, 28) : "No grade yet"}</small>
+              <strong>{latest ? pointMarks(latest.student, latest) : "—"}</strong>
+              <small>{latest && previous ? `${signedMarks(latest.student - previous.student, scale)} vs previous` : latest ? truncate(latest.title, 28) : "No grade yet"}</small>
             </div>
             <div>
               <span>Vs class average</span>
-              <strong>{vsClass === null ? "—" : signedPoints(vsClass)}</strong>
+              <strong>{vsClass === null ? "—" : signedMarks(vsClass, scale)}</strong>
               <small>Average gap on the same assignments</small>
             </div>
           </div>
@@ -283,7 +314,7 @@ function PerformanceBody({ courseId, student }: { courseId: string; student: { i
             <li><i style={{ background: STUDENT_COLOR }} />{student.name}</li>
             <li><i style={{ background: AVERAGE_COLOR }} />Class average</li>
           </ul>
-          <PerformanceLineChart points={points} studentName={student.name} />
+          <PerformanceLineChart points={points} studentName={student.name} scale={scale} />
 
           <details className="analytics-table">
             <summary>Show as table</summary>
@@ -296,8 +327,8 @@ function PerformanceBody({ courseId, student }: { courseId: string; student: { i
                   <tr key={point.id}>
                     <td>{point.title}</td>
                     <td>{formatDate(point.dueAt)}</td>
-                    <td>{point.student === null ? "No grade" : formatPercent(point.student)}</td>
-                    <td>{point.classAverage === null ? "—" : formatPercent(point.classAverage)}</td>
+                    <td>{point.student === null ? "No grade" : pointMarks(point.student, point)}</td>
+                    <td>{point.classAverage === null ? "—" : pointMarks(point.classAverage, point)}</td>
                   </tr>
                 ))}
               </tbody>

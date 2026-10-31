@@ -7,6 +7,7 @@ import {
 import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
 import { ClassAnalytics } from "./ClassAnalytics";
+import { useStudentNames } from "../../lib/useStudentNames";
 import { formatDate } from "../../lib/utils";
 import { reviewService, type ReviewQueue } from "../../services/api";
 import type { Submission } from "../../types/models";
@@ -113,8 +114,9 @@ function StatCard({
 }
 
 function RecentSubmissions({ rows }: { rows: Submission[] }) {
-  const { user, assignments: assignmentList, people } = useAppState();
+  const { user, assignments: assignmentList, courses } = useAppState();
   const navigate = useNavigate();
+  const names = useStudentNames(courses, user?.role === "teacher");
 
   if (!rows.length) {
     return (
@@ -126,7 +128,7 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 
   const submissionDetails = rows.map((submission) => ({
     submission,
-    student: people.find((person) => person.id === submission.studentId),
+    student: names[submission.studentId],
     assignment: assignmentList.find((item) => item.id === submission.assignmentId),
   }));
 
@@ -149,7 +151,12 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
             <tr key={submission.id}>
               <td>
                 <span className="student-name">
-                  {student && <Avatar name={student.name} initials={student.initials} />}
+                  {student && (
+                    <Avatar
+                      name={student.name}
+                      initials={student.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                    />
+                  )}
                   {student?.name ?? "Student"}
                 </span>
               </td>

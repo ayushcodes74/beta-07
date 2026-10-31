@@ -4,17 +4,20 @@ import { ChevronRight, Search } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
+import { useStudentNames } from "../../lib/useStudentNames";
 import type { Submission } from "../../types/models";
 
 export function SubmissionsPage({ submissions: rows }: { submissions: Submission[] }) {
-  const { user, assignments: assignmentList, people } = useAppState();
+  const { user, assignments: assignmentList, courses } = useAppState();
   const [filter, setFilter] = useState("All");
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const student = user?.role === "student";
+  // Teachers: names come from the course rosters (submissions only carry student ids).
+  const names = useStudentNames(courses, !student);
   const studentRows = rows.filter((item) => item.studentId === user?.id);
   const visible = (student ? studentRows : rows).filter((item) => {
-    const person = people.find((userItem) => userItem.id === item.studentId)?.name ?? "";
+    const person = names[item.studentId]?.name ?? "";
     const matchesText = `${person} ${
       assignmentList.find((assignment) => assignment.id === item.assignmentId)?.title ?? ""
     }`.toLowerCase().includes(query.toLowerCase());
@@ -86,7 +89,7 @@ export function SubmissionsPage({ submissions: rows }: { submissions: Submission
             <tbody>
               {visible.map((item) => {
                 const assignment = assignmentList.find((a) => a.id === item.assignmentId);
-                const person = people.find((p) => p.id === item.studentId);
+                const person = names[item.studentId];
                 return (
                   <tr key={item.id}>
                     {student ? (

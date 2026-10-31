@@ -15,12 +15,17 @@ export function useUnreadMessages(enabled: boolean): number {
       return;
     }
     let active = true;
+    // 503 = messaging isn't set up on the server (migration not applied): stop asking until reload,
+    // instead of failing a request every 30 s on every page.
+    let unavailable = false;
     const load = () => {
-      if (document.visibilityState !== "visible") return;
+      if (unavailable || document.visibilityState !== "visible") return;
       messageService
         .listThreads()
         .then((threads) => active && setUnread(threads.reduce((sum, t) => sum + t.unread_count, 0)))
-        .catch(() => undefined);
+        .catch((error: { response?: { status?: number } }) => {
+          if (error?.response?.status === 503) unavailable = true;
+        });
     };
     load();
     const timer = window.setInterval(load, POLL_MS);

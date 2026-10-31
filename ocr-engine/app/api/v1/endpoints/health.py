@@ -43,6 +43,12 @@ def get_health() -> HealthResponse:
     all_models_loaded = all(s in ("loaded", "disabled") for s in models_status.values())
     service_status = "healthy" if all_models_loaded else "degraded"
 
+    errors = {
+        "ocr_space_engine": getattr(rec_mgr, "ocr_space_error_msg", None),
+        "vision_page_reader": getattr(rec_mgr, "vision_error_msg", None),
+    }
+    model_errors = {name: msg for name, msg in errors.items() if msg and models_status.get(name) != "loaded"}
+
     return HealthResponse(
         status=service_status,
         service_version="1.0.0",
@@ -50,5 +56,6 @@ def get_health() -> HealthResponse:
         modules=modules_status,
         models=models_status,
         active_jobs=job_mgr.get_active_count(),
+        model_errors=model_errors,
     )
 

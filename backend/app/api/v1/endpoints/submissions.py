@@ -56,6 +56,7 @@ from app.services.ai_generation_service import (
     AIServiceUnavailableError,
     AITimeoutError,
 )
+from app.schemas.user import Role
 from app.services.auth_service import CurrentUser
 from app.services.grading_service import GradingService
 from app.services.ocr_client import (
@@ -98,6 +99,31 @@ def get_submission_service(
 
 
 Service = Annotated[SubmissionService, Depends(get_submission_service)]
+
+
+def get_grading_status_repository():
+    """grading_results reader for the submission list (overridable in tests)."""
+    from app.database.grading_repository import SupabaseGradingRepository
+
+    return SupabaseGradingRepository()
+
+
+def _grading_statuses(user: CurrentUser, records: list, repo: Any, access_token: str) -> dict[UUID, str]:
+    """Teacher only: grading_results status per submission, so AI-checked work awaiting approval is
+    distinguishable from work not graded yet (the submission row stays e.g. 'ocr_completed' until publish).
+    Best-effort: on failure the list is returned without grading statuses."""
+    if user.role is not Role.TEACHER or repo is None or not records:
+        return {}
+    ids = [r.id for r in records]
+    try:
+        grades = [
+            g for start in range(0, len(ids), 100)
+            for g in repo.list_by_submission_ids(ids[start : start + 100], access_token=access_token)
+        ]
+    except Exception as exc:
+        logger.warning("Submission list: grading statuses unavailable: %s", type(exc).__name__)
+        return {}
+    return {g.submission_id: getattr(g.status, "value", g.status) for g in grades}
 
 ERROR_RESPONSES: dict[int | str, dict] = {
     **AUTH_ERROR_RESPONSES,
@@ -194,9 +220,11 @@ def list_submissions(
     user: AnyUser,
     token: AccessToken,
     service: Service,
+    grading_repo: Annotated[Any, Depends(get_grading_status_repository)],
 ) -> list[SubmissionOCRStatusResponse]:
     try:
         records = service.list_submissions(user, access_token=token)
+        grading_status = _grading_statuses(user, records, grading_repo, token)
         return [
             SubmissionOCRStatusResponse(
                 submission_id=record.id,
@@ -206,6 +234,7 @@ def list_submissions(
                 ocr_job_id=record.ocr_job_id,
                 created_at=record.created_at,
                 updated_at=record.updated_at,
+                grading_status=grading_status.get(record.id),
                 **late_fields(record),
             )
             for record in records

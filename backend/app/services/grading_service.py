@@ -107,6 +107,14 @@ class GradingService:
                 "ocr_not_ready", "OCR is still processing this submission. Check answers once it has finished."
             )
         student_text, ocr_confidence = _transcript(ocr)
+        if not student_text.strip():
+            # Nothing was read (e.g. the OCR provider rejected its key, or a blank scan). Grading empty text
+            # makes the AI report "no answer was submitted" and suggest 0 for work the student did hand in.
+            raise SubmissionValidationError(
+                "no_readable_text",
+                "OCR could not read any text from this submission, so the AI cannot check it. Open the PDF and "
+                "grade it yourself, or re-run OCR once the OCR service is working.",
+            )
         # Teacher corrections from earlier checks of this assignment: the AI must follow them.
         corrections = await asyncio.to_thread(self._corrections_by_question, assignment, access_token)
 
@@ -588,7 +596,9 @@ def _published_response(
 ) -> PublishedGradeResponse:
     flags = record.flags or {}
     max_score = flags.get("max_score")
-    questions = _stored_breakdown(flags)
+    before_penalty = _number(flags.get("score_before_late_penalty"))
+    teacher_score = before_penalty if before_penalty is not None else float(record.final_score)
+    questions = _consistent_breakdown(_stored_breakdown(flags), teacher_score)
     solutions_at = _solutions_release(flags)
     withheld_until = None
     if for_student and solutions_at is not None and (now or datetime.now(UTC)) < solutions_at:
@@ -599,7 +609,7 @@ def _published_response(
         submission_id=record.submission_id,
         final_score=float(record.final_score),
         max_score=float(max_score) if isinstance(max_score, (int, float)) else None,
-        final_feedback=record.final_feedback,
+        final_feedback=_clean_feedback(record.final_feedback, teacher_score),
         status=record.status.value,
         reviewed_at=record.reviewed_at,
         published_at=record.published_at,
@@ -692,6 +702,51 @@ def _stored_breakdown(flags: dict) -> list[PublishedQuestionResult]:
         except Exception:
             continue
     return results
+
+
+# How far the per-question marks may differ from the teacher's total (rounding of 2-decimal marks).
+_MARKS_TOLERANCE = 0.05
+
+
+def _consistent_breakdown(questions: list[PublishedQuestionResult], teacher_score: float) -> list[PublishedQuestionResult]:
+    """Never show per-question marks that contradict the teacher's final score.
+
+    The breakdown is frozen from the AI check at publish time. When the teacher set a different total
+    (e.g. 7/10 while the AI, unable to read the scan, gave every question 0), the AI's marks and its
+    reasoning for them ("no answer was submitted") are wrong, so they are dropped. The teacher's own
+    per-question notes and the expected solutions are kept.
+    """
+    marks = [q.awarded_marks for q in questions if q.awarded_marks is not None]
+    if not marks or abs(sum(marks) - teacher_score) <= _MARKS_TOLERANCE:
+        return questions
+    return [
+        q.model_copy(update={"awarded_marks": None, "explanation": "", "strengths": [], "areas_for_improvement": []})
+        for q in questions
+    ]
+
+
+# The AI's summary heading, e.g. "### Overall Assignment Feedback (Score: 3.0/20.0 — 15.0%)".
+_AI_FEEDBACK_HEADING = re.compile(
+    r"^[ \t]*#{0,6}[ \t]*Overall Assignment Feedback\b[^\n]*\n?", re.IGNORECASE | re.MULTILINE
+)
+_SCORE_MENTION = re.compile(
+    r"\(?\bScore:\s*(\d+(?:\.\d+)?)\s*/\s*\d+(?:\.\d+)?(?:\s*[\u2014-]\s*\d+(?:\.\d+)?%)?\)?", re.IGNORECASE
+)
+
+
+def _clean_feedback(feedback: str, teacher_score: float) -> str:
+    """Remove AI score lines from published feedback that disagree with the teacher's final score.
+
+    The teacher's feedback box is pre-filled with the AI summary, whose heading carries the AI's score;
+    if the teacher then changed the score, students saw two different scores.
+    """
+    text = _AI_FEEDBACK_HEADING.sub("", feedback or "")
+
+    def _drop_if_different(match: re.Match) -> str:
+        return match.group(0) if abs(float(match.group(1)) - teacher_score) <= _MARKS_TOLERANCE else ""
+
+    text = _SCORE_MENTION.sub(_drop_if_different, text)
+    return text.strip()
 
 
 _SCORE_IN_FEEDBACK = re.compile(r"\(Score:\s*[\d.]+\s*/\s*[\d.]+\s*[—-]\s*[\d.]+%\)")

@@ -1,7 +1,7 @@
 import {
   Award, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, FileText, GraduationCap,
   LayoutDashboard, LogOut, Menu, MessageCircle, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
-  Sparkles, Upload, X,
+  Sparkles, Upload,
 } from "lucide-react";
 import { createContext, Suspense, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -13,6 +13,8 @@ import { getProfile, signOut } from "./services/auth";
 import { NamePrompt } from "./components/common/NamePrompt";
 import { NotificationBell } from "./components/common/NotificationBell";
 import { useUnreadMessages } from "./components/common/useUnreadMessages";
+import { HeaderSearch } from "./components/common/HeaderSearch";
+import { useSubmissionStatusSync } from "./lib/useSubmissionStatusSync";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
   GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, MessagesPage, NotFoundPage, OCRReviewPage,
@@ -225,7 +227,7 @@ function pageTitle(pathname: string) {
 
 function ApplicationShell() {
   const {
-    user, setUser, submissions, courses: courseList, refreshSession,
+    user, setUser, submissions, refreshSession,
     setCourses, setAssignments, setJoinedCourseIds, setSubmissions,
   } = useAppState();
   const navigate = useNavigate();
@@ -247,6 +249,8 @@ function ApplicationShell() {
       .catch(() => undefined);
   };
   const unreadMessages = useUnreadMessages(!!user);
+  // Lists otherwise keep showing "In Progress" after OCR has finished (see the hook).
+  useSubmissionStatusSync(submissions, setSubmissions, !!user);
 
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 
@@ -266,16 +270,6 @@ function ApplicationShell() {
   }));
 
   const title = pageTitle(location.pathname);
-
-  const search = (value: string) => {
-    if (!value.trim()) return;
-    const query = value.toLowerCase();
-    const course = courseList.find((item) => `${item.name} ${item.code}`.toLowerCase().includes(query));
-    if (course) navigate(`/app/courses/${course.id}`);
-    else if (isStudent) navigate("/app/student/assignments");
-    else navigate("/app/submissions");
-    setSearchOpen(false);
-  };
 
   const logout = async () => {
     setUser(null);
@@ -353,31 +347,10 @@ function ApplicationShell() {
           </div>
           <div className="topbar-actions">
             {searchOpen ? (
-              <form
-                className="search-box search-open"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  search(new FormData(event.currentTarget).get("query")?.toString() ?? "");
-                }}
-              >
-                <Search size={15} />
-                <input autoFocus name="query" placeholder="Search courses, assignments..." aria-label="Search courses and assignments" />
-                <button className="icon-button" type="button" onClick={() => setSearchOpen(false)} aria-label="Close search">
-                  <X size={14} />
-                </button>
-              </form>
+              <HeaderSearch className="search-open" autoFocus onClose={() => setSearchOpen(false)} />
             ) : (
               <>
-                <form
-                  className="search-box desktop-search"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    search(new FormData(event.currentTarget).get("query")?.toString() ?? "");
-                  }}
-                >
-                  <Search size={15} />
-                  <input name="query" placeholder="Search courses, assignments..." aria-label="Search courses and assignments" />
-                </form>
+                <HeaderSearch className="desktop-search" />
                 <button className="icon-button search-trigger mobile-search-trigger" aria-label="Search" onClick={() => setSearchOpen(true)}>
                   <Search size={17} />
                 </button>
@@ -417,6 +390,13 @@ function SessionRoute({ children }: { children: ReactNode }) {
   return user ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
+/** Layout route: pages for one role only. The other role is sent to its own Overview instead of
+ *  seeing a page whose actions the backend would reject (403). */
+function RoleRoute({ role }: { role: User["role"] }) {
+  const { user } = useAppState();
+  return user?.role === role ? <Outlet /> : <Navigate to="/app" replace />;
+}
+
 function AppRoutes() {
   const {
     courses: courseState,
@@ -437,26 +417,33 @@ function AppRoutes() {
       <Route path="/app" element={<SessionRoute><ApplicationShell /></SessionRoute>}>
         <Route index element={<OverviewPage />} />
         <Route path="courses" element={<CoursesPage courses={courseState} setCourses={setCourses} />} />
-        <Route path="courses/:courseId" element={<CourseDetailPage courses={courseState} />} />
-        {/* Course material is now attached while creating an assignment; keep old links working. */}
-        <Route path="materials" element={<Navigate to="/app/assignment/new" replace />} />
-        <Route path="assignments" element={<AssignmentsPage />} />
-        <Route path="assignment/new" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
-        <Route path="assignment/:assignmentId/edit" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
+        {/* Both roles */}
         <Route path="submissions" element={<SubmissionsPage submissions={submissionState} />} />
-        <Route path="grading/:submissionId" element={<GradingReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
-        <Route path="reviews" element={<ReviewQueuePage />} />
-        <Route path="late-submissions" element={<LateSubmissionsPage />} />
-        {/* The old "OCR review" sidebar link pointed here; it is now a Review queue tab. */}
-        <Route path="ocr/review" element={<Navigate to="/app/reviews?tab=ocr" replace />} />
-        <Route path="ocr/:submissionId" element={<OCRReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
         <Route path="results" element={<ResultsPage submissions={submissionState} />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="student/assignments" element={<StudentAssignmentsPage courses={courseState} joinedCourseIds={joinedCourseIds} setJoinedCourseIds={setJoinedCourseIds} submissions={submissionState} />} />
-        <Route path="student/submit/:assignmentId" element={<StudentSubmissionPage submissions={submissionState} setSubmissions={setSubmissions} />} />
-        <Route path="student/assessment/:assignmentId" element={<AssessmentPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+        {/* Teachers only */}
+        <Route element={<RoleRoute role="teacher" />}>
+          <Route path="courses/:courseId" element={<CourseDetailPage courses={courseState} />} />
+          {/* Course material is now attached while creating an assignment; keep old links working. */}
+          <Route path="materials" element={<Navigate to="/app/assignment/new" replace />} />
+          <Route path="assignments" element={<AssignmentsPage />} />
+          <Route path="assignment/new" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
+          <Route path="assignment/:assignmentId/edit" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
+          <Route path="grading/:submissionId" element={<GradingReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+          <Route path="reviews" element={<ReviewQueuePage />} />
+          <Route path="late-submissions" element={<LateSubmissionsPage />} />
+          {/* The old "OCR review" sidebar link pointed here; it is now a Review queue tab. */}
+          <Route path="ocr/review" element={<Navigate to="/app/reviews?tab=ocr" replace />} />
+          <Route path="ocr/:submissionId" element={<OCRReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+        </Route>
+        {/* Students only */}
+        <Route element={<RoleRoute role="student" />}>
+          <Route path="student/assignments" element={<StudentAssignmentsPage courses={courseState} joinedCourseIds={joinedCourseIds} setJoinedCourseIds={setJoinedCourseIds} submissions={submissionState} />} />
+          <Route path="student/submit/:assignmentId" element={<StudentSubmissionPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+          <Route path="student/assessment/:assignmentId" element={<AssessmentPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
