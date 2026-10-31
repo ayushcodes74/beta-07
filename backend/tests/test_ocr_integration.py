@@ -7,6 +7,7 @@ student data isolation, and teacher authorization. They do NOT test real
 deep-learning OCR model inference on actual GPUs/CPUs.
 """
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -66,6 +67,9 @@ class FakeAssignmentRepository:
         if rec and rec.status == AssignmentStatus.PUBLISHED:
             return rec
         return None
+
+    def list_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[AssignmentRecord]:
+        return [record for record in self.records.values() if record.teacher_id == teacher_id]
 
 
 class FakeSubmissionRepository:
@@ -677,6 +681,137 @@ def test_teacher_course_level_authorization(
 
     resp_other_result = client.get(f"/api/v1/submissions/{sub_rec.id}/ocr-result", headers=teacher_other_auth)
     assert resp_other_result.status_code == 404
+
+
+def test_integrity_comparison_is_teacher_only_and_scoped_to_same_assignment(
+    setup_app, assignment_repo, submission_repo, make_user, sample_ocr_result_dict
+):
+    teacher_id, teacher_auth = make_user("teacher")
+    other_teacher_id, other_teacher_auth = make_user("teacher")
+    student_id, student_auth = make_user("student")
+    assignment = assignment_repo.add(teacher_id)
+    other_assignment = assignment_repo.add(other_teacher_id)
+
+    current = submission_repo.create(
+        uuid4(), assignment.id, student_id, "current.pdf", "current-job", "ocr_completed", access_token="test"
+    )
+    source = submission_repo.create(
+        uuid4(), assignment.id, uuid4(), "source.pdf", "source-job", "ocr_completed", access_token="test"
+    )
+    unrelated = submission_repo.create(
+        uuid4(), other_assignment.id, uuid4(), "unrelated.pdf", "unrelated-job", "ocr_completed", access_token="test"
+    )
+    current_text = (
+        "Cells convert glucose into usable energy through cellular respiration "
+        "within the mitochondria of the cell."
+    )
+    source_text = (
+        "Cells convert glucose into usable energy through cellular respiration "
+        "inside the mitochondria of the cell."
+    )
+    requested_jobs: list[str] = []
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        job_id = request.url.path.rsplit("/", 1)[-1]
+        requested_jobs.append(job_id)
+        payload = deepcopy(sample_ocr_result_dict)
+        payload["job_id"] = job_id
+        text = current_text if job_id == "current-job" else source_text
+        payload["pages"][0]["text_blocks"][0]["text"] = text
+        payload["pages"][0]["text_blocks"][0]["confidence"] = 0.96
+        payload["pages"][0]["text_blocks"][0]["type"] = "handwritten"
+        payload["pages"][0]["full_text"] = text
+        return httpx.Response(200, json=payload)
+
+    client = setup_app(create_mock_transport_client(mock_handler))
+
+    student_response = client.get(
+        f"/api/v1/submissions/{current.id}/integrity",
+        headers=student_auth,
+    )
+    other_teacher_response = client.get(
+        f"/api/v1/submissions/{current.id}/integrity",
+        headers=other_teacher_auth,
+    )
+    owner_response = client.get(
+        f"/api/v1/submissions/{current.id}/integrity",
+        headers=teacher_auth,
+    )
+
+    assert student_response.status_code == 403
+    assert other_teacher_response.status_code == 404
+    assert owner_response.status_code == 200
+    report = owner_response.json()
+    assert report["review_status"] == "needs_teacher_review"
+    assert report["comparison_scope"] == "same_assignment"
+    assert report["comparisons_completed"] == 1
+    assert report["comparison_complete"] is True
+    assert report["handwriting_analysis"]["status"] == "unavailable"
+    assert report["handwriting_analysis"]["calibrated_score"] is None
+    assert report["evidence"][0]["source_submission_id"] == str(source.id)
+    assert report["evidence"][0]["ocr_uncertain"] is False
+    assert "not a finding of misconduct" in " ".join(report["notes"])
+    assert unrelated.id != source.id
+    assert "unrelated-job" not in requested_jobs
+    assert requested_jobs == ["current-job", "source-job"]
+
+
+def test_integrity_analysis_reports_pending_ocr_without_comparing_sources(
+    setup_app, assignment_repo, submission_repo, make_user
+):
+    teacher_id, teacher_auth = make_user("teacher")
+    student_id, _ = make_user("student")
+    assignment = assignment_repo.add(teacher_id)
+    current = submission_repo.create(
+        uuid4(), assignment.id, student_id, "current.pdf", "pending-job", "ocr_processing", access_token="test"
+    )
+    requested_jobs: list[str] = []
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        requested_jobs.append(request.url.path.rsplit("/", 1)[-1])
+        return httpx.Response(
+            202,
+            json={"job_id": "pending-job", "status": "processing", "stage": "recognition", "progress": 55},
+        )
+
+    client = setup_app(create_mock_transport_client(mock_handler))
+    response = client.get(f"/api/v1/submissions/{current.id}/integrity", headers=teacher_auth)
+
+    assert response.status_code == 200
+    assert response.json()["review_status"] == "processing"
+    assert response.json()["evidence"] == []
+    assert requested_jobs == ["pending-job"]
+
+
+def test_submission_listing_is_scoped_for_students_and_assignment_owners(
+    setup_app, assignment_repo, submission_repo, make_user
+):
+    teacher_id, teacher_auth = make_user("teacher")
+    other_teacher_id, _ = make_user("teacher")
+    student_a, student_a_auth = make_user("student")
+    student_b, student_b_auth = make_user("student")
+    owned_assignment = assignment_repo.add(teacher_id)
+    other_assignment = assignment_repo.add(other_teacher_id)
+
+    own = submission_repo.create(
+        uuid4(), owned_assignment.id, student_a, "own.pdf", "own-job", "ocr_queued", access_token="test"
+    )
+    peer = submission_repo.create(
+        uuid4(), owned_assignment.id, student_b, "peer.pdf", "peer-job", "ocr_queued", access_token="test"
+    )
+    unrelated = submission_repo.create(
+        uuid4(), other_assignment.id, student_a, "other.pdf", "other-job", "ocr_queued", access_token="test"
+    )
+    client = setup_app()
+
+    teacher_response = client.get("/api/v1/submissions", headers=teacher_auth)
+    student_a_response = client.get("/api/v1/submissions", headers=student_a_auth)
+    student_b_response = client.get("/api/v1/submissions", headers=student_b_auth)
+
+    assert teacher_response.status_code == 200
+    assert {item["submission_id"] for item in teacher_response.json()} == {str(own.id), str(peer.id)}
+    assert {item["submission_id"] for item in student_a_response.json()} == {str(own.id), str(unrelated.id)}
+    assert {item["submission_id"] for item in student_b_response.json()} == {str(peer.id)}
 
 
 # --------------------------------------------------------------------------

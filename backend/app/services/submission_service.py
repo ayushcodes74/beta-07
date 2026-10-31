@@ -10,6 +10,7 @@ Enforces:
   - Explicit 202 processing handling vs 200 completion without text fabrication.
 """
 
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 import logging
@@ -17,6 +18,7 @@ from typing import Any, Dict, List, Optional, Protocol, Union
 from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.integrity import IntegrityReport, OCRQualitySummary
 from app.schemas.ocr import (
     JobStatusResponse,
     OCRDocumentResult,
@@ -41,6 +43,7 @@ from app.services.ocr_client import (
     OCRTimeoutError,
     get_ocr_client,
 )
+from app.services.plagiarism import compare_ocr_documents, summarize_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +155,27 @@ class SubmissionService:
         self.repo = repository
         self.assignment_service = assignment_service
         self.ocr_client = ocr_client
+
+    def list_submissions(self, user: CurrentUser, *, access_token: str) -> list[SubmissionRecord]:
+        """List only the caller's submissions or submissions for their own assignments."""
+        if user.role is Role.STUDENT:
+            records = self.repo.list_by_student(user.id, access_token=access_token)
+            return sorted(
+                (record for record in records if record.student_id == user.id),
+                key=lambda record: record.created_at,
+                reverse=True,
+            )
+        if user.role is Role.TEACHER:
+            assignments = self.assignment_service.list_for(user, access_token=access_token)
+            assignment_ids = sorted(record.id for record in assignments if record.teacher_id == user.id)
+            records = [
+                submission
+                for assignment_id in assignment_ids
+                for submission in self.repo.list_by_assignment(assignment_id, access_token=access_token)
+                if submission.assignment_id == assignment_id
+            ]
+            return sorted(records, key=lambda record: record.created_at, reverse=True)
+        raise SubmissionPermissionError("Invalid role")
 
     async def submit_assignment_pdf(
         self,
@@ -293,6 +317,99 @@ class SubmissionService:
         # Returns either OCRDocumentResult (200) or JobStatusResponse (202 processing)
         res = await self.ocr_client.get_job_result(submission.ocr_job_id)
         return res
+
+    async def analyze_submission_integrity(
+        self,
+        user: CurrentUser,
+        submission_id: UUID,
+        *,
+        access_token: str,
+    ) -> IntegrityReport:
+        """Compare a teacher-owned submission with completed OCR from its assignment only."""
+        submission = self.repo.get(submission_id, access_token=access_token)
+        if not submission:
+            raise SubmissionNotFoundError("Submission not found")
+        self._check_access(user, submission, access_token=access_token)
+
+        if not submission.ocr_job_id:
+            raise SubmissionValidationError("no_ocr_job", "No OCR processing job is associated with this submission.")
+
+        current_result = await self.ocr_client.get_job_result(submission.ocr_job_id)
+        if isinstance(current_result, JobStatusResponse):
+            return IntegrityReport(
+                submission_id=submission.id,
+                review_status="processing",
+                comparisons_completed=0,
+                comparisons_skipped=0,
+                comparison_complete=False,
+                ocr_quality=OCRQualitySummary(),
+                notes=["Integrity analysis will be available when OCR processing is complete."],
+            )
+
+        other_submissions = [
+            record
+            for record in self.repo.list_by_assignment(submission.assignment_id, access_token=access_token)
+            if record.id != submission.id and record.assignment_id == submission.assignment_id
+        ]
+        skipped = 0
+        sources: list[SubmissionRecord] = []
+        for record in other_submissions:
+            if record.ocr_job_id:
+                sources.append(record)
+            else:
+                skipped += 1
+
+        semaphore = asyncio.Semaphore(5)
+
+        async def load_source(
+            record: SubmissionRecord,
+        ) -> tuple[SubmissionRecord, OCRDocumentResult | None]:
+            async with semaphore:
+                try:
+                    result = await self.ocr_client.get_job_result(record.ocr_job_id or "")
+                except (OCRJobCancelledError, OCRJobFailedError, OCRJobNotFoundError):
+                    return record, None
+                return record, result if isinstance(result, OCRDocumentResult) else None
+
+        loaded_sources = await asyncio.gather(*(load_source(record) for record in sources))
+        evidence = []
+        comparisons_completed = 0
+        for source_record, source_result in loaded_sources:
+            if source_result is None:
+                skipped += 1
+                continue
+            comparisons_completed += 1
+            matches, _ = compare_ocr_documents(
+                submission.id,
+                current_result,
+                source_record.id,
+                source_result,
+            )
+            evidence.extend(matches)
+
+        evidence.sort(key=lambda item: (-item.exact_match_score, item.source_submission_id.hex))
+        quality = summarize_ocr(current_result)
+        notes = [
+            "This compares OCR text only with submissions for the same assignment; it does not search the internet.",
+            "Text similarity is a review signal, not a finding of misconduct. Semantic embeddings are not configured.",
+            "Printed OCR regions are excluded to reduce repeated question-prompt matches; question-level answer alignment is unavailable.",
+            "Results are computed on request and are not persisted; no teacher decision or audit history is recorded yet.",
+        ]
+        if skipped:
+            notes.append(f"{skipped} same-assignment submission(s) could not be compared because OCR was unavailable or incomplete.")
+        if quality.low_confidence_regions or quality.unreadable_pages or quality.missing_pages:
+            notes.append("OCR uncertainty or page gaps may affect these comparisons; verify the original scan.")
+
+        return IntegrityReport(
+            submission_id=submission.id,
+            review_status="needs_teacher_review" if evidence else "no_matches",
+            comparisons_completed=comparisons_completed,
+            comparisons_skipped=skipped,
+            comparison_complete=skipped == 0,
+            ocr_quality=quality,
+            evidence=evidence,
+            notes=notes,
+        )
 
     async def cancel_submission_ocr_job(
         self,

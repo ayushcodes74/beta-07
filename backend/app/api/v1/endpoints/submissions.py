@@ -28,12 +28,17 @@ from app.core.dependencies import (
     require_teacher,
 )
 from app.schemas.auth import ErrorResponse
+from app.schemas.integrity import IntegrityReport
 from app.schemas.ocr import (
     JobStatusResponse,
     OCRDocumentResult,
     SubmissionOCRStatusResponse,
 )
-from app.services.assignment_service import AssignmentNotFoundError, AssignmentService
+from app.services.assignment_service import (
+    AssignmentNotFoundError,
+    AssignmentRepositoryError,
+    AssignmentService,
+)
 from app.services.auth_service import CurrentUser
 from app.services.ocr_client import (
     OCRInvalidFileError,
@@ -89,6 +94,9 @@ ERROR_RESPONSES: dict[int | str, dict] = {
 def _handle_error(exc: Exception) -> NoReturn:
     if isinstance(exc, (SubmissionNotFoundError, AssignmentNotFoundError, OCRJobNotFoundError)):
         raise api_error(status.HTTP_404_NOT_FOUND, "not_found", "Requested resource was not found.") from None
+    if isinstance(exc, AssignmentRepositoryError):
+        logger.error("Assignment repository error: %s", type(exc).__name__)
+        raise api_error(status.HTTP_503_SERVICE_UNAVAILABLE, "storage_unavailable", "Storage service unavailable.") from None
     if isinstance(exc, SubmissionPermissionError):
         raise api_error(status.HTTP_403_FORBIDDEN, "forbidden", "You do not have permission for this action.") from None
     if isinstance(exc, SubmissionValidationError):
@@ -146,6 +154,36 @@ async def submit_assignment(
 
 
 @router.get(
+    "/submissions",
+    response_model=list[SubmissionOCRStatusResponse],
+    summary="List accessible submissions",
+    description="Students receive their own submissions; teachers receive submissions for assignments they own.",
+    responses=ERROR_RESPONSES,
+)
+def list_submissions(
+    user: AnyUser,
+    token: AccessToken,
+    service: Service,
+) -> list[SubmissionOCRStatusResponse]:
+    try:
+        records = service.list_submissions(user, access_token=token)
+        return [
+            SubmissionOCRStatusResponse(
+                submission_id=record.id,
+                assignment_id=record.assignment_id,
+                student_id=record.student_id,
+                status=record.status,
+                ocr_job_id=record.ocr_job_id,
+                created_at=record.created_at,
+                updated_at=record.updated_at,
+            )
+            for record in records
+        ]
+    except Exception as exc:
+        _handle_error(exc)
+
+
+@router.get(
     "/submissions/{submission_id}/status",
     response_model=SubmissionOCRStatusResponse,
     summary="Get submission status and OCR progress",
@@ -195,6 +233,28 @@ async def get_submission_ocr_result(
                 },
             )
         return res
+    except Exception as exc:
+        _handle_error(exc)
+
+
+@router.get(
+    "/submissions/{submission_id}/integrity",
+    response_model=IntegrityReport,
+    summary="Compare submission text with same-assignment submissions",
+    description=(
+        "Teacher-only, request-time comparison of OCR passages from submissions for the same assignment. "
+        "Similarity is review evidence, not a misconduct finding. No external web search is performed."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def get_submission_integrity(
+    submission_id: UUID,
+    teacher: TeacherUser,
+    token: AccessToken,
+    service: Service,
+) -> IntegrityReport:
+    try:
+        return await service.analyze_submission_integrity(teacher, submission_id, access_token=token)
     except Exception as exc:
         _handle_error(exc)
 

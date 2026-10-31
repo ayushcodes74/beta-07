@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch, type DragEvent, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type DragEvent, type FormEvent, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Activity, AlertCircle, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, CalendarDays,
@@ -18,6 +18,7 @@ import {
   courseService,
   extractErrorMessage,
   submissionService,
+  type BackendIntegrityReport,
 } from "./services/api";
 import { mockService } from "./services/mock-service";
 import { rubrics } from "./lib/mock-data";
@@ -728,18 +729,136 @@ export function SubmissionsPage({ submissions: rows }: { submissions: Submission
 
 export function GradingReviewPage({ submissions: rows }: { submissions: Submission[]; setSubmissions: Dispatch<SetStateAction<Submission[]>> }) {
   const { submissionId } = useParams();
+  const { user } = useAppState();
   const submission = rows.find((item) => item.id === submissionId);
+  const [integrity, setIntegrity] = useState<BackendIntegrityReport | null>(null);
+  const [integrityLoading, setIntegrityLoading] = useState(false);
+  const [integrityError, setIntegrityError] = useState<string | null>(null);
+  const [integrityRefresh, setIntegrityRefresh] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setIntegrity(null);
+    setIntegrityError(null);
+    if (!submissionId || user?.role !== "teacher" || import.meta.env.VITE_USE_API_AUTH !== "true") {
+      setIntegrityLoading(false);
+      return () => { active = false; };
+    }
+
+    setIntegrityLoading(true);
+    void submissionService.getIntegrity(submissionId)
+      .then((report) => {
+        if (active) setIntegrity(report);
+      })
+      .catch((error: unknown) => {
+        if (active) setIntegrityError(extractErrorMessage(error));
+      })
+      .finally(() => {
+        if (active) setIntegrityLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [submissionId, user?.role, integrityRefresh]);
+
+  const regionSummary = (regions: BackendIntegrityReport["evidence"][number]["current_regions"]) =>
+    regions.map((region) => `p. ${region.page_number}${region.region_id ? ` · ${region.region_id}` : ""}`).join(", ");
+
   return (
     <>
       <PageHeader title="Grading Review" subtitle="Teacher assessment and feedback verification" />
-      <Panel className="empty-state">
+      <Panel className="integrity-panel">
         {submission ? (
           <div>
             <h3>Reviewing Submission {submission.id}</h3>
-            <p>OCR State: {submission.ocr.state} · Confidence: {Math.round(submission.ocr.confidence * 100)}%</p>
+            <p>OCR State: {submission.ocr.state} · Confidence: {submission.ocr.confidence === null ? "Unavailable" : `${Math.round(submission.ocr.confidence * 100)}%`}</p>
             <p style={{ marginTop: "1rem", color: "var(--color-text-muted, #71717a)" }}>
               Note: The AI Grading and Teacher Scoring backend endpoint (POST /api/v1/submissions/:id/grade) is pending backend implementation.
             </p>
+            <div className="integrity-heading">
+              <div>
+                <h2><ShieldCheck size={17} /> Submission integrity</h2>
+                <p>Authorized same-assignment OCR comparison. Similarity is a prompt for teacher review, never a misconduct verdict.</p>
+              </div>
+              {integrity && <StatusBadge status={
+                integrity.review_status === "needs_teacher_review"
+                  ? "Needs teacher review"
+                  : integrity.review_status === "processing"
+                    ? "OCR processing"
+                    : "No matching passages"
+              } />}
+            </div>
+
+            {import.meta.env.VITE_USE_API_AUTH !== "true" && (
+              <p className="integrity-message" role="status">Connect the authenticated backend to run integrity analysis. Demo data is not compared.</p>
+            )}
+            {integrityLoading && <p className="integrity-message" role="status" aria-live="polite">Comparing completed OCR for this assignment…</p>}
+            {integrityError && <p className="integrity-message integrity-error" role="alert">{integrityError}</p>}
+            {integrity?.review_status === "processing" && (
+              <div className="integrity-message" role="status">
+                <span>{integrity.notes[0]}</span>
+                <Button variant="secondary" size="sm" onClick={() => setIntegrityRefresh((value) => value + 1)}>Check again</Button>
+              </div>
+            )}
+            {integrityError && <Button variant="secondary" size="sm" onClick={() => setIntegrityRefresh((value) => value + 1)}>Retry integrity analysis</Button>}
+            {integrity && integrity.review_status !== "processing" && (
+              <>
+                <div className="integrity-summary" aria-label="Comparison summary">
+                  <span><strong>{integrity.comparisons_completed}</strong> completed comparisons</span>
+                  {integrity.comparisons_skipped > 0 && <span><strong>{integrity.comparisons_skipped}</strong> skipped</span>}
+                  <span>{integrity.comparison_complete ? "Comparison coverage complete" : "Comparison coverage incomplete"}</span>
+                  {integrity.ocr_quality.mean_confidence !== null && (
+                    <span>Mean OCR confidence {(integrity.ocr_quality.mean_confidence * 100).toFixed(0)}%</span>
+                  )}
+                  {integrity.ocr_quality.missing_pages.length > 0 && (
+                    <span>Missing pages: {integrity.ocr_quality.missing_pages.join(", ")}</span>
+                  )}
+                  {integrity.ocr_quality.unreadable_pages.length > 0 && (
+                    <span>Unreadable pages: {integrity.ocr_quality.unreadable_pages.join(", ")}</span>
+                  )}
+                </div>
+                <p className="integrity-limitation">
+                  Exact text matching uses normalized tokens. Semantic similarity is unavailable; no embedding model or external-web search is configured.
+                </p>
+                <p className="integrity-limitation" role="status">
+                  Handwriting-style analysis unavailable: {integrity.handwriting_analysis.reason}
+                </p>
+
+                {integrity.evidence.map((item, index) => (
+                  <article className="integrity-evidence" key={`${item.source_submission_id}-${index}`}>
+                    <div className="integrity-evidence-head">
+                      <strong>Potential passage match</strong>
+                      <span>Token similarity {(item.exact_match_score * 100).toFixed(0)}%</span>
+                    </div>
+                    <p className="integrity-source">Authorized source: {item.source_reference}</p>
+                    <div className="integrity-passages">
+                      <div><h3>This submission · {regionSummary(item.current_regions) || "page reference unavailable"}</h3><blockquote><mark>{item.current_passage}</mark></blockquote></div>
+                      <div><h3>Comparison source · {regionSummary(item.source_regions) || "page reference unavailable"}</h3><blockquote><mark>{item.source_passage}</mark></blockquote></div>
+                    </div>
+                    {item.ocr_uncertain && <p className="integrity-warning" role="status">OCR confidence is low or unavailable for one or more matched regions. Check the original scan before drawing conclusions.</p>}
+                    {item.context_note && <p className="integrity-warning">{item.context_note}</p>}
+                  </article>
+                ))}
+                {integrity.evidence.length === 0 && integrity.review_status === "no_matches" && (
+                  <p className="integrity-message">No matching passages were found in completed submissions for this assignment. This is not an internet-wide plagiarism check.</p>
+                )}
+                {integrity.ocr_quality.low_confidence_regions.length > 0 && (
+                  <section className="integrity-ocr-review" aria-labelledby="ocr-low-confidence-title">
+                    <h3 id="ocr-low-confidence-title">OCR passages needing verification</h3>
+                    {integrity.ocr_quality.low_confidence_regions.map((region) => (
+                      <p key={`${region.page_number}-${region.region_id}`}>
+                        <strong>Page {region.page_number}{region.region_id ? ` · ${region.region_id}` : ""}</strong>
+                        {region.confidence !== null && ` · ${(region.confidence * 100).toFixed(0)}% confidence`}
+                        <span>{region.original_text || "No text was confidently recognized."}</span>
+                      </p>
+                    ))}
+                    <small>Original OCR text is shown unchanged. Corrections and review decisions are not yet persisted.</small>
+                  </section>
+                )}
+                <ul className="integrity-notes">
+                  {integrity.notes.map((note) => <li key={note}>{note}</li>)}
+                </ul>
+              </>
+            )}
           </div>
         ) : (
           <div>
