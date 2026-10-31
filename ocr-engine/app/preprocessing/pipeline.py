@@ -246,6 +246,8 @@ def _format_posix_rel_path(base_dir: Path, submission_id: str, subfolder: str, f
         try:
             return (base_dir / submission_id / subfolder / filename).relative_to(Path.cwd()).as_posix()
         except ValueError:
-            return f"{base_dir.name}/{submission_id}/{subfolder}/{filename}"
+            # Outside the working directory: return the real absolute path (a cwd-relative
+            # "<dir>/<id>/..." string would point at a file that doesn't exist).
+            return (base_dir / submission_id / subfolder / filename).as_posix()
     return (base_dir / submission_id / subfolder / filename).as_posix()
 

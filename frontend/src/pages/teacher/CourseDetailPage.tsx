@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, FileCheck2, Plus, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, X } from "lucide-react";
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
@@ -154,10 +154,6 @@ export function CourseDetailPage({ courses: courseList }: { courses: Course[] })
           </p>
         </div>
         <div className="heading-actions">
-          <Button variant="secondary" disabled onClick={() => navigate("/app/materials")}>
-            <FileCheck2 size={15} />
-            Materials unavailable
-          </Button>
           <Button onClick={() => navigate(`/app/assignment/new?courseId=${encodeURIComponent(course.id)}`)}>
             <Plus size={15} />
             Create assignment

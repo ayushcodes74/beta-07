@@ -17,8 +17,8 @@ from app.schemas.ai_generation import (
 
 logger = logging.getLogger(__name__)
 
-# The AI Engine requires a course id, but nothing is retrieved by it yet (no course
-# material storage), so a fixed label avoids sending real identifiers for no benefit.
+# The AI Engine requires a course id, but nothing is retrieved by it (course material is sent
+# inline with each request instead of stored), so a fixed label avoids sending real identifiers.
 _UNSCOPED_COURSE = "unscoped"
 
 _FORMATS = {"mixed": "MIXED", "subjective": "SUBJECTIVE", "mcq": "MCQ"}
@@ -74,7 +74,9 @@ class AIGenerationService:
             raise AIGenerationError(f"AI Engine returned status {response.status_code}")
 
         try:
-            return map_engine_draft(response.json(), request.total_marks)
+            return map_engine_draft(
+                response.json(), request.total_marks, grounded=bool(payload["course_materials"])
+            )
         except (ValueError, KeyError, TypeError) as exc:
             logger.error("AI Engine response could not be mapped: %s", type(exc).__name__)
             raise AIGenerationError("AI Engine returned an unexpected response") from exc
@@ -101,6 +103,7 @@ def _engine_payload(request: AssignmentGenerationRequest) -> dict[str, Any]:
         "difficulty": _DIFFICULTIES[request.difficulty],
         "total_marks": float(request.total_marks),
         "teacher_instructions": "\n".join(notes) or None,
+        "course_materials": (request.course_material or "").strip() or None,
     }
 
 
@@ -149,7 +152,7 @@ def _mcq_fields(question: dict[str, Any]) -> tuple[list[str], int, str]:
     return texts, correct, guidance
 
 
-def map_engine_draft(draft: dict[str, Any], total_marks: int) -> GeneratedAssignmentDraft:
+def map_engine_draft(draft: dict[str, Any], total_marks: int, grounded: bool = False) -> GeneratedAssignmentDraft:
     """Convert the AI Engine's AssignmentDraft JSON into editor-ready questions."""
     usable: list[dict[str, Any]] = []
     for question in draft["questions"]:
@@ -182,5 +185,5 @@ def map_engine_draft(draft: dict[str, Any], total_marks: int) -> GeneratedAssign
         title=str(draft.get("title") or "").strip() or "AI-drafted assignment",
         instructions=(draft.get("instructions") or None),
         questions=[GeneratedQuestion(marks=m, **q) for q, m in zip(usable, marks)],
-        grounded_in_course_materials=False,
+        grounded_in_course_materials=grounded,
     )

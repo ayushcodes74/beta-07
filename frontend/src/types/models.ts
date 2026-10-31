@@ -21,16 +21,6 @@ export interface Course {
   average: number;
 }
 
-export interface CourseMaterial {
-  id: string;
-  name: string;
-  category: "Syllabus" | "Rulebook" | "Lecture slides" | "Notes" | "PDF" | "Reference" | "Rubric";
-  size: string;
-  uploadedAt: string;
-  state: ProcessingState;
-  indexing: ProcessingState;
-}
-
 export interface Question {
   id: string;
   prompt: string;

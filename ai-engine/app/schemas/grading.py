@@ -141,6 +141,18 @@ class QuestionGrade(BaseSchema):
         default_factory=list,
         description="Reasons why human review is required.",
     )
+    evidence_status: str = Field(
+        default="not_requested",
+        description="Course-material RAG evidence: 'available', 'unavailable', or 'not_requested'.",
+    )
+    evidence_unavailable_reason: Optional[str] = Field(
+        default=None,
+        description="Why no course evidence was used (no materials indexed, nothing relevant, embeddings missing).",
+    )
+    evidence: List[SourceReference] = Field(
+        default_factory=list,
+        description="Course passages retrieved for this question, with similarity scores, passed to the grader.",
+    )
 
     @model_validator(mode="after")
     def validate_totals(self) -> QuestionGrade:
@@ -178,6 +190,10 @@ class GradingResult(BaseSchema):
     grading_status: GradingStatus = Field(
         default=GradingStatus.COMPLETED,
         description="Current workflow status.",
+    )
+    rag: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Course-material RAG summary: status, course_id, indexed materials, embedding model.",
     )
 
     @model_validator(mode="after")

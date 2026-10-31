@@ -52,6 +52,11 @@ MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB limit
 MIN_PDF_SIZE_BYTES = 10  # Minimum valid header bytes
 
 
+def _is_replaceable(api_status: str) -> bool:
+    """A student may replace their submission until grading starts (OCR stages included)."""
+    return api_status in ("submitted", "late_pending") or api_status.startswith("ocr_")
+
+
 class SubmissionRecord(BaseModel):
     """Internal submission record as stored in the repository."""
 
@@ -208,11 +213,26 @@ class SubmissionService:
 
         # 1. Verify student has access to the published assignment
         # get_for raises AssignmentNotFoundError if assignment is draft or inaccessible
-        assignment = self.assignment_service.get_for(student, assignment_id, access_token=access_token)
+        assignment = await asyncio.to_thread(
+            self.assignment_service.get_for, student, assignment_id, access_token=access_token
+        )
         if not assignment:
             raise SubmissionNotFoundError("Assignment not found or inaccessible")
 
         submission_id = uuid4()
+
+        # 1b. Resubmission: one submission per student per assignment. Refuse before any OCR
+        #     work if grading has started; otherwise remember the old OCR job to cancel later.
+        previous = next(
+            (s for s in await asyncio.to_thread(self.repo.list_by_student, student.id, access_token=access_token)
+             if s.assignment_id == assignment_id),
+            None,
+        )
+        if previous is not None and not _is_replaceable(previous.status):
+            raise SubmissionValidationError(
+                "already_submitted",
+                "You have already submitted this assignment and it is being reviewed, so it can no longer be replaced.",
+            )
 
         # 2. Submit to OCR service
         try:
@@ -231,7 +251,8 @@ class SubmissionService:
             raise
 
         # 3. Store submission record in repository
-        record = self.repo.create(
+        record = await asyncio.to_thread(
+            self.repo.create,
             submission_id=submission_id,
             assignment_id=assignment_id,
             student_id=student.id,
@@ -240,6 +261,14 @@ class SubmissionService:
             status=initial_status,
             access_token=access_token,
         )
+
+        # 4. The replaced upload's OCR job is no longer needed; stop it so it does not keep
+        #    using CPU. Best-effort: the new submission is already saved either way.
+        if previous is not None and previous.ocr_job_id and previous.ocr_job_id != ocr_job_id:
+            try:
+                await self.ocr_client.cancel_job(previous.ocr_job_id)
+            except Exception as e:  # noqa: BLE001 - cleanup must never fail the upload
+                logger.warning("Could not cancel replaced OCR job: %s", type(e).__name__)
         return record
 
     async def get_submission_status(
@@ -250,11 +279,11 @@ class SubmissionService:
         access_token: str,
     ) -> SubmissionOCRStatusResponse:
         """Query submission status, enforcing student isolation and teacher course-level access."""
-        submission = self.repo.get(submission_id, access_token=access_token)
+        submission = await asyncio.to_thread(self.repo.get, submission_id, access_token=access_token)
         if not submission:
             raise SubmissionNotFoundError("Submission not found")
 
-        self._check_access(user, submission, access_token=access_token)
+        await asyncio.to_thread(self._check_access, user, submission, access_token=access_token)
 
         # Check latest OCR status if job is queued or processing
         ocr_stage = None
@@ -273,7 +302,8 @@ class SubmissionService:
                 # Map OCR status to submission status if changed
                 mapped_status = f"ocr_{ocr_status.status}"
                 if mapped_status != submission.status:
-                    self.repo.update_status(
+                    await asyncio.to_thread(
+                        self.repo.update_status,
                         submission_id=submission.id,
                         status=mapped_status,
                         ocr_job_id=submission.ocr_job_id,
@@ -305,11 +335,11 @@ class SubmissionService:
         access_token: str,
     ) -> Union[OCRDocumentResult, JobStatusResponse]:
         """Retrieve completed OCR result, or 202 processing status, enforcing strict authorization."""
-        submission = self.repo.get(submission_id, access_token=access_token)
+        submission = await asyncio.to_thread(self.repo.get, submission_id, access_token=access_token)
         if not submission:
             raise SubmissionNotFoundError("Submission not found")
 
-        self._check_access(user, submission, access_token=access_token)
+        await asyncio.to_thread(self._check_access, user, submission, access_token=access_token)
 
         if not submission.ocr_job_id:
             raise SubmissionValidationError("no_ocr_job", "No OCR processing job associated with this submission.")
@@ -326,10 +356,10 @@ class SubmissionService:
         access_token: str,
     ) -> IntegrityReport:
         """Compare a teacher-owned submission with completed OCR from its assignment only."""
-        submission = self.repo.get(submission_id, access_token=access_token)
+        submission = await asyncio.to_thread(self.repo.get, submission_id, access_token=access_token)
         if not submission:
             raise SubmissionNotFoundError("Submission not found")
-        self._check_access(user, submission, access_token=access_token)
+        await asyncio.to_thread(self._check_access, user, submission, access_token=access_token)
 
         if not submission.ocr_job_id:
             raise SubmissionValidationError("no_ocr_job", "No OCR processing job is associated with this submission.")
@@ -348,7 +378,9 @@ class SubmissionService:
 
         other_submissions = [
             record
-            for record in self.repo.list_by_assignment(submission.assignment_id, access_token=access_token)
+            for record in await asyncio.to_thread(
+                self.repo.list_by_assignment, submission.assignment_id, access_token=access_token
+            )
             if record.id != submission.id and record.assignment_id == submission.assignment_id
         ]
         skipped = 0
@@ -419,11 +451,11 @@ class SubmissionService:
         access_token: str,
     ) -> Dict[str, str]:
         """Cancel an active OCR processing job (student who submitted or teacher owning assignment)."""
-        submission = self.repo.get(submission_id, access_token=access_token)
+        submission = await asyncio.to_thread(self.repo.get, submission_id, access_token=access_token)
         if not submission:
             raise SubmissionNotFoundError("Submission not found")
 
-        self._check_access(user, submission, access_token=access_token)
+        await asyncio.to_thread(self._check_access, user, submission, access_token=access_token)
 
         if not submission.ocr_job_id:
             raise SubmissionValidationError("no_ocr_job", "No OCR processing job associated with this submission.")
@@ -431,7 +463,8 @@ class SubmissionService:
         resp = await self.ocr_client.cancel_job(submission.ocr_job_id)
 
         # Update repository status
-        self.repo.update_status(
+        await asyncio.to_thread(
+            self.repo.update_status,
             submission_id=submission.id,
             status="ocr_cancelled",
             ocr_job_id=submission.ocr_job_id,
@@ -459,8 +492,7 @@ class SubmissionService:
     ) -> None:
         """Verify that teacher owns the assignment; raise 404 if not found or not owned."""
         try:
-            assignment = self.assignment_service.get_for(teacher, assignment_id, access_token=access_token)
-            if not assignment:
-                raise SubmissionNotFoundError("Assignment not found")
+            # One small ownership query instead of loading the full assignment (questions + keys).
+            self.assignment_service.require_owned(teacher, assignment_id, access_token=access_token)
         except AssignmentNotFoundError:
             raise SubmissionNotFoundError("Assignment not found")

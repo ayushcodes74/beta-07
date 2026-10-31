@@ -1,7 +1,15 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, FileText, Plus, Sparkles, Upload, X } from "lucide-react";
-import { aiAssignmentService, assignmentService, extractErrorMessage } from "../../services/api";
+import { useEffect, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ChevronLeft, FileText, Paperclip, Plus, Save, Sparkles, Upload, X } from "lucide-react";
+import { useAppState } from "../../App";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import {
+  MAX_COURSE_MATERIAL_CHARS,
+  aiAssignmentService,
+  assignmentService,
+  extractErrorMessage,
+  type ExtractedCourseMaterial,
+} from "../../services/api";
 import { Badge, Button, Panel, useToast } from "../../components/ui";
 import type { Assignment, Course, Question } from "../../types/models";
 
@@ -105,6 +113,26 @@ function QuestionEditor({
   );
 }
 
+const MATERIAL_EXTENSIONS = ["pdf", "docx", "pptx", "txt", "md"];
+const MAX_MATERIAL_FILE_BYTES = 25 * 1024 * 1024;
+
+type AttachedMaterial = ExtractedCourseMaterial & { id: string };
+
+/** Combine attached files and pasted notes into the single text block sent to the AI. */
+function combineCourseMaterial(materials: AttachedMaterial[], pastedNotes: string): string {
+  const parts = materials.map((m) => `### Source: ${m.filename}\n${m.text}`);
+  if (pastedNotes.trim()) parts.push(`### Teacher notes\n${pastedNotes.trim()}`);
+  return parts.join("\n\n");
+}
+
+/** ISO timestamp -> value for an <input type="datetime-local"> in the browser's timezone. */
+function toLocalInputValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.valueOf())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function AssignmentEditor({
   courses: courseList,
   setAssignments,
@@ -115,7 +143,13 @@ export function AssignmentEditor({
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { assignmentId } = useParams();
+  const { submissions } = useAppState();
   const toast = useToast();
+  // Edit mode: the assignment being edited (draft or published), once loaded.
+  const [editing, setEditing] = useState<Assignment | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(assignmentId));
+  const [originalDueAt, setOriginalDueAt] = useState("");
   const [questions, setQuestions] = useState<Question[]>([
     { id: crypto.randomUUID(), prompt: "", type: "Subjective", marks: 5, expectedAnswer: "" },
   ]);
@@ -130,13 +164,83 @@ export function AssignmentEditor({
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [courseId, setCourseId] = useState(searchParams.get("courseId") ?? courseList[0]?.id ?? "");
+  // Course material is attached here, while creating the assignment, and only used for AI drafting.
+  const [materials, setMaterials] = useState<AttachedMaterial[]>([]);
+  const [pastedNotes, setPastedNotes] = useState("");
+  const [extractingCount, setExtractingCount] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const materialInputRef = useRef<HTMLInputElement>(null);
   const total = questions.reduce((sum, item) => sum + item.marks, 0);
+  const courseMaterial = combineCourseMaterial(materials, pastedNotes);
+  const materialChars = courseMaterial.length;
+  const materialTooLong = materialChars > MAX_COURSE_MATERIAL_CHARS;
+  const submissionCount = editing ? submissions.filter((s) => s.assignmentId === editing.id).length : 0;
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    let cancelled = false;
+    setLoadingExisting(true);
+    assignmentService
+      .getAssignment(assignmentId)
+      .then((existing) => {
+        if (cancelled) return;
+        const localDue = toLocalInputValue(existing.dueAt);
+        setEditing(existing);
+        setTitle(existing.title);
+        setDescription(existing.description);
+        setDueAt(localDue);
+        setOriginalDueAt(localDue);
+        setCourseId(existing.courseId);
+        setQuestions(existing.questions.map((q) => ({ ...q, id: crypto.randomUUID() })));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        toast(extractErrorMessage(err, "Could not load this assignment."), "info");
+        navigate("/app/assignments");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignmentId]);
 
   const updateQuestion = (id: string, patch: Partial<Question>) =>
     setQuestions((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
+  const attachMaterials = async (files: FileList | null) => {
+    if (!files?.length) return;
+    for (const file of Array.from(files)) {
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!MATERIAL_EXTENSIONS.includes(extension)) {
+        toast(`${file.name}: attach a PDF, DOCX, PPTX or TXT file.`, "info");
+        continue;
+      }
+      if (file.size > MAX_MATERIAL_FILE_BYTES) {
+        toast(`${file.name}: file exceeds the 25 MB limit.`, "info");
+        continue;
+      }
+      setExtractingCount((n) => n + 1);
+      try {
+        const extracted = await aiAssignmentService.extractCourseMaterial(file);
+        setMaterials((current) => [...current, { ...extracted, id: crypto.randomUUID() }]);
+        if (extracted.truncated) {
+          toast(`${file.name} is very long; only the first ${MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters are used.`, "info");
+        }
+      } catch (err) {
+        toast(`${file.name}: ${extractErrorMessage(err, "could not read this file.")}`, "info");
+      } finally {
+        setExtractingCount((n) => n - 1);
+      }
+    }
+  };
+
   const handleAiGenerateClick = async () => {
-    const aiTopic = (topic.trim() || title.trim());
+    // With material attached, fall back to the first file's name so a topic isn't mandatory.
+    const materialTopic = materials[0]?.filename.replace(/\.[^.]+$/, "") ?? "";
+    const aiTopic = (topic.trim() || title.trim() || materialTopic).slice(0, 300);
     const questionCount = Number(count);
     const targetMarks = Math.floor(Number(aiTotalMarks));
     if (aiTopic.length < 3) {
@@ -145,6 +249,17 @@ export function AssignmentEditor({
     }
     if (!Number.isFinite(targetMarks) || targetMarks < questionCount) {
       toast(`Total marks must be a whole number of at least ${questionCount} (one per question).`, "info");
+      return;
+    }
+    if (extractingCount > 0) {
+      toast("Wait for the attached course material to finish reading.", "info");
+      return;
+    }
+    if (materialTooLong) {
+      toast(
+        `Course material is too long (${materialChars.toLocaleString()} / ${MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters). Remove a file or shorten the pasted notes.`,
+        "info"
+      );
       return;
     }
 
@@ -157,6 +272,7 @@ export function AssignmentEditor({
         questionFormat: type.toLowerCase() as "mixed" | "subjective" | "mcq",
         difficulty: difficulty.toLowerCase() as "easy" | "medium" | "hard" | "mixed",
         totalMarks: targetMarks,
+        courseMaterial: courseMaterial || undefined,
       });
       // Replace the editor's blank starter question(s); otherwise append to the teacher's work.
       const editorIsBlank = questions.every((q) => !q.prompt.trim() && !q.expectedAnswer.trim());
@@ -166,8 +282,8 @@ export function AssignmentEditor({
       toast(
         `Added ${draft.questions.length} AI-drafted question${draft.questions.length === 1 ? "" : "s"}. ` +
           (draft.groundedInCourseMaterials
-            ? "Review them before saving."
-            : "They are based on the topic only (no course materials), so review them carefully before saving.")
+            ? "They are based on your attached course material. Review them before saving."
+            : "They are based on the topic only (no course material attached), so review them carefully before saving.")
       );
     } catch (err) {
       toast(extractErrorMessage(err, "AI generation failed. Try again."), "info");
@@ -333,9 +449,98 @@ export function AssignmentEditor({
             </div>
 
             <p className="modal-description">
-              Drafts questions, model answers and rubrics with AI. Nothing is saved until you save the
-              assignment. Course materials aren't used yet, so questions come from the topic alone.
+              Drafts questions, model answers and rubrics with AI. Attach the course material for this
+              assignment so questions are based on it; without it, questions come from the topic alone.
+              Nothing is saved until you save the assignment.
             </p>
+
+            <div className="field-block">
+              <label>Course material</label>
+              <div
+                className={`material-drop ${dragging ? "drag-active" : ""}`}
+                onDragOver={(event: DragEvent<HTMLDivElement>) => {
+                  event.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event: DragEvent<HTMLDivElement>) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  void attachMaterials(event.dataTransfer.files);
+                }}
+              >
+                <input
+                  ref={materialInputRef}
+                  className="visually-hidden"
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.pptx,.txt,.md"
+                  onChange={(event) => {
+                    void attachMaterials(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={generating}
+                  onClick={() => materialInputRef.current?.click()}
+                >
+                  <Paperclip size={13} />
+                  Attach notes, slides or readings
+                </Button>
+                <small>PDF, DOCX, PPTX or TXT · up to 25 MB each · or drop files here</small>
+              </div>
+
+              {(materials.length > 0 || extractingCount > 0) && (
+                <ul className="material-list">
+                  {materials.map((material) => (
+                    <li className="material-item" key={material.id}>
+                      <span className="file-icon">
+                        <FileText size={14} />
+                      </span>
+                      <span className="material-meta">
+                        <strong title={material.filename}>{material.filename}</strong>
+                        <small>
+                          {material.characters.toLocaleString()} characters
+                          {material.pages ? ` · ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
+                          {material.truncated ? " · truncated" : ""}
+                        </small>
+                      </span>
+                      <button
+                        className="icon-button"
+                        aria-label={`Remove ${material.filename}`}
+                        disabled={generating}
+                        onClick={() => setMaterials((current) => current.filter((m) => m.id !== material.id))}
+                      >
+                        <X size={13} />
+                      </button>
+                    </li>
+                  ))}
+                  {extractingCount > 0 && (
+                    <li className="material-item material-loading">
+                      <span className="button-spinner" />
+                      Reading {extractingCount} file{extractingCount === 1 ? "" : "s"}…
+                    </li>
+                  )}
+                </ul>
+              )}
+
+              <textarea
+                id="ai-material-notes"
+                className="field-textarea material-notes"
+                value={pastedNotes}
+                onChange={(event) => setPastedNotes(event.target.value)}
+                placeholder="…or paste course notes / key points here (optional)"
+                aria-label="Paste course material"
+              />
+              {materialChars > 0 && (
+                <small className={`material-count ${materialTooLong ? "over-limit" : ""}`}>
+                  {materialChars.toLocaleString()} / {MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters
+                  {materialTooLong ? " — too long, remove a file or shorten the notes" : ""}
+                </small>
+              )}
+            </div>
 
             <div className="field-block">
               <label htmlFor="ai-topic">Topic</label>
@@ -407,7 +612,7 @@ export function AssignmentEditor({
             <Button
               className="full-button"
               variant="secondary"
-              disabled={generating || saving}
+              disabled={generating || saving || extractingCount > 0}
               onClick={() => void handleAiGenerateClick()}
             >
               {generating ? (

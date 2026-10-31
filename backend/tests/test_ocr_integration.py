@@ -907,3 +907,121 @@ def test_no_fabricated_ocr_output_on_degraded_model(setup_app, submission_repo, 
     assert tb["confidence"] == 0.0
     assert tb["text"] == "[UNCERTAIN: Handwriting model unavailable]"
     assert "Handwriting model unavailable" in data["warnings"][0]
+
+
+# --------------------------------------------------------------------------
+# Replacing a submission
+# --------------------------------------------------------------------------
+def _existing_submission(submission_repo, student_id, assignment_id, status, ocr_job_id="old-job"):
+    now = datetime.now(UTC).isoformat()
+    rec = SubmissionRecord(
+        id=uuid4(), assignment_id=assignment_id, student_id=student_id, filename="old.pdf",
+        ocr_job_id=ocr_job_id, status=status, created_at=now, updated_at=now,
+    )
+    submission_repo.records[rec.id] = rec
+    return rec
+
+
+def _recording_ocr(calls, *, cancel_status=200):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/v1/ocr/process":
+            return httpx.Response(202, json={"job_id": "new-job", "submission_id": "s", "status": "queued",
+                                             "created_at": "2026-10-31T05:00:00Z", "message": "Queued"})
+        if request.method == "DELETE":
+            return httpx.Response(cancel_status, json={"status": "cancelled"})
+        return httpx.Response(404)
+    return create_mock_transport_client(handler)
+
+
+def test_replacing_submission_cancels_previous_ocr_job(setup_app, assignment_repo, submission_repo, make_user):
+    teacher_id, _ = make_user("teacher")
+    student_id, student_auth = make_user("student")
+    assign = assignment_repo.add(teacher_id)
+    _existing_submission(submission_repo, student_id, assign.id, "ocr_processing")
+    calls: list[tuple[str, str]] = []
+
+    resp = setup_app(_recording_ocr(calls)).post(
+        f"/api/v1/assignments/{assign.id}/submissions",
+        headers=student_auth,
+        files={"file": ("new.pdf", VALID_PDF_BYTES, "application/pdf")},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["ocr_job_id"] == "new-job"
+    assert ("DELETE", "/api/v1/ocr/jobs/old-job") in calls
+
+
+@pytest.mark.parametrize("status", ["under_review", "graded", "published"])
+def test_submission_under_review_is_refused_before_any_ocr_work(
+    setup_app, assignment_repo, submission_repo, make_user, status
+):
+    teacher_id, _ = make_user("teacher")
+    student_id, student_auth = make_user("student")
+    assign = assignment_repo.add(teacher_id)
+    _existing_submission(submission_repo, student_id, assign.id, status)
+    calls: list[tuple[str, str]] = []
+
+    resp = setup_app(_recording_ocr(calls)).post(
+        f"/api/v1/assignments/{assign.id}/submissions",
+        headers=student_auth,
+        files={"file": ("new.pdf", VALID_PDF_BYTES, "application/pdf")},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "already_submitted"
+    assert calls == []  # the PDF was never sent to the OCR engine
+
+
+def test_failed_cancel_of_old_job_does_not_fail_the_upload(setup_app, assignment_repo, submission_repo, make_user):
+    teacher_id, _ = make_user("teacher")
+    student_id, student_auth = make_user("student")
+    assign = assignment_repo.add(teacher_id)
+    _existing_submission(submission_repo, student_id, assign.id, "ocr_queued")
+    calls: list[tuple[str, str]] = []
+
+    resp = setup_app(_recording_ocr(calls, cancel_status=500)).post(
+        f"/api/v1/assignments/{assign.id}/submissions",
+        headers=student_auth,
+        files={"file": ("new.pdf", VALID_PDF_BYTES, "application/pdf")},
+    )
+
+    assert resp.status_code == 201
+    assert ("DELETE", "/api/v1/ocr/jobs/old-job") in calls
+
+
+# --------------------------------------------------------------------------
+# Database calls must not block the event loop
+# --------------------------------------------------------------------------
+@pytest.mark.anyio
+async def test_slow_database_calls_do_not_serialize_concurrent_requests():
+    """Repository calls are synchronous (Supabase over HTTPS). Run on the event loop, two
+    concurrent requests would take the sum of their DB time; offloaded, they overlap."""
+    import asyncio
+    import time
+
+    from app.services.auth_service import CurrentUser
+    from app.services.submission_service import SubmissionService
+
+    student = CurrentUser(id=uuid4(), email=None, role=Role.STUDENT)
+    now = datetime.now(UTC).isoformat()
+    record = SubmissionRecord(id=uuid4(), assignment_id=uuid4(), student_id=student.id, filename="a.pdf",
+                              ocr_job_id="job-1", status="ocr_processing", created_at=now, updated_at=now)
+
+    class SlowRepo:
+        def get(self, submission_id, *, access_token):
+            time.sleep(0.3)  # one blocking round trip to the database
+            return record
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(202, json={"job_id": "job-1", "submission_id": "s", "status": "processing",
+                                         "stage": "recognition", "progress": 50,
+                                         "created_at": now, "updated_at": now, "warnings": []})
+
+    service = SubmissionService(SlowRepo(), assignment_service=None, ocr_client=create_mock_transport_client(handler))
+
+    started = time.perf_counter()
+    await asyncio.gather(*(service.get_submission_ocr_result(student, record.id, access_token="t") for _ in range(2)))
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5, f"requests ran one after another ({elapsed:.2f}s): DB calls are blocking the event loop"

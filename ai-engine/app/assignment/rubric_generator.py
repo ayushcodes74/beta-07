@@ -10,7 +10,8 @@ import logging
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-from app.llm.gemini_client import GeminiClient, get_gemini_client
+from app.llm.gemini_client import GeminiClient
+from app.llm.fallback_client import get_llm_client
 from app.llm import prompts
 from app.schemas.assignment import Rubric, RubricCriterion
 
@@ -41,7 +42,7 @@ class RubricGenerator:
     """Service to create rubrics for subjective questions."""
 
     def __init__(self, gemini_client: Optional[GeminiClient] = None):
-        self.gemini_client = gemini_client or get_gemini_client()
+        self.gemini_client = gemini_client or get_llm_client()
 
     def generate_rubric(
         self,
@@ -115,6 +116,40 @@ Requirements:
         )
 
     @staticmethod
+    def basic_rubric(max_marks: float, key_points: Optional[List[str]] = None) -> Rubric:
+        """Deterministic rubric used when no LLM provider could generate one.
+
+        One criterion per key point (up to 4), marks split evenly; or a single holistic
+        criterion if there are no key points. Teachers are expected to refine it.
+        """
+        points = [p for p in (key_points or []) if p and p.strip()][:4]
+        if not points:
+            criteria = [
+                RubricCriterion(
+                    criterion_id="crit_1",
+                    description="Accurate, complete and well-reasoned answer to the question.",
+                    max_marks=max_marks,
+                )
+            ]
+        else:
+            share = round(max_marks / len(points), 2)
+            criteria = [
+                RubricCriterion(
+                    criterion_id=f"crit_{i + 1}",
+                    description=f"Correctly explains: {p}",
+                    max_marks=share,
+                    expected_concepts=[p],
+                )
+                for i, p in enumerate(points)
+            ]
+            criteria = RubricGenerator._reconcile_marks(criteria, max_marks)
+        return Rubric(
+            criteria=criteria,
+            total_marks=max_marks,
+            instructions="Auto-generated basic rubric (AI rubric unavailable). Please review before publishing.",
+        )
+
+    @staticmethod
     def _reconcile_marks(
         criteria: List[RubricCriterion],
         target_total: float,
@@ -132,14 +167,17 @@ Requirements:
                 scale = target_total / current_sum
                 adjusted: List[RubricCriterion] = []
                 running_sum = 0.0
+                # Minimum per-criterion mark; shrinks for low-mark questions so the floor
+                # itself can't push the total above target_total.
+                floor = min(0.5, round(target_total / (2 * len(criteria)), 2)) or 0.01
 
                 for i, c in enumerate(criteria):
                     if i == len(criteria) - 1:
                         # Final item takes the exact remainder
-                        final_marks = max(0.5, round(target_total - running_sum, 2))
+                        final_marks = max(0.01, round(target_total - running_sum, 2))
                         adjusted.append(c.model_copy(update={"max_marks": final_marks}))
                     else:
-                        scaled_mark = max(0.5, round(c.max_marks * scale, 2))
+                        scaled_mark = max(floor, round(c.max_marks * scale, 2))
                         running_sum += scaled_mark
                         adjusted.append(c.model_copy(update={"max_marks": scaled_mark}))
                 return adjusted

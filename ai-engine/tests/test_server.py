@@ -92,4 +92,6 @@ def test_health_reports_configuration(client):
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert set(response.json()) == {"status", "gemini_configured", "model"}
+    assert set(response.json()) == {"status", "gemini_configured", "model", "providers", "rag"}
+    assert response.json()["rag"]["persistent"] is True
+    assert isinstance(response.json()["providers"], list)

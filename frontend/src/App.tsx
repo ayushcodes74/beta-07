@@ -1,18 +1,18 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, FileCheck2, FileText, GraduationCap,
+  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, FileText, GraduationCap,
   LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Sparkles, Upload, X,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
-import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
+import type { Assignment, Course, Submission, User } from "./types/models";
 import { assignmentService, courseService, extractErrorMessage, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
-  GradingReviewPage, LandingPage, LeaderboardPage, MaterialsPage, NotFoundPage, OCRReviewPage,
+  GradingReviewPage, LandingPage, LeaderboardPage, NotFoundPage, OCRReviewPage,
   OverviewPage, ResultsPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage,
 } from "./pages";
@@ -29,8 +29,6 @@ interface AppState {
   setJoinedCourseIds: Dispatch<SetStateAction<string[]>>;
   submissions: Submission[];
   setSubmissions: Dispatch<SetStateAction<Submission[]>>;
-  materials: CourseMaterial[];
-  setMaterials: Dispatch<SetStateAction<CourseMaterial[]>>;
   loading: boolean;
   /** Loads the signed-in workspace. Resolves to an error message on failure, or null on success. */
   refreshSession: () => Promise<string | null>;
@@ -51,7 +49,6 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [assignmentState, setAssignments] = useState<Assignment[]>([]);
   const [joinedCourseIds, setJoinedCourseIds] = useState<string[]>([]);
   const [submissionState, setSubmissions] = useState<Submission[]>([]);
-  const [materialState, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const refreshSession = async (): Promise<string | null> => {
     setLoading(true);
@@ -68,7 +65,6 @@ function AppProvider({ children }: { children: ReactNode }) {
       setJoinedCourseIds(courses.map((course) => course.id));
       setSubmissions(submissions);
       setPeople([]);
-      setMaterials([]);
       return null;
     } catch (reason) {
       signOut();
@@ -78,7 +74,6 @@ function AppProvider({ children }: { children: ReactNode }) {
       setJoinedCourseIds([]);
       setSubmissions([]);
       setPeople([]);
-      setMaterials([]);
       return `Signed in, but your workspace could not be loaded: ${extractErrorMessage(reason, "unknown error")}`;
     } finally {
       setLoading(false);
@@ -101,7 +96,6 @@ function AppProvider({ children }: { children: ReactNode }) {
       setAssignments([]);
       setJoinedCourseIds([]);
       setSubmissions([]);
-      setMaterials([]);
     }
   };
 
@@ -118,12 +112,10 @@ function AppProvider({ children }: { children: ReactNode }) {
       setJoinedCourseIds,
       submissions: submissionState,
       setSubmissions,
-      materials: materialState,
-      setMaterials,
       loading,
       refreshSession,
     }),
-    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, materialState, loading]
+    [user, people, courseState, assignmentState, joinedCourseIds, submissionState, loading]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -143,7 +135,6 @@ const teacherNavigation = [
   {
     title: "Resources",
     items: [
-      { label: "Course materials", to: "/app/materials", icon: FileCheck2 },
       { label: "OCR review", to: "/app/ocr/review", icon: Search },
       { label: "Results", to: "/app/results", icon: ClipboardCheck },
       { label: "Leaderboard", to: "/app/leaderboard", icon: Award },
@@ -380,8 +371,6 @@ function AppRoutes() {
     setJoinedCourseIds,
     submissions: submissionState,
     setSubmissions,
-    materials: materialState,
-    setMaterials,
   } = useAppState();
 
   return (
@@ -393,7 +382,8 @@ function AppRoutes() {
         <Route index element={<OverviewPage />} />
         <Route path="courses" element={<CoursesPage courses={courseState} setCourses={setCourses} />} />
         <Route path="courses/:courseId" element={<CourseDetailPage courses={courseState} />} />
-        <Route path="materials" element={<MaterialsPage materials={materialState} setMaterials={setMaterials} />} />
+        {/* Course material is now attached while creating an assignment; keep old links working. */}
+        <Route path="materials" element={<Navigate to="/app/assignment/new" replace />} />
         <Route path="assignments" element={<AssignmentsPage />} />
         <Route path="assignment/new" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
         <Route path="submissions" element={<SubmissionsPage submissions={submissionState} />} />

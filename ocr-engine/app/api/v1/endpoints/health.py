@@ -33,11 +33,13 @@ def get_health() -> HealthResponse:
     models_status = {
         "trocr_handwriting": rec_mgr.handwriting_engine_status,
         "paddleocr_printed": rec_mgr.printed_engine_status,
+        "ocr_space_engine": rec_mgr.ocr_space_status,
         "pix2tex_math": math_mgr.model_status,
     }
 
-    # Service is degraded if any model failed or is unavailable, but service remains operational
-    all_models_loaded = all(s == "loaded" for s in models_status.values())
+    # Service is degraded if any enabled model failed or is unavailable, but service remains operational.
+    # "disabled" means the configured backend does not use that model (e.g. TrOCR under the PaddleOCR backend).
+    all_models_loaded = all(s in ("loaded", "disabled") for s in models_status.values())
     service_status = "healthy" if all_models_loaded else "degraded"
 
     return HealthResponse(

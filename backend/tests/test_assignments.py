@@ -16,6 +16,7 @@ from app.schemas.assignment import AssignmentContent, AssignmentCreate, Assignme
 from app.schemas.user import Role
 from app.services.assignment_service import (
     AssignmentInUseError,
+    AssignmentNotFoundError,
     AssignmentRecord,
     AssignmentRepositoryError,
     AssignmentService,
@@ -531,6 +532,28 @@ class TestPublication:
         response = api.post(f"{BASE}/{draft['id']}/unpublish", headers=teacher[1])
         assert response.json()["status"] == "draft"
 
+    def test_published_assignment_can_be_edited(self, api, student, teacher, published):
+        new_due = future(days=14)
+        response = api.patch(
+            f"{BASE}/{published['id']}",
+            json={"title": "Biology quiz (revised)", "due_at": new_due, "questions": [subjective(marks=5)]},
+            headers=teacher[1],
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "published"
+        assert body["title"] == "Biology quiz (revised)"
+        assert len(body["questions"]) == 1
+        seen = api.get(f"{BASE}/{published['id']}", headers=student[1]).json()
+        assert seen["title"] == "Biology quiz (revised)"
+        assert "expected_answer" not in seen["questions"][0]
+
+    def test_published_assignment_cannot_lose_all_questions(self, api, repo, teacher, published):
+        response = api.patch(f"{BASE}/{published['id']}", json={"questions": []}, headers=teacher[1])
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "not_publishable"
+        assert len(repo.records[UUID(published["id"])].content.questions) == 2
+
     def test_cannot_publish_without_questions(self, api, repo, teacher):
         created = api.post(BASE, json=assignment_body(questions=[]), headers=teacher[1]).json()
         response = api.post(f"{BASE}/{created['id']}/publish", headers=teacher[1])
@@ -563,6 +586,43 @@ class TestServiceDefenceInDepth:
             AssignmentService(WrongOwnerRepo()).create(
                 teacher, AssignmentCreate.model_validate(assignment_body()), access_token="t"
             )
+
+    def test_require_owned_uses_cheap_ownership_query(self):
+        teacher = CurrentUser(id=uuid4(), email=None, role=Role.TEACHER)
+        other = CurrentUser(id=uuid4(), email=None, role=Role.TEACHER)
+
+        class OwnershipRepo(FakeAssignmentRepository):
+            def __init__(self):
+                super().__init__()
+                self.full_fetches = 0
+
+            def get(self, assignment_id, *, access_token):
+                self.full_fetches += 1
+                return super().get(assignment_id, access_token=access_token)
+
+            def is_owned_by(self, assignment_id, teacher_id, *, access_token):
+                record = self.records.get(assignment_id)
+                return record is not None and record.teacher_id == teacher_id
+
+        owned_repo = OwnershipRepo()
+        record = owned_repo.create(teacher.id, AssignmentCreate.model_validate(assignment_body()), access_token="t")
+        service = AssignmentService(owned_repo)
+
+        service.require_owned(teacher, record.id, access_token="t")
+        with pytest.raises(AssignmentNotFoundError):
+            service.require_owned(other, record.id, access_token="t")
+        with pytest.raises(AssignmentNotFoundError):
+            service.require_owned(teacher, uuid4(), access_token="t")
+        assert owned_repo.full_fetches == 0
+
+    def test_require_owned_falls_back_to_full_fetch(self, repo):
+        teacher = CurrentUser(id=uuid4(), email=None, role=Role.TEACHER)
+        record = repo.create(teacher.id, AssignmentCreate.model_validate(assignment_body()), access_token="t")
+        service = AssignmentService(repo)
+
+        service.require_owned(teacher, record.id, access_token="t")
+        with pytest.raises(AssignmentNotFoundError):
+            service.require_owned(CurrentUser(id=uuid4(), email=None, role=Role.TEACHER), record.id, access_token="t")
 
     def test_student_list_drops_drafts_even_if_repository_returns_them(self, repo):
         student = CurrentUser(id=uuid4(), email=None, role=Role.STUDENT)

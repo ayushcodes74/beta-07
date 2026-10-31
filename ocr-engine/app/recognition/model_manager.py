@@ -1,7 +1,9 @@
 """Model lifecycle manager providing singleton caching, CPU/GPU selection, and model abstraction."""
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+import os
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
@@ -11,6 +13,7 @@ from app.recognition.exceptions import (
     ModelLoadingError,
     PrintedRecognitionError,
 )
+from app.recognition.ocr_space import OCRSpaceClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,17 @@ class ModelManager:
         self.printed_error_msg: Optional[str] = None
         self.handwriting_model_version: Optional[str] = None
         self.printed_model_version: Optional[str] = None
+
+        # OCR.space cloud OCR (backend "ocrspace")
+        self.ocr_space_client: Optional[OCRSpaceClient] = None
+        self.ocr_space_status: str = "uninitialized"
+        self.ocr_space_error_msg: Optional[str] = None
+
+        # "v3" -> PaddleOCR 3.x `predict()` API, "v2" -> legacy 2.x `ocr()` API
+        self._paddle_api: str = "v3"
+        # Paddle predictors are not thread-safe; the job manager runs pages on a thread pool.
+        self._paddle_lock = threading.Lock()
+        self._init_lock = threading.Lock()
 
         self._initialized = False
 
@@ -65,27 +79,69 @@ class ModelManager:
         if self._initialized:
             return
 
-        logger.info("Initializing OCR engines on device '%s'...", self.device)
+        with self._init_lock:
+            if self._initialized:
+                return
 
-        try:
-            # 1. Attempt TrOCR loading for handwriting
-            if self.config.backend in ("auto", "trocr"):
-                self._load_trocr_model()
+            logger.info("Initializing OCR engines (backend='%s', device='%s')...", self.config.backend, self.device)
 
-            # 2. Attempt PaddleOCR loading for printed typography
-            if self.config.backend in ("auto", "paddleocr"):
-                self._load_paddle_model()
+            try:
+                # 1. TrOCR handwriting model (legacy hybrid / trocr backends only)
+                if self.config.backend in ("auto", "trocr"):
+                    self._load_trocr_model()
+                else:
+                    self.handwriting_engine_status = "disabled"
 
-            self._initialized = True
-            logger.info(
-                "OCR engines initialized. Handwriting: %s, Printed: %s",
-                self.handwriting_engine_status,
-                self.printed_engine_status,
-            )
-        except Exception as e:
-            if isinstance(e, ModelLoadingError):
-                raise
-            raise ModelLoadingError(f"Failed to initialize recognition models: {e}") from e
+                # 2. PaddleOCR (primary local engine; fallback for OCR.space)
+                if self.config.backend in ("auto", "paddleocr", "ocrspace"):
+                    self._load_paddle_model()
+                else:
+                    self.printed_engine_status = "disabled"
+
+                # 3. OCR.space cloud OCR
+                if self.config.backend == "ocrspace":
+                    self._init_ocr_space()
+                else:
+                    self.ocr_space_status = "disabled"
+
+                self._initialized = True
+                logger.info(
+                    "OCR engines initialized. Handwriting: %s, PaddleOCR: %s",
+                    self.handwriting_engine_status,
+                    self.printed_engine_status,
+                )
+            except Exception as e:
+                if isinstance(e, ModelLoadingError):
+                    raise
+                raise ModelLoadingError(f"Failed to initialize recognition models: {e}") from e
+
+    def _init_ocr_space(self) -> None:
+        """Create the OCR.space client if an API key is configured (no network call here)."""
+        if not self.config.ocr_space_api_key:
+            self.ocr_space_client = None
+            self.ocr_space_status = "unavailable"
+            self.ocr_space_error_msg = "OCR_SPACE_API_KEY is not set; using local PaddleOCR"
+            logger.warning("OCR.space backend selected but OCR_SPACE_API_KEY is not set; using local PaddleOCR.")
+            return
+        self.ocr_space_client = OCRSpaceClient(
+            api_key=self.config.ocr_space_api_key,
+            endpoint=self.config.ocr_space_endpoint,
+            engine=self.config.ocr_space_engine,
+            timeout_seconds=self.config.ocr_space_timeout_seconds,
+            max_upload_bytes=self.config.ocr_space_max_upload_bytes,
+        )
+        self.ocr_space_status = "loaded"
+        self.ocr_space_error_msg = None
+        logger.info("OCR.space client configured (engine %d).", self.config.ocr_space_engine)
+
+    @property
+    def uses_paddle_page_mode(self) -> bool:
+        """True when whole pages should be detected and recognized by PaddleOCR."""
+        return self.config.backend in ("paddleocr", "ocrspace") and self.printed_engine is not None
+
+    @property
+    def uses_ocr_space(self) -> bool:
+        return self.config.backend == "ocrspace" and self.ocr_space_client is not None
 
     def _load_trocr_model(self) -> None:
         """Attempt loading TrOCR via HuggingFace transformers and PyTorch."""
@@ -116,21 +172,49 @@ class ModelManager:
                 ) from e
 
     def _load_paddle_model(self) -> None:
-        """Attempt loading PaddleOCR if installed in the environment."""
+        """Load PaddleOCR, supporting both the 3.x and legacy 2.x constructor APIs."""
         try:
+            # Skip PaddleX's slow model-hoster connectivity probe on every start-up.
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+            import paddleocr
             from paddleocr import PaddleOCR
 
-            use_gpu = self.device == "cuda"
-            logger.info("Loading PaddleOCR (lang='en', use_gpu=%s)...", use_gpu)
-            ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang="en",
-                use_gpu=use_gpu,
-                show_log=False,
-            )
+            version = str(getattr(paddleocr, "__version__", "3"))
+            major_str = version.split(".")[0]
+            major = int(major_str) if major_str.isdigit() else 3
+
+            if major >= 3:
+                device = "gpu:0" if self.device == "cuda" else "cpu"
+                logger.info(
+                    "Loading PaddleOCR %s (det=%s, rec=%s, device=%s, mkldnn=%s)...",
+                    version,
+                    self.config.paddle_det_model_name,
+                    self.config.paddle_rec_model_name,
+                    device,
+                    self.config.paddle_enable_mkldnn,
+                )
+                ocr = PaddleOCR(
+                    text_detection_model_name=self.config.paddle_det_model_name,
+                    text_recognition_model_name=self.config.paddle_rec_model_name,
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=self.config.paddle_use_textline_orientation,
+                    device=device,
+                    enable_mkldnn=self.config.paddle_enable_mkldnn,
+                )
+                self._paddle_api = "v3"
+                self.printed_model_version = (
+                    f"{self.config.paddle_det_model_name}+{self.config.paddle_rec_model_name}"
+                )
+            else:
+                use_gpu = self.device == "cuda"
+                logger.info("Loading legacy PaddleOCR %s (lang='en', use_gpu=%s)...", version, use_gpu)
+                ocr = PaddleOCR(use_angle_cls=True, lang="en", use_gpu=use_gpu, show_log=False)
+                self._paddle_api = "v2"
+                self.printed_model_version = self.config.printed_model_name
+
             self.printed_engine = ocr
             self.printed_engine_status = "loaded"
-            self.printed_model_version = self.config.printed_model_name
             self.printed_error_msg = None
             logger.info("PaddleOCR engine loaded successfully.")
 
@@ -141,6 +225,79 @@ class ModelManager:
             logger.warning("PaddleOCR engine could not be loaded: %s", self.printed_error_msg)
             if not self.config.allow_degraded_fallback:
                 raise ModelLoadingError(f"Failed to load PaddleOCR engine: {e}") from e
+
+    def _paddle_predict(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        """Run PaddleOCR on a BGR image and return normalized line results.
+
+        Returns a list of ``{"text", "score", "box": (x1, y1, x2, y2)}`` dicts in Paddle's output order,
+        with boxes clamped to the image bounds.
+        """
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        elif image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        image = np.ascontiguousarray(image)
+
+        lines: List[Dict[str, Any]] = []
+        with self._paddle_lock:
+            if self._paddle_api == "v2":
+                raw = self.printed_engine.ocr(image, cls=True)
+                for item in (raw[0] if raw and raw[0] else []):
+                    if len(item) < 2 or len(item[1]) < 2:
+                        continue
+                    pts = np.asarray(item[0], dtype=float).reshape(-1, 2)
+                    lines.append(
+                        {
+                            "text": str(item[1][0]),
+                            "score": float(item[1][1]),
+                            "box": (pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max()),
+                        }
+                    )
+            else:
+                for res in self.printed_engine.predict(image) or []:
+                    texts = list(res["rec_texts"])
+                    scores = list(res["rec_scores"])
+                    boxes = res.get("rec_boxes")
+                    if boxes is None or len(boxes) != len(texts):
+                        polys = [np.asarray(p, dtype=float).reshape(-1, 2) for p in res["rec_polys"]]
+                        boxes = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in polys]
+                    for txt, sc, bx in zip(texts, scores, boxes):
+                        lines.append({"text": str(txt), "score": float(sc), "box": tuple(bx)})
+
+        h, w = image.shape[:2]
+        for ln in lines:
+            x1, y1, x2, y2 = (int(round(float(v))) for v in ln["box"])
+            ln["box"] = (max(0, min(x1, w)), max(0, min(y1, h)), max(0, min(x2, w)), max(0, min(y2, h)))
+        return lines
+
+    def recognize_page_lines(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        """Detect and recognize every text line on a full page image with PaddleOCR.
+
+        Lines with empty text, degenerate boxes, or a score below ``config.paddle_min_score`` are discarded.
+
+        Raises:
+            PrintedRecognitionError: If PaddleOCR is not loaded or inference fails.
+        """
+        if self.printed_engine is None:
+            raise PrintedRecognitionError(
+                f"PaddleOCR is not loaded: {self.printed_error_msg or 'engine unavailable'}"
+            )
+        if image is None or image.size == 0:
+            return []
+        try:
+            lines = self._paddle_predict(image)
+        except Exception as e:
+            logger.error("PaddleOCR page inference failed: %s", e)
+            raise PrintedRecognitionError(f"PaddleOCR inference failed: {e}") from e
+
+        return [
+            ln
+            for ln in lines
+            if ln["text"].strip()
+            and ln["score"] >= self.config.paddle_min_score
+            and ln["box"][2] > ln["box"][0]
+            and ln["box"][3] > ln["box"][1]
+        ]
 
     def recognize_handwriting_crop(
         self, crop: np.ndarray
@@ -250,22 +407,9 @@ class ModelManager:
         # 1. Genuine PaddleOCR Inference Path
         if self.printed_engine is not None:
             try:
-                bgr_crop = crop
-                if len(crop.shape) == 2:
-                    bgr_crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR)
-
-                ocr_results = self.printed_engine.ocr(bgr_crop, cls=True)
-
-                lines = []
-                confs = []
-                if ocr_results and ocr_results[0]:
-                    for line_info in ocr_results[0]:
-                        if len(line_info) >= 2 and len(line_info[1]) >= 2:
-                            txt, score = line_info[1][0], float(line_info[1][1])
-                            lines.append(txt)
-                            confs.append(score)
-
-                text = " ".join(lines).strip()
+                results = self._paddle_predict(crop)
+                text = " ".join(r["text"] for r in results).strip()
+                confs = [r["score"] for r in results]
                 confidence = round(float(np.mean(confs)), 4) if confs else None
 
                 meta = {

@@ -1,17 +1,24 @@
 """Asynchronous background job manager executing OCR processing tasks via ThreadPoolExecutor."""
 
 from concurrent.futures import ThreadPoolExecutor
+import json
 import logging
 from pathlib import Path
+import re
+import threading
 from typing import Optional
 
 from app.api.config import APIConfig, DEFAULT_API_CONFIG
 from app.api.schemas import JobStatusResponse, OCRDocumentResult
 from app.api.security import SecurityValidator
-from app.jobs.job_store import JobRecord, JobStore
+from app.jobs.job_store import JOB_META_FILENAME, JOB_RESULT_FILENAME, JobRecord, JobStore
 from app.orchestration.ocr_orchestrator import OCROrchestrator
 
 logger = logging.getLogger(__name__)
+
+# Job IDs are generated as f"job-{uuid4().hex}"; anything else is never looked up on disk.
+_JOB_ID_RE = re.compile(r"^job-[0-9a-f]{32}$")
+_FINISHED_STATUSES = ("completed", "completed_with_warnings", "degraded", "failed", "cancelled")
 
 
 class JobManager:
@@ -28,6 +35,16 @@ class JobManager:
             max_workers=self.config.concurrency_limit,
             thread_name_prefix="ocr-worker",
         )
+        self._recover_lock = threading.Lock()
+
+    @classmethod
+    def shutdown(cls) -> None:
+        """Stop workers on service shutdown WITHOUT deleting job workspaces, so finished
+        results (and unfinished uploads, which are re-run) survive a restart."""
+        if cls._instance is not None:
+            cls._instance._executor.shutdown(wait=False, cancel_futures=True)
+            JobStore.reset_instance(cleanup_files=False)
+            cls._instance = None
 
     @classmethod
     def get_instance(cls, config: Optional[APIConfig] = None) -> "JobManager":
@@ -74,24 +91,88 @@ class JobManager:
         # 3. Save uploaded PDF safely to disk
         pdf_path = job_dir / "submission.pdf"
         pdf_path.write_bytes(file_bytes)
-
-        output_dir = job_dir / "artifacts"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        self.store.persist(job)
 
         # 4. Dispatch processing
-        if run_async:
-            future = self._executor.submit(
-                self._execute_job,
-                job.job_id,
-                clean_sub_id,
-                str(pdf_path),
-                str(output_dir),
-            )
-            job._future = future
-        else:
-            self._execute_job(job.job_id, clean_sub_id, str(pdf_path), str(output_dir))
-
+        self._dispatch(job, run_async)
         return job
+
+    def _dispatch(self, job: JobRecord, run_async: bool = True) -> None:
+        """Run the pipeline for a job whose workspace already contains submission.pdf."""
+        job_dir = Path(job.temp_dir)
+        output_dir = job_dir / "artifacts"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        args = (job.job_id, job.submission_id, str(job_dir / "submission.pdf"), str(output_dir))
+        if run_async:
+            job._future = self._executor.submit(self._execute_job, *args)
+        else:
+            self._execute_job(*args)
+
+    def _get_or_recover(self, job_id: str) -> Optional[JobRecord]:
+        """Return the in-memory job, or restore it from its workspace after a service restart.
+
+        - Finished job with a persisted result/status -> restored as-is.
+        - Workspace with submission.pdf but no finished state (service stopped mid-run, or the job
+          predates persistence) -> OCR is re-run in the background; callers see 'queued'.
+        """
+        job = self.store.get_job(job_id)
+        if job is not None or not _JOB_ID_RE.match(job_id or ""):
+            return job
+
+        with self._recover_lock:
+            job = self.store.get_job(job_id)
+            if job is not None:
+                return job
+
+            job_dir = Path(self.config.storage_root).resolve() / job_id
+            if not job_dir.is_dir():
+                return None
+
+            meta: dict = {}
+            try:
+                meta = json.loads((job_dir / JOB_META_FILENAME).read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                logger.warning("Ignoring unreadable %s for job %s: %s", JOB_META_FILENAME, job_id, e)
+
+            submission_id = meta.get("submission_id")
+            if not submission_id:
+                # Older workspaces have no job.json; the orchestrator names artifacts/<submission_id>/
+                subdirs = [p.name for p in (job_dir / "artifacts").glob("*") if p.is_dir()]
+                submission_id = subdirs[0] if len(subdirs) == 1 else job_id
+            try:
+                submission_id = self.validator.sanitize_submission_id(submission_id)
+            except Exception:
+                submission_id = job_id
+
+            record = JobRecord(job_id=job_id, submission_id=submission_id, temp_dir=job_dir)
+            status = meta.get("status")
+            result_path = job_dir / JOB_RESULT_FILENAME
+
+            if status in _FINISHED_STATUSES and (status in ("failed", "cancelled") or result_path.exists()):
+                for key in ("status", "stage", "progress", "created_at", "updated_at", "error"):
+                    if meta.get(key) is not None:
+                        setattr(record, key, meta[key])
+                record.warnings = list(meta.get("warnings") or [])
+                if result_path.exists():
+                    try:
+                        record.result = OCRDocumentResult.model_validate_json(result_path.read_text(encoding="utf-8"))
+                    except Exception as e:
+                        logger.warning("Persisted result for job %s is unreadable (%s); re-running OCR.", job_id, e)
+                        record = JobRecord(job_id=job_id, submission_id=submission_id, temp_dir=job_dir)
+                if record.status in _FINISHED_STATUSES:
+                    logger.info("Restored finished job %s (%s) from disk.", job_id, record.status)
+                    return self.store.register(record)
+
+            if not (job_dir / "submission.pdf").is_file():
+                return None
+
+            logger.info("Job %s was not finished before a restart; re-running OCR from its saved PDF.", job_id)
+            record = self.store.register(record)
+            self.store.persist(record)
+            self._dispatch(record, run_async=True)
+            return record
 
     def _execute_job(
         self,
@@ -124,7 +205,7 @@ class JobManager:
 
     def get_job_status(self, job_id: str) -> Optional[JobStatusResponse]:
         """Query the current state of a job."""
-        job = self.store.get_job(job_id)
+        job = self._get_or_recover(job_id)
         if not job:
             return None
 
@@ -142,7 +223,7 @@ class JobManager:
 
     def get_job_result(self, job_id: str) -> Optional[OCRDocumentResult]:
         """Retrieve completed OCRDocumentResult if available."""
-        job = self.store.get_job(job_id)
+        job = self._get_or_recover(job_id)
         if not job:
             return None
         return job.result

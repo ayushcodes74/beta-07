@@ -1,6 +1,8 @@
 """FastAPI application factory and middleware configuration for TrustGrade OCR Engine."""
 
 import logging
+import os
+import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,17 +14,30 @@ from app.api.v1.router import api_v1_router
 from app.ingestion.exceptions import IngestionError
 from app.jobs.job_manager import JobManager
 from app.math_recognition.exceptions import MathRecognitionError
+from app.recognition.model_manager import ModelManager
 
 logger = logging.getLogger("ocr_service")
+
+
+def _preload_models() -> None:
+    try:
+        ModelManager.get_instance().initialize_models()
+    except Exception as e:  # never crash the service because of a model
+        logger.warning("OCR model preload failed (jobs will retry lazily): %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle management for background worker pool and clean shutdown."""
     logger.info("Starting TrustGrade OCR Engine API service...")
+    if os.getenv("OCR_PRELOAD_MODELS", "true").lower() not in ("0", "false", "no"):
+        # Warm up PaddleOCR in the background so the first submission doesn't pay the model-load cost
+        # and /health reports real engine status. Startup is not blocked; jobs wait on the init lock.
+        threading.Thread(target=_preload_models, name="ocr-model-preload", daemon=True).start()
     yield
     logger.info("Shutting down TrustGrade OCR Engine API service...")
-    JobManager.reset_instance()
+    # Keep job workspaces on disk: finished results are restored after restart (see JobManager).
+    JobManager.shutdown()
 
 
 def create_app(config: APIConfig = DEFAULT_API_CONFIG) -> FastAPI:

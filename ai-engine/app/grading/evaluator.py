@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
 
-from app.llm.gemini_client import GeminiClient, get_gemini_client
+from app.llm.gemini_client import GeminiClient
+from app.llm.fallback_client import get_llm_client
 from app.llm import prompts
 from app.grading.evidence_retriever import GradingEvidenceRetriever
 from app.grading.feedback_generator import FeedbackGenerator
@@ -77,7 +78,7 @@ class AnswerEvaluator:
             evidence_retriever: Evidence retrieval helper for course grounding.
             trust_service: Trust, confidence, and human review orchestrator.
         """
-        self.gemini_client = gemini_client or get_gemini_client()
+        self.gemini_client = gemini_client or get_llm_client()
         self.evidence_retriever = evidence_retriever or GradingEvidenceRetriever()
         self.trust_service = trust_service or TrustService(gemini_client=self.gemini_client)
 
@@ -87,6 +88,7 @@ class AnswerEvaluator:
         retrieved_evidence: Optional[List[str]] = None,
         source_references: Optional[List[SourceReference]] = None,
         ocr_confidence: Optional[float] = None,
+        skip_evidence_retrieval: bool = False,
     ) -> QuestionGrade:
         """Evaluate a single question response against its rubric and course material.
 
@@ -95,6 +97,8 @@ class AnswerEvaluator:
             retrieved_evidence: Optional pre-retrieved text snippets.
             source_references: Optional pre-retrieved SourceReference objects.
             ocr_confidence: Optional OCR extraction score override.
+            skip_evidence_retrieval: Use exactly ``retrieved_evidence`` (possibly empty = no evidence)
+                instead of querying ``evidence_retriever`` when none is supplied.
 
         Returns:
             QuestionGrade with criterion breakdowns, citations, and review flags.
@@ -116,7 +120,9 @@ class AnswerEvaluator:
         refs = source_references or []
         has_sufficient_evidence = True
 
-        if not evidence_snippets:
+        if skip_evidence_retrieval:
+            has_sufficient_evidence = bool(evidence_snippets)
+        elif not evidence_snippets:
             ev_result = self.evidence_retriever.retrieve_evidence_for_grading(
                 course_id=request.course_id,
                 question_text=request.question_text,
@@ -266,6 +272,7 @@ class AnswerEvaluator:
         submission_id: str,
         assignment_id: str,
         requests: List[GradingRequest],
+        evidence: Optional[Dict[str, Tuple[List[str], List[SourceReference]]]] = None,
     ) -> GradingResult:
         """Grade a multi-question submission and assemble assignment-level results.
 
@@ -273,6 +280,9 @@ class AnswerEvaluator:
             submission_id: Submission identifier.
             assignment_id: Assignment identifier.
             requests: List of GradingRequest items for each question.
+            evidence: Optional pre-retrieved course evidence per question_id as
+                (prompt snippets, source references). Questions present here are graded with exactly
+                that evidence (empty = explicitly none); others use ``evidence_retriever``.
 
         Returns:
             Complete GradingResult with score, feedback, and review routing.
@@ -285,7 +295,13 @@ class AnswerEvaluator:
         any_review_needed = False
 
         for req in requests:
-            q_grade = self.evaluate_question(req)
+            if evidence is not None and req.question_id in evidence:
+                snippets, refs = evidence[req.question_id]
+                q_grade = self.evaluate_question(
+                    req, retrieved_evidence=snippets, source_references=refs, skip_evidence_retrieval=True
+                )
+            else:
+                q_grade = self.evaluate_question(req)
             question_grades.append(q_grade)
             if q_grade.review_required:
                 any_review_needed = True

@@ -206,6 +206,23 @@ class SupabaseAssignmentRepository:
             logger.exception("Failed to fetch assignment from Supabase: %s", exc)
             raise AssignmentRepositoryError("Failed to fetch assignment") from exc
 
+    def is_owned_by(self, assignment_id: UUID, teacher_id: UUID, *, access_token: str) -> bool:
+        """Single-row ownership check used by submission access control (one round trip)."""
+        client = self._client(access_token)
+        try:
+            response = (
+                client.table("assignments")
+                .select("id")
+                .eq("id", str(assignment_id))
+                .eq("teacher_id", str(teacher_id))
+                .limit(1)
+                .execute()
+            )
+            return bool(response.data)
+        except Exception as exc:
+            logger.exception("Failed to verify assignment ownership: %s", exc)
+            raise AssignmentRepositoryError("Failed to verify assignment ownership") from exc
+
     def owns_course(self, course_id: UUID, teacher_id: UUID, *, access_token: str) -> bool:
         """Verify that an optional assignment course belongs to its creating teacher."""
         client = self._client(access_token)
@@ -375,11 +392,43 @@ class SupabaseAssignmentRepository:
     def replace_content(
         self, assignment_id: UUID, content: AssignmentContent, *, access_token: str
     ) -> AssignmentRecord | None:
-        """Replace assignment content, questions, and answer keys."""
+        """Replace assignment content, questions, and answer keys.
+
+        Questions are updated in place by position so their UUIDs survive the edit:
+        ``submission_answers.question_id`` points at them, and a published assignment may
+        already have student answers. Only questions removed from the end are deleted, and
+        that is refused if any student has answered one of them.
+        """
         client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
 
         try:
+            existing_resp = (
+                client.table("assignment_questions")
+                .select("id, position")
+                .eq("assignment_id", str(assignment_id))
+                .order("position")
+                .execute()
+            )
+            existing_ids = [str(r["id"]) for r in (existing_resp.data or [])]
+            kept_ids = existing_ids[: len(content.questions)]
+            removed_ids = existing_ids[len(content.questions) :]
+
+            # Check before writing anything, so a refused edit leaves the assignment untouched.
+            if removed_ids:
+                answered = (
+                    client.table("submission_answers")
+                    .select("id")
+                    .in_("question_id", removed_ids)
+                    .limit(1)
+                    .execute()
+                )
+                if answered.data:
+                    raise AssignmentInUseError(
+                        "Students have already answered a question you removed, so it cannot be deleted. "
+                        "Edit the question instead of removing it."
+                    )
+
             # 1. Update assignment record
             update_payload = {
                 "title": content.title,
@@ -398,15 +447,13 @@ class SupabaseAssignmentRepository:
                 return None
             row = update_resp.data[0] if isinstance(update_resp.data, list) else update_resp.data
 
-            # 2. Remove old questions (and cascading answer keys)
-            client.table("assignment_questions").delete().eq("assignment_id", str(assignment_id)).execute()
+            # 2. Delete questions removed from the end (their answer keys cascade)
+            if removed_ids:
+                client.table("assignment_questions").delete().in_("id", removed_ids).execute()
 
-            # 3. Insert new questions and answer keys
+            # 3. Update kept questions in place, insert new ones, and rewrite answer keys
             for position, question in enumerate(content.questions, start=1):
-                question_id = uuid4()
                 q_payload: Dict[str, Any] = {
-                    "id": str(question_id),
-                    "assignment_id": str(assignment_id),
                     "position": position,
                     "question_type": question.type,
                     "question_text": question.text,
@@ -415,15 +462,23 @@ class SupabaseAssignmentRepository:
                     "options": [opt.model_dump() for opt in question.options]
                     if isinstance(question, McqQuestion)
                     else None,
-                    "created_at": now_str,
                 }
-                client.table("assignment_questions").insert(q_payload).execute()
+                if position <= len(kept_ids):
+                    question_id = kept_ids[position - 1]
+                    client.table("assignment_questions").update(q_payload).eq("id", question_id).execute()
+                    client.table("question_answer_keys").delete().eq("question_id", question_id).execute()
+                else:
+                    question_id = str(uuid4())
+                    q_payload.update(
+                        {"id": question_id, "assignment_id": str(assignment_id), "created_at": now_str}
+                    )
+                    client.table("assignment_questions").insert(q_payload).execute()
 
                 correct_opt = getattr(question, "correct_option_id", None)
                 expected_ans = getattr(question, "expected_answer", None)
                 if correct_opt is not None or expected_ans is not None:
                     ak_payload = {
-                        "question_id": str(question_id),
+                        "question_id": question_id,
                         "correct_option_id": correct_opt,
                         "expected_answer": expected_ans,
                         "teacher_notes": None,
@@ -437,7 +492,7 @@ class SupabaseAssignmentRepository:
                 content=content,
                 course_id=UUID(str(row["course_id"])) if row.get("course_id") else None,
             )
-        except AssignmentRepositoryError:
+        except (AssignmentRepositoryError, AssignmentInUseError):
             raise
         except Exception as exc:
             logger.exception("Failed to replace assignment content: %s", exc)

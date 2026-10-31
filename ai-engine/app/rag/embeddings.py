@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import os
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
@@ -65,7 +66,10 @@ class SentenceTransformerEmbeddingGenerator(BaseEmbeddingGenerator):
             try:
                 from sentence_transformers import SentenceTransformer
                 self._model = SentenceTransformer(self.model_name, device=self.device)
-                self._dimension = self._model.get_sentence_embedding_dimension()
+                get_dim = getattr(self._model, "get_embedding_dimension", None) or (
+                    self._model.get_sentence_embedding_dimension  # sentence-transformers < 5
+                )
+                self._dimension = get_dim()
             except ImportError as err:
                 raise RuntimeError(
                     "sentence-transformers is not installed. "
@@ -154,6 +158,37 @@ class MockEmbeddingGenerator(BaseEmbeddingGenerator):
 
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
         return [self.generate_embedding(t) for t in texts]
+
+
+class EmbeddingsUnavailableError(RuntimeError):
+    """Real semantic embeddings cannot be produced (sentence-transformers or the model is missing)."""
+
+
+_PRODUCTION_EMBEDDER: Optional[SentenceTransformerEmbeddingGenerator] = None
+
+
+def get_production_embedder(model_name: Optional[str] = None) -> SentenceTransformerEmbeddingGenerator:
+    """Real SentenceTransformer embedder for course-material RAG. Never falls back to mock embeddings.
+
+    Raises:
+        EmbeddingsUnavailableError: If sentence-transformers is not installed or the model fails to load.
+    """
+    global _PRODUCTION_EMBEDDER
+    name = model_name or os.getenv("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    if _PRODUCTION_EMBEDDER is None or _PRODUCTION_EMBEDDER.model_name != name:
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError as err:
+            raise EmbeddingsUnavailableError(
+                "sentence-transformers is not installed in the AI Engine environment"
+            ) from err
+        embedder = SentenceTransformerEmbeddingGenerator(model_name=name)
+        try:
+            _ = embedder.model  # load now so failures surface here, not mid-request
+        except Exception as err:
+            raise EmbeddingsUnavailableError(f"Embedding model '{name}' could not be loaded: {err}") from err
+        _PRODUCTION_EMBEDDER = embedder
+    return _PRODUCTION_EMBEDDER
 
 
 # Global cache

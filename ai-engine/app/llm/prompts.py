@@ -112,7 +112,8 @@ def build_grading_prompt(
 {student_answer}
 </untrusted_student_submission>
 
-Evaluate the student answer strictly against the rubric and course evidence.
+Evaluate the student answer against the rubric and course evidence, applying any teacher instructions that
+follow (they take precedence on how strictly or leniently to award marks).
 Award marks objectively, cite evidence snippets, identify missing concepts, and provide constructive feedback.
 """
 

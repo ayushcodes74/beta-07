@@ -37,8 +37,9 @@ def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
             return 0.0
         dot = float(np.dot(a, b))
         sim = dot / float(norm_a * norm_b)
-        # Clamp to [0.0, 1.0] for non-negative unit vectors
-        return max(0.0, min(1.0, (sim + 1.0) / 2.0 if sim < 0.0 else sim))
+        # Clamp to [0.0, 1.0]: negative cosine means unrelated, so it scores 0 (previously negatives were
+        # remapped to ~0.5, ranking unrelated passages above genuinely weak matches).
+        return max(0.0, min(1.0, sim))
 
     # Pure Python fallback
     dot = sum(x * y for x, y in zip(vec_a, vec_b))

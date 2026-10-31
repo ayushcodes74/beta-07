@@ -28,6 +28,8 @@ from app.core.dependencies import (
     require_teacher,
 )
 from app.schemas.auth import ErrorResponse
+from app.database.grading_repository import GradingRepositoryError
+from app.schemas.grading import GradePublishRequest, GradingSuggestionResponse, PublishedGradeResponse
 from app.schemas.integrity import IntegrityReport
 from app.schemas.ocr import (
     JobStatusResponse,
@@ -39,7 +41,14 @@ from app.services.assignment_service import (
     AssignmentRepositoryError,
     AssignmentService,
 )
+from app.services.ai_generation_service import (
+    AIGenerationError,
+    AIRateLimitedError,
+    AIServiceUnavailableError,
+    AITimeoutError,
+)
 from app.services.auth_service import CurrentUser
+from app.services.grading_service import GradingService
 from app.services.ocr_client import (
     OCRInvalidFileError,
     OCRJobCancelledError,
@@ -257,6 +266,141 @@ async def get_submission_integrity(
         return await service.analyze_submission_integrity(teacher, submission_id, access_token=token)
     except Exception as exc:
         _handle_error(exc)
+
+
+def get_grading_service(
+    repo: Annotated[SubmissionRepository, Depends(get_submission_repository)],
+    assignment_service: Annotated[AssignmentService, Depends(get_assignment_service)],
+    ocr_client=Depends(get_ocr_client),
+) -> GradingService:
+    from app.database.grading_repository import SupabaseGradingRepository
+
+    return GradingService(repo, assignment_service, ocr_client, SupabaseGradingRepository())
+
+
+Grading = Annotated[GradingService, Depends(get_grading_service)]
+
+
+def _handle_grading_error(exc: Exception) -> NoReturn:
+    if isinstance(exc, AIRateLimitedError):
+        raise api_error(
+            status.HTTP_429_TOO_MANY_REQUESTS, "ai_rate_limited", "AI providers are rate limited. Try again shortly."
+        ) from None
+    if isinstance(exc, AITimeoutError):
+        raise api_error(status.HTTP_504_GATEWAY_TIMEOUT, "ai_timeout", "AI answer check took too long. Try again.") from None
+    if isinstance(exc, AIServiceUnavailableError):
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "ai_unavailable", "The AI Engine is unavailable or not configured."
+        ) from None
+    if isinstance(exc, AIGenerationError):
+        logger.error("AI grading failed: %s", exc)
+        raise api_error(status.HTTP_502_BAD_GATEWAY, "ai_failed", "The AI Engine could not check the answers.") from None
+    if isinstance(exc, GradingRepositoryError):
+        logger.error("Grading storage error: %s", exc)
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "storage_unavailable", "Grade storage is unavailable."
+        ) from None
+    _handle_error(exc)
+
+
+@router.post(
+    "/submissions/{submission_id}/grade",
+    response_model=GradingSuggestionResponse,
+    summary="AI answer check against the teacher's answer keys",
+    description=(
+        "Teacher-only. Compares the submission's OCR text with each question's answer key via the AI Engine "
+        "and returns suggested marks and feedback per question. Stored as a pending-review suggestion; "
+        "never published to the student by this call."
+    ),
+    responses={
+        **ERROR_RESPONSES,
+        429: {"model": ErrorResponse, "description": "AI providers rate limited."},
+        502: {"model": ErrorResponse, "description": "AI Engine failed."},
+    },
+)
+async def grade_submission(
+    submission_id: UUID,
+    teacher: TeacherUser,
+    token: AccessToken,
+    grading: Grading,
+) -> GradingSuggestionResponse:
+    try:
+        return await grading.grade_submission(teacher, submission_id, access_token=token)
+    except Exception as exc:
+        _handle_grading_error(exc)
+
+
+@router.get(
+    "/submissions/{submission_id}/grading",
+    response_model=GradingSuggestionResponse,
+    summary="Last stored AI answer check",
+    description="Teacher-only. Returns the last stored answer-check suggestion, or 404 if none exists yet.",
+    responses=ERROR_RESPONSES,
+)
+async def get_submission_grading(
+    submission_id: UUID,
+    teacher: TeacherUser,
+    token: AccessToken,
+    grading: Grading,
+) -> GradingSuggestionResponse:
+    try:
+        saved = await grading.get_saved_suggestion(teacher, submission_id, access_token=token)
+    except Exception as exc:
+        _handle_grading_error(exc)
+    if saved is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "not_found", "No answer check has been run for this submission yet.")
+    return saved
+
+
+@router.post(
+    "/submissions/{submission_id}/grading/publish",
+    response_model=PublishedGradeResponse,
+    summary="Approve and publish the final grade (teacher only)",
+    description=(
+        "Owning teacher only. Stores the teacher's final score and feedback as approved and publishes it, "
+        "making it visible to the student. The AI suggestion, if any, is kept as evidence and is never "
+        "shown to the student. Calling again replaces the published grade."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def publish_submission_grade(
+    submission_id: UUID,
+    body: GradePublishRequest,
+    teacher: TeacherUser,
+    token: AccessToken,
+    grading: Grading,
+) -> PublishedGradeResponse:
+    try:
+        return await grading.publish_grade(
+            teacher, submission_id, body.final_score, body.final_feedback, access_token=token
+        )
+    except Exception as exc:
+        _handle_grading_error(exc)
+
+
+@router.get(
+    "/submissions/{submission_id}/result",
+    response_model=PublishedGradeResponse,
+    summary="Published grade for a submission",
+    description=(
+        "The submitting student or the owning teacher. Returns only a published grade (final score and "
+        "teacher feedback); 404 if the grade has not been published."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def get_submission_result(
+    submission_id: UUID,
+    user: AnyUser,
+    token: AccessToken,
+    grading: Grading,
+) -> PublishedGradeResponse:
+    try:
+        result = await grading.get_published_grade(user, submission_id, access_token=token)
+    except Exception as exc:
+        _handle_grading_error(exc)
+    if result is None:
+        raise api_error(status.HTTP_404_NOT_FOUND, "not_found", "No published grade for this submission.")
+    return result
 
 
 @router.delete(

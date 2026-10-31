@@ -122,6 +122,65 @@ export interface BackendOCRDocumentResult {
   pages: BackendOCRPage[];
 }
 
+export interface BackendQuestionGradeSuggestion {
+  number: number;
+  question_text: string;
+  question_type: string;
+  max_marks: number;
+  awarded_marks: number;
+  explanation: string;
+  strengths: string[];
+  areas_for_improvement: string[];
+  matched_concepts: string[];
+  missing_concepts: string[];
+  confidence: number | null;
+  review_required: boolean;
+  review_reasons: string[];
+}
+
+export interface BackendGradingSuggestion {
+  submission_id: string;
+  assignment_id: string;
+  total_awarded_marks: number;
+  total_max_marks: number;
+  percentage: number;
+  overall_feedback: string;
+  review_required: boolean;
+  review_reasons: string[];
+  questions: BackendQuestionGradeSuggestion[];
+  ocr_confidence: number | null;
+  graded_at: string;
+  saved: boolean;
+  status: string;
+}
+
+export interface BackendPublishedGrade {
+  submission_id: string;
+  final_score: number;
+  max_score: number | null;
+  final_feedback: string;
+  status: string;
+  reviewed_at: string | null;
+  published_at: string | null;
+}
+
+/** Attach a published grade to a submission so result views can render it. */
+export function withPublishedGrade(submission: Submission, grade: BackendPublishedGrade): Submission {
+  return {
+    ...submission,
+    state: "Published",
+    backendStatus: "published",
+    grading: {
+      suggestedScore: grade.final_score,
+      confidence: 1,
+      reasoning: grade.final_feedback,
+      rubric: [],
+      feedback: { id: grade.submission_id, comment: grade.final_feedback, deductions: [], courseReferences: [] },
+      teacherApproved: true,
+    },
+  };
+}
+
 export interface BackendOCRProcessingStatus {
   job_id: string;
   status: string;
@@ -301,7 +360,9 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
   let state: SubmissionState = "Submitted";
   if (b.status === "submitted" || b.status === "ocr_queued") state = "Submitted";
   else if (b.status === "ocr_processing") state = "In Progress";
-  else if (b.status.startsWith("ocr_completed") || ["ocr_failed", "ocr_degraded", "ocr_cancelled"].includes(b.status)) state = "Under Review";
+  else if (b.status.startsWith("ocr_completed") || ["ocr_failed", "ocr_degraded", "ocr_cancelled", "under_review"].includes(b.status)) state = "Under Review";
+  else if (b.status === "graded") state = "Graded";
+  else if (b.status === "published") state = "Published";
 
   let ocrState: OCRResult["state"] = "Needs review";
   if (b.status === "ocr_queued" || b.status === "ocr_processing") ocrState = "Needs review";
@@ -390,6 +451,19 @@ export interface AssignmentGenerationRequest {
   questionFormat: "mixed" | "subjective" | "mcq";
   difficulty: "easy" | "medium" | "hard" | "mixed";
   totalMarks: number;
+  /** Course material attached in the editor (extracted file text + pasted notes). Not stored. */
+  courseMaterial?: string;
+}
+
+/** Must match MAX_MATERIAL_CHARS in backend/app/services/course_material_service.py. */
+export const MAX_COURSE_MATERIAL_CHARS = 100_000;
+
+export interface ExtractedCourseMaterial {
+  filename: string;
+  text: string;
+  characters: number;
+  truncated: boolean;
+  pages: number | null;
 }
 
 interface BackendGeneratedQuestion {
@@ -415,10 +489,21 @@ export interface GeneratedAssignmentDraft {
   groundedInCourseMaterials: boolean;
 }
 
-// Generation makes several sequential Gemini calls; allow well beyond the default 20s timeout.
+// Generation makes several sequential LLM calls; allow well beyond the default 20s timeout.
 const AI_GENERATION_TIMEOUT_MS = 240_000;
 
 export const aiAssignmentService = {
+  /** Upload a course-material file (PDF/DOCX/PPTX/TXT) and get its text back. Nothing is stored. */
+  async extractCourseMaterial(file: File): Promise<ExtractedCourseMaterial> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await api.post<ExtractedCourseMaterial>("/assignments/materials/extract", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120_000,
+    });
+    return response.data;
+  },
+
   async generateDraft(request: AssignmentGenerationRequest): Promise<GeneratedAssignmentDraft> {
     const response = await api.post<BackendGeneratedDraft>(
       "/assignments/generate-ai",
@@ -429,6 +514,7 @@ export const aiAssignmentService = {
         question_format: request.questionFormat,
         difficulty: request.difficulty,
         total_marks: request.totalMarks,
+        course_material: request.courseMaterial?.trim() || undefined,
       },
       { timeout: AI_GENERATION_TIMEOUT_MS }
     );
@@ -474,6 +560,33 @@ export const assignmentService = {
     return adaptAssignment(response.data);
   },
 
+  /**
+   * Edit an existing assignment (draft or published). Course cannot be changed. Pass
+   * `dueAt` only when it changed: the API rejects past deadlines, so re-sending an
+   * already-passed due date would block edits to an overdue assignment.
+   */
+  async updateAssignment(
+    id: string,
+    assignment: {
+      title: string;
+      description?: string;
+      dueAt?: string;
+      totalMarks: number;
+      questions: Question[];
+    }
+  ): Promise<Assignment> {
+    const full = toBackendAssignmentCreate({ ...assignment, dueAt: assignment.dueAt ?? "" });
+    const payload: Record<string, unknown> = {
+      title: full.title,
+      instructions: full.instructions,
+      total_marks: full.total_marks,
+      questions: full.questions,
+    };
+    if (assignment.dueAt) payload.due_at = full.due_at;
+    const response = await api.patch<BackendAssignment>(`/assignments/${id}`, payload);
+    return adaptAssignment(response.data);
+  },
+
   async publishAssignment(id: string): Promise<Assignment> {
     const response = await api.post<BackendAssignment>(`/assignments/${id}/publish`);
     return adaptAssignment(response.data);
@@ -492,7 +605,15 @@ export const assignmentService = {
 export const submissionService = {
   async getSubmissions(): Promise<Submission[]> {
     const response = await api.get<BackendSubmissionStatus[]>("/submissions");
-    return (response.data || []).map((item) => adaptSubmissionStatus(item));
+    const rows = (response.data || []).map((item) => adaptSubmissionStatus(item));
+    // Published grades live in grading_results; load them so result views have the final score.
+    return Promise.all(
+      rows.map(async (row) => {
+        if (row.backendStatus !== "published") return row;
+        const grade = await submissionService.getPublishedResult(row.id).catch(() => null);
+        return grade ? withPublishedGrade(row, grade) : row;
+      })
+    );
   },
 
   async submitPdf(assignmentId: string, file: File): Promise<Submission> {
@@ -503,6 +624,9 @@ export const submissionService = {
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
+        // Uploading up to 20 MB and handing it to the OCR engine (which renders every page)
+        // can exceed the default 20s on a busy machine; the backend saves it regardless.
+        timeout: 120_000,
       }
     );
     return adaptSubmissionStatus(response.data, file.name);
@@ -525,6 +649,45 @@ export const submissionService = {
   async getIntegrity(submissionId: string): Promise<BackendIntegrityReport> {
     const response = await api.get<BackendIntegrityReport>(`/submissions/${submissionId}/integrity`);
     return response.data;
+  },
+
+  /** Teacher: AI answer check of the OCR text against the answer keys (one LLM call per question). */
+  async checkAnswers(submissionId: string): Promise<BackendGradingSuggestion> {
+    const response = await api.post<BackendGradingSuggestion>(`/submissions/${submissionId}/grade`, undefined, {
+      timeout: AI_GENERATION_TIMEOUT_MS,
+    });
+    return response.data;
+  },
+
+  /** Teacher: last stored AI answer check, or null if none has been run yet. */
+  async getAnswerCheck(submissionId: string): Promise<BackendGradingSuggestion | null> {
+    try {
+      const response = await api.get<BackendGradingSuggestion>(`/submissions/${submissionId}/grading`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+      throw error;
+    }
+  },
+
+  /** Teacher: approve the final score/feedback and publish it to the student. */
+  async publishGrade(submissionId: string, finalScore: number, finalFeedback: string): Promise<BackendPublishedGrade> {
+    const response = await api.post<BackendPublishedGrade>(`/submissions/${submissionId}/grading/publish`, {
+      final_score: finalScore,
+      final_feedback: finalFeedback,
+    });
+    return response.data;
+  },
+
+  /** Student (own) or owning teacher: the published grade, or null if not published yet. */
+  async getPublishedResult(submissionId: string): Promise<BackendPublishedGrade | null> {
+    try {
+      const response = await api.get<BackendPublishedGrade>(`/submissions/${submissionId}/result`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+      throw error;
+    }
   },
 
   async cancelOcrJob(submissionId: string) {

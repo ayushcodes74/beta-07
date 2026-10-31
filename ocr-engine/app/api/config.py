@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
 
+# <repo>/ocr-engine/storage  (this file is ocr-engine/app/api/config.py)
+_DEFAULT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "storage"
+
 
 class APIConfig(BaseModel):
     """Configuration parameters for the OCR API service and background workers."""
@@ -30,8 +33,10 @@ class APIConfig(BaseModel):
 
     # Storage and Job settings
     storage_root: str = Field(
-        default="ocr-engine/storage",
-        description="Base directory for temporary job artifacts and page crops",
+        # Anchored to the ocr-engine folder so the location doesn't depend on the directory the
+        # service was started from (a relative path silently split jobs across two folders).
+        default_factory=lambda: os.getenv("OCR_STORAGE_ROOT") or str(_DEFAULT_STORAGE_ROOT),
+        description="Base directory for job workspaces (uploaded PDF, page artifacts, persisted job/result JSON)",
     )
     concurrency_limit: int = Field(
         default=4,

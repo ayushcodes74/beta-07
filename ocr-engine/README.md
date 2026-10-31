@@ -210,14 +210,22 @@ Module 3 processes enhanced page images from Module 2, identifies text regions, 
 
 ### 2. Model Evaluation & Architecture
 
-#### Evaluated Technologies:
-1. **TrOCR (`microsoft/trocr-small-handwritten`):**
-   - Transformer-based vision encoder-decoder architecture for line-level handwriting recognition.
-   - High recognition quality on cursive and joined handwriting.
-   - Built into `ModelManager` via HuggingFace `transformers` and `torch`.
-2. **PaddleOCR:**
-   - Evaluated for printed text detection and recognition.
-   - *Environment Finding:* PaddlePaddle currently lacks binary wheel distributions on PyPI for Python 3.15 Windows. The architecture cleanly abstracts the printed recognizer so PaddleOCR or ONNX models can be plugged in when deployed on Python 3.11/3.12 containers.
+#### Engines:
+0. **OCR.space Engine 3 (default, `backend="ocrspace"`):**
+   - Cloud OCR with strong handwriting recognition ([OCR.space API](https://ocr.space/ocrapi), `OCREngine=3`). Each page image is JPEG-compressed under 1 MB and sent separately; word boxes are mapped back to page coordinates. Student pages leave this machine when it is enabled.
+   - Configure in `ocr-engine/.env` (gitignored): `OCR_SPACE_API_KEY=<your key>`; optional `OCR_SPACE_ENGINE` (default 3), `OCR_SPACE_ENDPOINT` (PRO plans use another host), `OCR_SPACE_MAX_UPLOAD_BYTES` (default 1000000). Restart the service after changing it.
+   - Free plan limits: 1000 Engine 3 conversions/month (one per page), 500 requests/day/IP, 1 MB per file.
+   - OCR.space returns no confidence scores, so its blocks have `confidence: null`.
+   - **Fallback:** with no key, or when a request fails, the page is recognized by local PaddleOCR and the page gets an `"OCR.space unavailable (...)"` warning. Key/quota errors (HTTP 401/403/429, "limit exceeded") pause OCR.space for 10 minutes. `/health` reports `ocr_space_engine` as `loaded`, `unavailable` (no key) or `disabled`.
+1. **PaddleOCR 3.x (local, `backend="paddleocr"`; also the OCR.space fallback):**
+   - PaddleOCR detects **and** recognizes every text line on the full page (printed and handwritten), using `PP-OCRv6_small_det` + `PP-OCRv6_small_rec` by default (~10 s/page on CPU). Set `paddle_det_model_name` / `paddle_rec_model_name` in `RecognitionConfig` to `PP-OCRv6_medium_*` for higher recall (~4x slower) or `PP-OCRv6_tiny_*` for speed.
+   - Word fragments are merged into visual lines; a line is split into separate blocks where the horizontal gap exceeds `line_merge_gap_factor` x line height (side-by-side working columns). `full_text` keeps one visual row per line.
+   - Models are downloaded on first use to `~/.paddlex/official_models` and preloaded in a background thread when the API starts (`OCR_PRELOAD_MODELS=false` disables this).
+   - *Windows note:* oneDNN/MKLDNN is disabled by default (`paddle_enable_mkldnn=False`); PaddlePaddle 3.x crashes in oneDNN on Windows CPU (`ConvertPirAttribute2RuntimeAttribute not support`).
+   - Legacy PaddleOCR 2.x installs are still supported via the old `ocr()` API.
+   - **Job persistence:** each job workspace lives in `ocr-engine/storage/<job_id>/` (override with `OCR_STORAGE_ROOT`) and holds `submission.pdf`, `job.json` and, once finished, `result.json`. After a service restart, finished jobs are restored from disk on first lookup; jobs that never finished are re-run from their saved PDF. Service shutdown no longer deletes workspaces.
+2. **TrOCR (`microsoft/trocr-small-handwritten`, opt-in `backend="auto"` or `"trocr"`):**
+   - Legacy hybrid path: OpenCV region detection, TrOCR for handwritten crops, PaddleOCR for printed crops. Not loaded under the default backend.
 3. **Resilient CPU Fallback Engine:**
    - Built-in structural analysis engine utilizing OpenCV morphological connected components, stroke direction variance, and distance transforms.
    - Operates with sub-15ms per-page latency on standard CPUs without GPU or external internet downloads.

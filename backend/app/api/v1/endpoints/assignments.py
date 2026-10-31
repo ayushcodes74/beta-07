@@ -89,7 +89,9 @@ def _raise_http(exc: Exception) -> NoReturn:
         raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.code, exc.message) from None
     if isinstance(exc, AssignmentInUseError):
         raise api_error(
-            status.HTTP_409_CONFLICT, "assignment_in_use", "This assignment cannot be deleted because it is in use."
+            status.HTTP_409_CONFLICT,
+            "assignment_in_use",
+            str(exc) or "This assignment cannot be changed because it is in use.",
         ) from None
     if isinstance(exc, AssignmentIntegrationNotConfiguredError):
         logger.error("Assignment integration is not configured yet")
@@ -254,11 +256,18 @@ def get_assignment(
     summary="Update an assignment (owning teacher)",
     description=(
         f"{AUTH_HEADER_DOC} Owning teacher only.\n\n"
-        "Partial update; the resulting assignment is re-validated as a whole. `questions`, when "
-        "given, replaces the full question list. A new `due_at` must be in the future. "
+        "Partial update; works for drafts and published assignments alike. The resulting assignment "
+        "is re-validated as a whole. `questions`, when given, replaces the full question list; "
+        "existing questions are updated in place by position so student answers stay attached. "
+        "Removing a question students have already answered returns 409. A published assignment "
+        "cannot be left without questions. A new `due_at` must be in the future. "
         "`status`, `id` and `teacher_id` cannot be changed here."
     ),
-    responses={**ERROR_RESPONSES, 422: {"description": "Invalid update or resulting assignment."}},
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorResponse, "description": "A removed question already has student answers."},
+        422: {"description": "Invalid update or resulting assignment."},
+    },
 )
 def update_assignment(
     assignment_id: UUID, payload: AssignmentUpdate, teacher: TeacherUser, token: AccessToken, service: Service

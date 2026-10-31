@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from app.llm.gemini_client import GeminiClient, get_gemini_client
+from app.llm.gemini_client import GeminiClient
+from app.llm.fallback_client import get_llm_client
 from app.llm import prompts
 from app.rag.context_builder import ContextBuilder
 from app.rag.retriever import CourseMaterialRetriever
@@ -34,7 +35,7 @@ class SyllabusDetector:
             gemini_client: Gemini API client instance.
             retriever: Course material retriever for pulling course evidence.
         """
-        self.gemini_client = gemini_client or get_gemini_client()
+        self.gemini_client = gemini_client or get_llm_client()
         self.retriever = retriever
 
     def detect_coverage(

@@ -143,11 +143,56 @@ GEMINI_MAX_RETRIES=3
 GEMINI_REQUEST_TIMEOUT=30.0
 ```
 
+### LLM fallback chain
+All services call LLMs through `FallbackLLMClient` (`app.llm.get_llm_client()`). Each call
+tries providers in order and moves to the next one on any provider-side failure (rate limit or
+quota exhaustion, timeout, 5xx, missing key, invalid JSON/schema):
+
+```
+openrouter:OPENROUTER_MODEL -> openrouter:OPENROUTER_FALLBACK_MODELS... -> gemini:GEMINI_MODEL -> gemini:GEMINI_FALLBACK_MODELS...
+```
+
+- OpenRouter is the primary provider; Gemini is the backup. Providers without an API key are skipped.
+  Change the order with `LLM_PROVIDER_ORDER` (default `openrouter,gemini`).
+- Free OpenRouter models (`:free`) share tight rate limits, so `OPENROUTER_FALLBACK_MODELS` lists alternates
+  tried before falling back to Gemini.
+- A rate-limited or unreachable model is moved to the back of the chain for `LLM_RATE_LIMIT_COOLDOWN_SECONDS`
+  (or `LLM_QUOTA_EXHAUSTED_COOLDOWN_SECONDS` for daily-quota errors), so calls don't keep hitting it.
+- OpenRouter is called via its OpenAI-compatible API using `httpx` (no extra dependency).
+- Speed: OpenRouter reasoning ("thinking") is off by default (`OPENROUTER_REASONING=off`), which cut
+  question generation from ~66s to ~13s on free models; models that can't disable it are retried
+  without the setting. Rubrics for subjective questions are generated in parallel.
+- `GET /health` lists the active chain under `providers`.
+
+See `.env.example` for all `OPENROUTER_*`, `GEMINI_*` and `LLM_*` settings.
+
+### Course-material RAG for grading (MVP)
+
+Answer checks retrieve passages from the teacher's course notes and pass them to the grader as evidence.
+
+- **Embeddings:** real `sentence-transformers` model `all-MiniLM-L6-v2` (384-d, CPU). Install with
+  `pip install torch --index-url https://download.pytorch.org/whl/cpu` then `pip install sentence-transformers`;
+  the model downloads on first use. Production code never falls back to the hash `MockEmbeddingGenerator`:
+  without the library, indexing returns 503 and grading marks evidence `unavailable`.
+- **Index:** `app/rag/course_index.py` — `PersistentVectorStore` (extends `InMemoryVectorStore`) writes one JSON
+  file per course to `storage/rag_index/` (gitignored; override with `RAG_INDEX_DIR`). It survives restarts and is
+  strictly course-isolated. Re-uploading identical content is a no-op (`duplicate: true`); repeated chunks are skipped.
+- **Ingestion:** teachers upload through the backend (`POST /api/v1/courses/{course_id}/materials`, course owner
+  only; PDF/DOCX/PPTX/TXT, scanned PDFs via the OCR service). The backend calls this service:
+  `POST /v1/materials/index` `{course_id, filename, pages:[{page_number, text}]}`, `GET /v1/materials?course_id=`,
+  `DELETE /v1/materials/{material_id}?course_id=`, `POST /v1/materials/search` (inspection).
+- **Grading:** `POST /v1/grading/grade-submission` retrieves the top `RAG_TOP_K` (default 4) passages with cosine
+  similarity ≥ `RAG_MIN_SIMILARITY` (default 0.3) per question (query = question + answer key) and gives them,
+  with the student answer, question, answer key and rubric, to the LLM. Each question in the response carries
+  `evidence_status` (`available`/`unavailable`), `evidence_unavailable_reason` and `evidence` (passages with
+  `similarity_score`, file, page); `rag` summarizes the course. Suggestions are never published automatically.
+
 ---
 
 ## 4. Public Service Interfaces
 
-### 1. `GeminiClient` (`app.llm.GeminiClient`)
+### 1. `GeminiClient` / `FallbackLLMClient` (`app.llm`)
+`FallbackLLMClient` (from `get_llm_client()`) and `OpenAICompatibleClient` expose the same two methods:
 - `generate_text(prompt, system_instruction=None, model=None, temperature=None) -> str`
 - `generate_structured(prompt, response_schema=T, system_instruction=None) -> T`
 

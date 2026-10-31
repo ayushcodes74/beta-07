@@ -126,6 +126,19 @@ def _is_unique_violation(exc: Exception) -> bool:
     return getattr(exc, "code", None) == "23505" or "duplicate key value" in str(exc)
 
 
+def _storage_error(exc: Exception, message: str) -> Exception:
+    """Map a Supabase failure to the repository error the API layer expects.
+
+    PGRST301 / "No suitable key" means the project cannot verify the caller's JWT (auth
+    integration not configured), which is reported as 503 service_unavailable rather than
+    a storage failure. Applied to every query so the first query in a flow decides it.
+    """
+    text = str(exc)
+    if "PGRST301" in text or "No suitable key" in text:
+        return SubmissionIntegrationNotConfiguredError("Supabase JWT verification is not configured on remote host")
+    return SubmissionRepositoryError(message)
+
+
 def _api_submission_status(sub_row: dict[str, Any], job_row: Optional[dict[str, Any]]) -> str:
     """submissions row (+ its ocr_jobs row) -> the API status the rest of the backend expects."""
     db_status = str(sub_row["status"])
@@ -305,11 +318,8 @@ class SupabaseSubmissionRepository:
         except (SubmissionRepositoryError, SubmissionValidationError):
             raise
         except Exception as exc:
-            err_msg = str(exc)
-            if "PGRST301" in err_msg or "No suitable key" in err_msg:
-                raise SubmissionIntegrationNotConfiguredError("Supabase JWT verification is not configured on remote host") from exc
             logger.exception("Failed to create submission in Supabase: %s", exc)
-            raise SubmissionRepositoryError("Failed to create submission") from exc
+            raise _storage_error(exc, "Failed to create submission") from exc
 
     def get(self, submission_id: UUID, *, access_token: str) -> Optional[SubmissionRecord]:
         """Fetch submission by ID along with its associated OCR job ID."""
@@ -340,7 +350,7 @@ class SupabaseSubmissionRepository:
             return self._record(row, job_row)
         except Exception as exc:
             logger.exception("Failed to get submission from Supabase: %s", exc)
-            raise SubmissionRepositoryError("Failed to fetch submission") from exc
+            raise _storage_error(exc, "Failed to fetch submission") from exc
 
     def list_by_assignment(
         self, assignment_id: UUID, *, access_token: str
@@ -359,7 +369,7 @@ class SupabaseSubmissionRepository:
             return [self._record(r, jobs.get(str(r["id"]))) for r in rows]
         except Exception as exc:
             logger.exception("Failed to list submissions by assignment: %s", exc)
-            raise SubmissionRepositoryError("Failed to list submissions") from exc
+            raise _storage_error(exc, "Failed to list submissions") from exc
 
     def list_by_student(
         self, student_id: UUID, *, access_token: str
@@ -378,7 +388,7 @@ class SupabaseSubmissionRepository:
             return [self._record(r, jobs.get(str(r["id"]))) for r in rows]
         except Exception as exc:
             logger.exception("Failed to list submissions by student: %s", exc)
-            raise SubmissionRepositoryError("Failed to list student submissions") from exc
+            raise _storage_error(exc, "Failed to list student submissions") from exc
 
     def update_status(
         self,
@@ -413,7 +423,7 @@ class SupabaseSubmissionRepository:
             return self.get(submission_id, access_token=access_token)
         except Exception as exc:
             logger.exception("Failed to update submission status in Supabase: %s", exc)
-            raise SubmissionRepositoryError("Failed to update submission status") from exc
+            raise _storage_error(exc, "Failed to update submission status") from exc
 
     def get_student_answers(
         self, submission_id: UUID, *, access_token: str
@@ -442,7 +452,7 @@ class SupabaseSubmissionRepository:
             ]
         except Exception as exc:
             logger.exception("Failed to get student answers: %s", exc)
-            raise SubmissionRepositoryError("Failed to get student answers") from exc
+            raise _storage_error(exc, "Failed to get student answers") from exc
 
     def save_student_answers(
         self, submission_id: UUID, answers: List[Dict[str, Any]], *, access_token: str
@@ -470,7 +480,7 @@ class SupabaseSubmissionRepository:
             return len(resp.data) if hasattr(resp, "data") and resp.data else len(records)
         except Exception as exc:
             logger.exception("Failed to save student answers: %s", exc)
-            raise SubmissionRepositoryError("Failed to save student answers") from exc
+            raise _storage_error(exc, "Failed to save student answers") from exc
 
     def get_ocr_job(
         self, submission_id: UUID, *, access_token: str
@@ -503,7 +513,7 @@ class SupabaseSubmissionRepository:
             )
         except Exception as exc:
             logger.exception("Failed to get OCR job for submission: %s", exc)
-            raise SubmissionRepositoryError("Failed to get OCR job") from exc
+            raise _storage_error(exc, "Failed to get OCR job") from exc
 
     def verify_submission_assignment(
         self, submission_id: UUID, assignment_id: UUID, *, access_token: str

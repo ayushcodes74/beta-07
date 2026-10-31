@@ -8,6 +8,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.services.course_material_service import MAX_MATERIAL_CHARS
+
 MAX_GENERATED_QUESTIONS = 10
 
 
@@ -20,6 +22,9 @@ class AssignmentGenerationRequest(BaseModel):
     question_format: Literal["mixed", "subjective", "mcq"] = "mixed"
     difficulty: Literal["easy", "medium", "hard", "mixed"] = "mixed"
     total_marks: Annotated[int, Field(ge=1, le=10000)] = 20
+    # Course material attached in the editor (extracted file text and/or pasted notes). When
+    # present, questions are grounded in it instead of the topic alone. Not stored.
+    course_material: Annotated[str | None, Field(default=None, max_length=MAX_MATERIAL_CHARS)] = None
 
     @model_validator(mode="after")
     def _enough_marks(self) -> "AssignmentGenerationRequest":
@@ -42,5 +47,15 @@ class GeneratedAssignmentDraft(BaseModel):
     instructions: str | None = None
     questions: list[GeneratedQuestion]
     grounded_in_course_materials: bool = Field(
-        description="False while course-material upload is unavailable; questions come from the topic alone."
+        description="True when course material was attached to the request; otherwise questions come from the topic alone."
     )
+
+
+class ExtractedCourseMaterial(BaseModel):
+    """Text extracted from a course-material file attached in the assignment editor (not stored)."""
+
+    filename: str
+    text: str
+    characters: int
+    truncated: bool = Field(description=f"True if the text was cut to {MAX_MATERIAL_CHARS:,} characters.")
+    pages: int | None = Field(default=None, description="PDF pages or PPTX slides, when known.")

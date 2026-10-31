@@ -133,7 +133,9 @@ def process_pdf(
                 try:
                     rel_image_path = page_image_path.relative_to(Path.cwd()).as_posix()
                 except ValueError:
-                    rel_image_path = f"{output_base.name}/{clean_submission_id}/pages/{image_filename}"
+                    # Output lives outside the working directory: a cwd-relative path would point at a
+                    # file that doesn't exist, so hand downstream stages the real absolute path.
+                    rel_image_path = page_image_path.as_posix()
             else:
                 rel_image_path = (output_base / clean_submission_id / "pages" / image_filename).as_posix()
 

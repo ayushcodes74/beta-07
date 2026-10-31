@@ -1,14 +1,17 @@
-"""Thread-safe in-memory job store managing OCR job lifecycles.
+"""Thread-safe job store managing OCR job lifecycles.
 
-LIMITATION NOTICE:
-This is an in-memory job repository designed for the MVP service layer:
-1. Job states and results are lost on service process termination or restart.
-2. Job records are not shared across multiple worker processes without external shared storage (e.g. Redis/PostgreSQL).
-3. For enterprise production workloads, jobs should be backed by a durable database queue.
+Records live in memory and are mirrored to ``<job_dir>/job.json`` (+ ``result.json`` once finished)
+so that JobManager can restore them after a service restart.
+
+LIMITATIONS:
+1. Records are not shared across multiple worker processes without external shared storage.
+2. For enterprise production workloads, jobs should be backed by a durable database queue.
 """
 
 from datetime import datetime, timezone
+import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import threading
@@ -18,6 +21,15 @@ import uuid
 from app.api.schemas import OCRDocumentResult
 
 logger = logging.getLogger(__name__)
+
+JOB_META_FILENAME = "job.json"
+JOB_RESULT_FILENAME = "result.json"
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 class JobRecord:
@@ -76,12 +88,34 @@ class JobStore:
             return cls._instance
 
     @classmethod
-    def reset_instance(cls) -> None:
-        """Reset the singleton instance (useful for isolated unit testing)."""
+    def reset_instance(cls, cleanup_files: bool = True) -> None:
+        """Reset the singleton instance.
+
+        Args:
+            cleanup_files: Delete the job workspaces too (isolated unit tests). Service shutdown
+                passes False so finished results survive a restart.
+        """
         with cls._lock:
-            if cls._instance is not None:
+            if cls._instance is not None and cleanup_files:
                 cls._instance.cleanup_all()
             cls._instance = None
+
+    def persist(self, job: JobRecord) -> None:
+        """Mirror a job's state (and result, once available) into its workspace. Best-effort."""
+        if not job.temp_dir or not Path(job.temp_dir).is_dir():
+            return
+        try:
+            job_dir = Path(job.temp_dir)
+            if job.result is not None:
+                _atomic_write_text(job_dir / JOB_RESULT_FILENAME, job.result.model_dump_json())
+            _atomic_write_text(job_dir / JOB_META_FILENAME, json.dumps(job.to_dict()))
+        except Exception as e:  # persistence must never break job processing
+            logger.warning("Could not persist job %s: %s", job.job_id, e)
+
+    def register(self, record: JobRecord) -> JobRecord:
+        """Add an externally constructed (e.g. restored-from-disk) record; keeps any existing one."""
+        with self._lock:
+            return self._jobs.setdefault(record.job_id, record)
 
     def create_job(self, submission_id: str, temp_dir: Optional[Path] = None) -> JobRecord:
         """Create and register a new unique job in 'queued' state."""
@@ -118,6 +152,7 @@ class JobStore:
                 job.result = result
                 job.warnings.extend(result.warnings)
                 job.updated_at = datetime.now(timezone.utc).isoformat()
+                self.persist(job)
                 logger.info("Job %s completed with final status '%s'", job_id, job.status)
 
     def fail_job(self, job_id: str, error_msg: str) -> None:
@@ -129,6 +164,7 @@ class JobStore:
                 job.stage = "done"
                 job.error = error_msg
                 job.updated_at = datetime.now(timezone.utc).isoformat()
+                self.persist(job)
                 logger.error("Job %s failed: %s", job_id, error_msg)
 
     def cancel_job(self, job_id: str) -> bool:

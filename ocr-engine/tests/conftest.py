@@ -1,8 +1,17 @@
 """Shared test fixtures for TrustGrade OCR Ingestion Module tests."""
 
+import os
+import tempfile
 from pathlib import Path
 import pytest
 import pymupdf
+
+# Don't spawn the background model-preload thread for every TestClient; tests load models explicitly.
+os.environ.setdefault("OCR_PRELOAD_MODELS", "false")
+# Never call the real OCR.space API (or spend its quota) from tests; OCR.space tests use mocks.
+os.environ["OCR_SPACE_API_KEY"] = ""
+# Keep test jobs out of the real ocr-engine/storage folder (must be set before app.api.config is imported).
+os.environ.setdefault("OCR_STORAGE_ROOT", tempfile.mkdtemp(prefix="trustgrade-ocr-tests-"))
 
 
 @pytest.fixture

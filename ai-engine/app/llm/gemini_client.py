@@ -107,11 +107,24 @@ class GeminiClient:
                 raise LLMConfigError(
                     "google-genai package is not installed. Please install requirements."
                 )
-            self._client = genai.Client(api_key=self._api_key)
+            http_options = None
+            if types is not None:
+                # HttpOptions.timeout is in milliseconds.
+                http_options = types.HttpOptions(timeout=int(self.settings.llm_request_timeout * 1000))
+            self._client = genai.Client(api_key=self._api_key, http_options=http_options)
         return self._client
+
+    @staticmethod
+    def _is_quota_exhausted(exc: Exception) -> bool:
+        """True for long-lived quota errors (e.g. free-tier daily limit) that retrying won't fix."""
+        return "perday" in str(exc).lower().replace(" ", "")
 
     def _is_retryable_error(self, exc: Exception) -> bool:
         """Determine if an exception should trigger an automatic retry."""
+        # Daily/billing quota exhaustion won't clear within a backoff window.
+        if self._is_quota_exhausted(exc):
+            return False
+
         # Check standard network / timeout exceptions
         if isinstance(exc, (TimeoutError, ConnectionError)):
             return True

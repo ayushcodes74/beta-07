@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-from app.llm.gemini_client import GeminiClient, get_gemini_client
+from app.llm.gemini_client import GeminiClient
+from app.llm.fallback_client import get_llm_client
 from app.llm import prompts
+from app.llm.gemini_client import LLMError, LLMResponseValidationError
 from app.rag.context_builder import ContextBuilder
 from app.rag.retriever import CourseMaterialRetriever
 from app.assignment.rubric_generator import RubricGenerator
@@ -63,13 +66,16 @@ class _GeneratedAssignmentResponse(BaseModel):
 class AssignmentGenerator:
     """Service to generate draft assignments and rubrics for teacher review."""
 
+    #: Upper bound on concurrent rubric LLM calls (keeps bursts within provider rate limits).
+    MAX_PARALLEL_RUBRICS = 4
+
     def __init__(
         self,
         gemini_client: Optional[GeminiClient] = None,
         retriever: Optional[CourseMaterialRetriever] = None,
         rubric_generator: Optional[RubricGenerator] = None,
     ):
-        self.gemini_client = gemini_client or get_gemini_client()
+        self.gemini_client = gemini_client or get_llm_client()
         self.retriever = retriever
         self.rubric_generator = rubric_generator or RubricGenerator(gemini_client=self.gemini_client)
 
@@ -135,34 +141,69 @@ class AssignmentGenerator:
             system_instruction=system_instruction,
         )
 
-        # 5. Process and assemble draft questions
-        deduplicated = self._deduplicate_questions(llm_response.questions)
+        # 5. Process and assemble draft questions. Malformed questions (e.g. an MCQ without exactly
+        # one correct option) are dropped individually instead of failing the whole assignment.
+        deduplicated = [q for q in self._deduplicate_questions(llm_response.questions) if self._is_well_formed(q)]
+        if not deduplicated:
+            raise LLMResponseValidationError(
+                "LLM returned no usable questions after validation.",
+                raw_response=llm_response.model_dump_json()[:2000],
+            )
+        if len(deduplicated) < len(llm_response.questions):
+            logger.warning(
+                "Dropped %d duplicate/malformed generated question(s); keeping %d",
+                len(llm_response.questions) - len(deduplicated), len(deduplicated),
+            )
         assembled_questions: List[QuestionDraft] = []
         mark_per_question = round(request.total_marks / len(deduplicated), 2) if deduplicated else 1.0
+        q_marks = mark_per_question
+        q_ids = [f"q_{idx + 1}_{uuid.uuid4().hex[:6]}" for idx in range(len(deduplicated))]
 
-        for idx, q in enumerate(deduplicated):
-            q_id = f"q_{idx + 1}_{uuid.uuid4().hex[:6]}"
-            q_marks = mark_per_question
+        # Model answers for subjective questions
+        model_answers: List[Optional[ModelAnswer]] = []
+        for q in deduplicated:
+            needs_rubric = q.question_type in (QuestionType.SUBJECTIVE, QuestionType.MIXED)
+            model_answers.append(
+                ModelAnswer(
+                    text=q.model_answer_text or "See key points.",
+                    key_points=q.key_points or ["Demonstrate correct understanding."],
+                    acceptable_approaches=q.acceptable_approaches or ["Equivalent terminology accepted."],
+                )
+                if needs_rubric and (q.model_answer_text or q.key_points)
+                else None
+            )
 
-            # Build model answer & rubric for subjective
-            model_ans: Optional[ModelAnswer] = None
-            q_rubric: Optional[Rubric] = None
-
-            if q.question_type in (QuestionType.SUBJECTIVE, QuestionType.MIXED):
-                if q.model_answer_text or q.key_points:
-                    model_ans = ModelAnswer(
-                        text=q.model_answer_text or "See key points.",
-                        key_points=q.key_points or ["Demonstrate correct understanding."],
-                        acceptable_approaches=q.acceptable_approaches or ["Equivalent terminology accepted."],
-                    )
-                # Generate rubric
-                q_rubric = self.rubric_generator.generate_rubric(
+        # Rubrics are independent LLM calls, so run them concurrently rather than one after another
+        # (each can take tens of seconds on slower/free models).
+        def _rubric(i: int) -> Rubric:
+            q, model_ans = deduplicated[i], model_answers[i]
+            try:
+                return self.rubric_generator.generate_rubric(
                     question_text=q.question_text,
                     max_marks=q_marks,
                     course_context=context_text,
                     model_answer=model_ans.text if model_ans else None,
                     grounded=grounded,
                 )
+            except LLMError as exc:
+                # Keep the already-generated question with a basic key-point rubric; the teacher
+                # reviews the DRAFT anyway.
+                logger.warning("Rubric generation failed for %s (%s); using basic rubric", q_ids[i], type(exc).__name__)
+                return RubricGenerator.basic_rubric(q_marks, q.key_points)
+
+        rubric_indices = [
+            i for i, q in enumerate(deduplicated) if q.question_type in (QuestionType.SUBJECTIVE, QuestionType.MIXED)
+        ]
+        rubrics: dict[int, Rubric] = {}
+        if rubric_indices:
+            workers = min(len(rubric_indices), self.MAX_PARALLEL_RUBRICS)
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="rubric") as pool:
+                rubrics = dict(zip(rubric_indices, pool.map(_rubric, rubric_indices)))
+
+        for idx, q in enumerate(deduplicated):
+            q_id = q_ids[idx]
+            model_ans = model_answers[idx]
+            q_rubric: Optional[Rubric] = rubrics.get(idx)
 
             # Check evidence flag
             has_evidence = q.has_sufficient_evidence and grounded
@@ -211,6 +252,19 @@ class AssignmentGenerator:
         return mcq, sub
 
     @staticmethod
+    def _is_well_formed(q: _GeneratedQuestion) -> bool:
+        """Reject questions that would fail QuestionDraft validation (bad MCQ option sets)."""
+        if q.question_type == QuestionType.MCQ:
+            options = q.mcq_options or []
+            correct = sum(1 for o in options if o.is_correct)
+            if len(options) < 2 or correct != 1:
+                logger.warning(
+                    "Dropping malformed MCQ (%d options, %d correct): %.80s", len(options), correct, q.question_text
+                )
+                return False
+        return True
+
+    @staticmethod
     def _deduplicate_questions(questions: List[_GeneratedQuestion]) -> List[_GeneratedQuestion]:
         """Filter out duplicate questions with identical or near-identical text."""
         seen = set()
@@ -229,20 +283,21 @@ class AssignmentGenerator:
             return
         curr_sum = sum(q.marks for q in questions)
         diff = round(total_marks - curr_sum, 2)
-        if abs(diff) > 0.01:
-            # Adjust the last question
-            questions[-1].marks = max(1.0, round(questions[-1].marks + diff, 2))
-            if questions[-1].rubric is not None:
-                # Update rubric total to match adjusted question marks
-                questions[-1].rubric = RubricGenerator._reconcile_marks(
-                    questions[-1].rubric.criteria,
-                    questions[-1].marks,
+        if abs(diff) >= 0.01:
+            # Adjust the last question (diff is a small rounding remainder)
+            last = questions[-1]
+            new_marks = round(last.marks + diff, 2)
+            if new_marks <= 0:
+                return
+            if last.rubric is not None:
+                # Rebuild the rubric first so the question never holds a rubric whose total mismatches.
+                # (QuestionDraft validates on assignment, so the rubric must be a full Rubric object.)
+                last.rubric = Rubric(
+                    criteria=RubricGenerator._reconcile_marks(last.rubric.criteria, new_marks),
+                    total_marks=new_marks,
+                    instructions=last.rubric.instructions,
                 )
-                # Reconstruct rubric with matching total
-                questions[-1].rubric = Rubric(
-                    criteria=questions[-1].rubric,
-                    total_marks=questions[-1].marks,
-                )
+            last.marks = new_marks
 
     # -----------------------------------------------------------------------
     # Teacher Editing Interface

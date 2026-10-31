@@ -24,9 +24,34 @@ from app.recognition.exceptions import (
 )
 from app.recognition.model_manager import ModelManager
 from app.recognition.reading_order import ReadingOrderReconstructor
-from app.recognition.recognition_pipeline import recognize_page, recognize_pages
+from app.recognition.recognition_pipeline import _group_paddle_lines, recognize_page, recognize_pages
 from app.recognition.schemas import BoundingBox, PageRecognitionResult
 from app.recognition.text_normalizer import TextNormalizer
+
+
+@pytest.fixture(autouse=True)
+def degraded_model_manager():
+    """Default to a model-free manager so Section A tests exercise the honest degraded path
+    deterministically (and fast) even when PaddleOCR/TrOCR are installed on the host.
+    Tests that need a specific engine reset the singleton themselves."""
+    ModelManager.reset_instance()
+    ModelManager.get_instance(RecognitionConfig(backend="degraded"))
+    yield
+    ModelManager.reset_instance()
+
+
+def _paddle_v3_result(lines):
+    """Build a PaddleOCR 3.x style predict() result from (text, score, (x1, y1, x2, y2)) tuples."""
+    return [
+        {
+            "rec_texts": [t for t, _, _ in lines],
+            "rec_scores": np.array([s for _, s, _ in lines]),
+            "rec_boxes": np.array([b for _, _, b in lines]).reshape(-1, 4),
+            "rec_polys": [
+                np.array([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]) for _, _, b in lines
+            ],
+        }
+    ]
 
 
 # ==============================================================================
@@ -194,7 +219,7 @@ def test_blank_region_quality():
 def test_model_loading_failure_when_fallback_disabled(monkeypatch):
     """Verify ModelLoadingError is raised when allow_degraded_fallback is False."""
     ModelManager.reset_instance()
-    cfg = RecognitionConfig(allow_degraded_fallback=False)
+    cfg = RecognitionConfig(backend="auto", allow_degraded_fallback=False)
 
     def mock_trocr_fail():
         raise RuntimeError("Simulated network or model file corruption failure")
@@ -313,13 +338,13 @@ def test_genuine_paddleocr_inference_mocked():
     mgr = ModelManager.get_instance()
 
     mock_paddle = MagicMock()
-    # PaddleOCR standard return format: [ [ [box, (text, conf)], ... ] ]
-    mock_paddle.ocr.return_value = [
+    # PaddleOCR 3.x predict() return format
+    mock_paddle.predict.return_value = _paddle_v3_result(
         [
-            [[[10, 10], [100, 10], [100, 30], [10, 30]], ("TRUSTGRADE UNIVERSITY", 0.985)],
-            [[[10, 40], [150, 40], [150, 60], [10, 60]], ("MIDTERM EXAMINATION", 0.971)],
+            ("TRUSTGRADE UNIVERSITY", 0.985, (10, 10, 100, 30)),
+            ("MIDTERM EXAMINATION", 0.971, (10, 40, 150, 60)),
         ]
-    ]
+    )
 
     mgr.printed_engine = mock_paddle
     mgr.printed_engine_status = "loaded"
@@ -338,10 +363,134 @@ def test_genuine_paddleocr_inference_mocked():
     ModelManager.reset_instance()
 
 
-def test_mixed_page_genuine_inference_mocked(mixed_assignment_page: Path, monkeypatch):
-    """Test end-to-end page recognition with genuine mocked models producing non-empty full_text."""
+def test_legacy_paddleocr_v2_api_mocked():
+    """PaddleOCR 2.x `ocr()` output is still parsed when an old paddleocr is installed."""
     ModelManager.reset_instance()
     mgr = ModelManager.get_instance()
+
+    mock_paddle = MagicMock()
+    mock_paddle.ocr.return_value = [
+        [
+            [[[10, 10], [100, 10], [100, 30], [10, 30]], ("TRUSTGRADE UNIVERSITY", 0.985)],
+            [[[10, 40], [150, 40], [150, 60], [10, 60]], ("MIDTERM EXAMINATION", 0.971)],
+        ]
+    ]
+    mgr.printed_engine = mock_paddle
+    mgr._paddle_api = "v2"
+
+    text, conf, _, meta = mgr.recognize_printed_crop(np.full((100, 400, 3), 255, dtype=np.uint8))
+    assert text == "TRUSTGRADE UNIVERSITY MIDTERM EXAMINATION"
+    assert conf == pytest.approx(0.978, abs=0.002)
+    assert meta["engine_used"] == "paddleocr"
+
+
+def test_group_paddle_lines_merges_rows_and_splits_columns():
+    """Word fragments on one visual row merge; a wide horizontal gap starts a new segment."""
+    frags = [
+        {"text": "53", "score": 0.99, "box": (336, 724, 430, 789)},
+        {"text": "2", "score": 0.99, "box": (278, 742, 333, 799)},
+        {"text": "1", "score": 0.99, "box": (484, 730, 525, 775)},
+        {"text": "0.625x2=1.25", "score": 0.9, "box": (833, 720, 1325, 790)},
+        {"text": "26", "score": 0.99, "box": (342, 805, 423, 864)},  # next row down
+    ]
+    lines = _group_paddle_lines(frags, gap_factor=3.0)
+
+    assert len(lines) == 2
+    first_row = [[f["text"] for f in seg] for seg in lines[0]]
+    assert first_row == [["2", "53", "1"], ["0.625x2=1.25"]]
+    assert [[f["text"] for f in seg] for seg in lines[1]] == [["26"]]
+
+
+def test_full_page_paddle_mode_mocked(mixed_assignment_page: Path):
+    """Default backend: PaddleOCR recognizes the whole page; blocks follow visual lines."""
+    ModelManager.reset_instance()
+    mgr = ModelManager.get_instance(RecognitionConfig(backend="paddleocr"))
+    mock_paddle = MagicMock()
+    mock_paddle.predict.return_value = _paddle_v3_result(
+        [
+            ("France?", 0.97, (420, 52, 520, 80)),
+            ("Question 1: What is the capital of", 0.99, (50, 50, 410, 82)),
+            ("The capital of France is Paris.", 0.42, (60, 200, 500, 240)),
+            ("noise", 0.10, (700, 700, 720, 710)),  # below paddle_min_score -> dropped
+        ]
+    )
+    mgr.printed_engine = mock_paddle
+    mgr.printed_engine_status = "loaded"
+    mgr.printed_model_version = "PP-OCRv6_small_det+PP-OCRv6_small_rec"
+    mgr._initialized = True
+
+    result = recognize_page(str(mixed_assignment_page), "sub-paddle-page", 1)
+
+    assert result.status == "completed"
+    assert result.full_text == "Question 1: What is the capital of France?\nThe capital of France is Paris."
+    assert [b.sequence for b in result.text_blocks] == [1, 2]
+    assert result.metadata["engine_used"] == ["paddleocr"]
+    assert result.metadata["recognition_mode"] == "deep_learning_inference"
+    assert result.metadata["is_fallback"] is False
+
+    q, a = result.text_blocks
+    assert q.bounding_box == BoundingBox(x1=50, y1=50, x2=520, y2=82)
+    assert q.metadata["fragments"] == 2
+    assert 0.97 < q.confidence < 0.99
+    assert a.confidence == pytest.approx(0.42)
+    assert any("Low recognition confidence" in w for w in a.warnings)
+    assert any("low recognition confidence" in w for w in result.warnings)
+
+
+def test_full_page_paddle_inference_failure_raises(mixed_assignment_page: Path):
+    """A PaddleOCR crash surfaces as RecognitionPipelineError (page marked failed upstream)."""
+    ModelManager.reset_instance()
+    mgr = ModelManager.get_instance(RecognitionConfig(backend="paddleocr"))
+    mgr.printed_engine = MagicMock()
+    mgr.printed_engine.predict.side_effect = RuntimeError("paddle crashed")
+    mgr._initialized = True
+
+    with pytest.raises(RecognitionPipelineError):
+        recognize_page(str(mixed_assignment_page), "sub-paddle-crash", 1)
+
+
+def test_paddle_page_mode_falls_back_to_degraded_when_paddle_missing(printed_doc_page: Path):
+    """If PaddleOCR cannot load, the page is processed honestly in degraded layout-only mode."""
+    ModelManager.reset_instance()
+    mgr = ModelManager.get_instance(RecognitionConfig(backend="paddleocr"))
+    mgr.printed_engine = None
+    mgr.printed_engine_status = "unavailable"
+    mgr._initialized = True
+
+    result = recognize_page(str(printed_doc_page), "sub-no-paddle", 1)
+    assert result.status == "degraded"
+    assert result.full_text == ""
+
+
+def _paddle_installed() -> bool:
+    try:
+        import paddleocr  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _paddle_installed(), reason="paddleocr not installed")
+def test_real_paddleocr_on_printed_benchmark():
+    """Real PaddleOCR inference (downloads models on first run) on a printed benchmark sample."""
+    sample = Path(__file__).resolve().parent.parent / "benchmark_samples" / "bench_printed.png"
+    ModelManager.reset_instance()
+    ModelManager.get_instance(RecognitionConfig(backend="paddleocr"))
+
+    result = recognize_page(str(sample), "sub-real-paddle", 1)
+
+    mgr = ModelManager.get_instance()
+    assert mgr.printed_engine_status == "loaded", mgr.printed_error_msg
+    assert result.status == "completed"
+    assert "TRUSTGRADE UNIVERSITY" in result.full_text
+    assert "Question 1" in result.full_text
+
+
+def test_mixed_page_genuine_inference_mocked(mixed_assignment_page: Path, monkeypatch):
+    """Test end-to-end legacy hybrid recognition (backend='auto') with mocked crop recognizers."""
+    ModelManager.reset_instance()
+    mgr = ModelManager.get_instance(RecognitionConfig(backend="auto"))
+    mgr._initialized = True  # skip loading real models; crop recognizers are mocked below
 
     # Mock printed recognizer returning question text
     def mock_printed_crop(crop):

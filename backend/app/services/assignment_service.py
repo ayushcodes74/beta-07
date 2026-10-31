@@ -69,6 +69,10 @@ class AssignmentRepository(Protocol):
 
     def owns_course(self, course_id: UUID, teacher_id: UUID, *, access_token: str) -> bool: ...
 
+    def is_owned_by(self, assignment_id: UUID, teacher_id: UUID, *, access_token: str) -> bool:
+        """Cheap ownership check (no questions/answer keys). Optional: callers fall back to get()."""
+        ...
+
     def list_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[AssignmentRecord]: ...
 
     def list_published_for_student(self, student_id: UUID, *, access_token: str) -> list[AssignmentRecord]:
@@ -100,7 +104,7 @@ class UnconfiguredAssignmentRepository:
     def _fail(self, *args: Any, **kwargs: Any) -> Any:
         raise AssignmentIntegrationNotConfiguredError("assignment repository is not configured")
 
-    create = get = owns_course = list_by_teacher = list_published_for_student = _fail
+    create = get = owns_course = is_owned_by = list_by_teacher = list_published_for_student = _fail
     get_published_for_student = replace_content = set_status = delete = _fail
 
 
@@ -187,6 +191,11 @@ class AssignmentService:
             raise AssignmentValidationError("empty_update", "No updatable fields were provided.")
         if "due_at" in changes:
             self._require_future_deadline(changes["due_at"])
+        # Published assignments stay editable, but must remain something students can answer.
+        if current.status is AssignmentStatus.PUBLISHED and changes.get("questions") == []:
+            raise AssignmentValidationError(
+                "not_publishable", "A published assignment needs at least one question. Unpublish it first."
+            )
 
         try:
             merged = AssignmentContent.model_validate({**current.content.model_dump(), **changes})
@@ -228,6 +237,20 @@ class AssignmentService:
     def _require_role(user: CurrentUser, role: Role) -> None:
         if user.role is not role:
             raise AssignmentPermissionError
+
+    def require_owned(self, teacher: CurrentUser, assignment_id: UUID, *, access_token: str) -> None:
+        """Raise AssignmentNotFoundError unless ``teacher`` owns the assignment.
+
+        Uses the repository's single-row ownership query when available, instead of loading the
+        whole assignment with its questions and answer keys (3 round trips to Supabase).
+        """
+        self._require_role(teacher, Role.TEACHER)
+        is_owned_by = getattr(self._repository, "is_owned_by", None)
+        if is_owned_by is None:
+            self._get_owned(teacher, assignment_id, access_token)
+            return
+        if not is_owned_by(assignment_id, teacher.id, access_token=access_token):
+            raise AssignmentNotFoundError
 
     def _get_owned(self, teacher: CurrentUser, assignment_id: UUID, access_token: str) -> AssignmentRecord:
         """Fetch an assignment the teacher owns. Others' assignments look like 404."""

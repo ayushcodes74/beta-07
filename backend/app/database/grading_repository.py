@@ -156,6 +156,7 @@ class GradingRepository(Protocol):
         status: GradingStatus = GradingStatus.APPROVED,
         *,
         access_token: str,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Optional[GradingResultRecord]: ...
 
     def update_status(
@@ -343,8 +344,9 @@ class SupabaseGradingRepository:
         status: GradingStatus = GradingStatus.APPROVED,
         *,
         access_token: str,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Optional[GradingResultRecord]:
-        """Update teacher-approved final score, feedback, and review metadata."""
+        """Update teacher-approved final score, feedback, and review metadata (and optionally flags)."""
         client = get_user_supabase(access_token)
         now_str = datetime.now(UTC).isoformat()
 
@@ -359,6 +361,8 @@ class SupabaseGradingRepository:
             "status": status.value,
             "updated_at": now_str,
         }
+        if flags is not None:
+            payload["flags"] = flags
 
         try:
             resp = (

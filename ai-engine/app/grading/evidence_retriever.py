@@ -111,3 +111,52 @@ class GradingEvidenceRetriever:
             retrieved_chunks=chunks,
         )
 
+
+
+class IndexEvidenceRetriever(GradingEvidenceRetriever):
+    """Grading evidence from the persistent course-material index (real embeddings only).
+
+    Unlike the base class it never builds its own empty in-memory index or mock embedder; when real
+    embeddings are unavailable it reports insufficient evidence instead of pretending RAG worked.
+    """
+
+    def __init__(self, index=None, top_k: int = 4, similarity_threshold: float = 0.3):
+        # Deliberately not calling super().__init__: that would create a mock-backed retriever.
+        from app.rag.course_index import get_course_index
+
+        self.index = index or get_course_index()
+        self.context_builder = ContextBuilder()
+        self.similarity_threshold = similarity_threshold
+        self.top_k = top_k
+
+    def retrieve_evidence_for_grading(
+        self,
+        course_id: str,
+        question_text: str,
+        student_answer: Optional[str] = None,
+        top_k: int = 5,
+    ) -> EvidenceRetrievalResult:
+        from app.rag.embeddings import EmbeddingsUnavailableError
+
+        try:
+            chunks = self.index.retrieve(
+                course_id, question_text, top_k=min(top_k, self.top_k), similarity_threshold=self.similarity_threshold
+            )
+        except EmbeddingsUnavailableError as exc:
+            logger.warning("Course evidence unavailable: %s", exc)
+            chunks = []
+        if not chunks:
+            return EvidenceRetrievalResult(
+                course_context="No relevant course material found in course documents.",
+                evidence_snippets=[],
+                source_references=[],
+                has_sufficient_evidence=False,
+                retrieved_chunks=[],
+            )
+        return EvidenceRetrievalResult(
+            course_context=self.context_builder.build_context_block(chunks),
+            evidence_snippets=self.context_builder.extract_snippets_for_prompts(chunks),
+            source_references=self.context_builder.to_source_references(chunks),
+            has_sufficient_evidence=True,
+            retrieved_chunks=chunks,
+        )

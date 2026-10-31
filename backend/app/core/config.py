@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "http://127.0.0.1:8002"
     AI_CONNECT_TIMEOUT_SECONDS: float = 5.0
     AI_READ_TIMEOUT_SECONDS: float = 240.0
+
+    # AI answer-check scoring policy: a question earns full marks once the student covers this share
+    # of its key-point marks (score = min(max, raw / GRADING_FULL_MARKS_AT)). 1.0 = no scaling.
+    # Applied identically to every submission; the unscaled AI score is kept as raw_awarded_marks.
+    GRADING_FULL_MARKS_AT: float = Field(default=0.7, gt=0.0, le=1.0)
 
     model_config = SettingsConfigDict(
         env_file=".env",

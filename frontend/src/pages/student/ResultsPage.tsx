@@ -1,7 +1,6 @@
 import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Panel } from "../../components/ui";
-import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
 import type { Submission } from "../../types/models";
 
@@ -25,15 +24,6 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
           </p>
         </div>
       </div>
-
-      {
-        <IntegrationNotice
-          title="Grade results are not connected"
-          description="The backend does not expose grading-result or publication endpoints. This view will not invent scores or feedback."
-          endpoint="No grade-result endpoint is currently available"
-          tone="warning"
-        />
-      }
 
       <div className="published-results" style={{ display: "grid", gap: "16px" }}>
         {approved.length > 0 ? (

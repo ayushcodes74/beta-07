@@ -15,7 +15,6 @@ export { AssignmentEditor } from "./pages/teacher/AssignmentEditor";
 export { SubmissionsPage } from "./pages/teacher/SubmissionsPage";
 export { GradingReviewPage } from "./pages/teacher/GradingReviewPage";
 export { OCRReviewPage } from "./pages/teacher/OCRReviewPage";
-export { MaterialsPage } from "./pages/teacher/MaterialsPage";
 
 export { StudentAssignmentsPage } from "./pages/student/StudentAssignmentsPage";
 export { StudentSubmissionPage } from "./pages/student/StudentSubmissionPage";
