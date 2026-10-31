@@ -1,9 +1,8 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, FileText, Plus, Sparkles, Upload, X } from "lucide-react";
-import { assignmentService, extractErrorMessage } from "../../services/api";
+import { aiAssignmentService, assignmentService, extractErrorMessage } from "../../services/api";
 import { Badge, Button, Panel, useToast } from "../../components/ui";
-import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import type { Assignment, Course, Question } from "../../types/models";
 
 function QuestionEditor({
@@ -126,6 +125,9 @@ export function AssignmentEditor({
   const [difficulty, setDifficulty] = useState("Mixed");
   const [count, setCount] = useState("3");
   const [type, setType] = useState<"Subjective" | "MCQ" | "Mixed">("Mixed");
+  const [topic, setTopic] = useState("");
+  const [aiTotalMarks, setAiTotalMarks] = useState("20");
+  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [courseId, setCourseId] = useState(searchParams.get("courseId") ?? courseList[0]?.id ?? "");
   const total = questions.reduce((sum, item) => sum + item.marks, 0);
@@ -133,17 +135,58 @@ export function AssignmentEditor({
   const updateQuestion = (id: string, patch: Partial<Question>) =>
     setQuestions((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
-  const handleAiGenerateClick = () => {
-    toast(
-      "AI Question Generator microservice (POST /api/v1/assignments/generate-ai) is pending backend route integration. Please write prompts manually below.",
-      "info"
-    );
+  const handleAiGenerateClick = async () => {
+    const aiTopic = (topic.trim() || title.trim());
+    const questionCount = Number(count);
+    const targetMarks = Math.floor(Number(aiTotalMarks));
+    if (aiTopic.length < 3) {
+      toast("Enter a topic (or an assignment title) for the AI to write questions about.", "info");
+      return;
+    }
+    if (!Number.isFinite(targetMarks) || targetMarks < questionCount) {
+      toast(`Total marks must be a whole number of at least ${questionCount} (one per question).`, "info");
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const draft = await aiAssignmentService.generateDraft({
+        topic: aiTopic,
+        instructions: description.trim() || undefined,
+        questionCount,
+        questionFormat: type.toLowerCase() as "mixed" | "subjective" | "mcq",
+        difficulty: difficulty.toLowerCase() as "easy" | "medium" | "hard" | "mixed",
+        totalMarks: targetMarks,
+      });
+      // Replace the editor's blank starter question(s); otherwise append to the teacher's work.
+      const editorIsBlank = questions.every((q) => !q.prompt.trim() && !q.expectedAnswer.trim());
+      setQuestions((current) => (editorIsBlank ? draft.questions : [...current, ...draft.questions]));
+      if (!title.trim()) setTitle(draft.title);
+      if (!description.trim() && draft.instructions) setDescription(draft.instructions);
+      toast(
+        `Added ${draft.questions.length} AI-drafted question${draft.questions.length === 1 ? "" : "s"}. ` +
+          (draft.groundedInCourseMaterials
+            ? "Review them before saving."
+            : "They are based on the topic only (no course materials), so review them carefully before saving.")
+      );
+    } catch (err) {
+      toast(extractErrorMessage(err, "AI generation failed. Try again."), "info");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const saveAssignment = async (state: Assignment["state"]) => {
     const cleanTitle = title.trim();
     if (!cleanTitle) {
       toast("Add an assignment title before saving.", "info");
+      return;
+    }
+    // Students only see published assignments from courses they're enrolled in, so an
+    // assignment without a course would be invisible to every student.
+    const selectedCourseId = courseId || courseList[0]?.id;
+    if (!selectedCourseId) {
+      toast("Create a course first (Courses page) and enroll your students; assignments must belong to a course.", "info");
       return;
     }
     if (!questions.length || questions.some((q) => !q.prompt.trim()) || total <= 0) {
@@ -159,7 +202,7 @@ export function AssignmentEditor({
     setSaving(true);
     try {
       let created = await assignmentService.createAssignment({
-        courseId: courseId || courseList[0]?.id,
+        courseId: selectedCourseId,
         title: cleanTitle,
         description: description.trim(),
         dueAt: deadline.toISOString(),
@@ -289,12 +332,22 @@ export function AssignmentEditor({
               </div>
             </div>
 
-            <IntegrationNotice
-              title="Pending AI Integration"
-              description="The AI question generator backend microservice is pending endpoint mounting in FastAPI. Prompts should currently be authored manually."
-              endpoint="POST /api/v1/assignments/generate-ai"
-              tone="ai"
-            />
+            <p className="modal-description">
+              Drafts questions, model answers and rubrics with AI. Nothing is saved until you save the
+              assignment. Course materials aren't used yet, so questions come from the topic alone.
+            </p>
+
+            <div className="field-block">
+              <label htmlFor="ai-topic">Topic</label>
+              <input
+                id="ai-topic"
+                className="field-input"
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                placeholder={title.trim() || "e.g. Newton's laws of motion"}
+                maxLength={300}
+              />
+            </div>
 
             <div className="field-block">
               <label>Target difficulty</label>
@@ -339,8 +392,32 @@ export function AssignmentEditor({
                 <option value="MCQ">MCQ only</option>
               </select>
             </div>
-            <Button className="full-button" variant="secondary" onClick={handleAiGenerateClick}>
-              Generate question prompts
+            <div className="field-block">
+              <label htmlFor="ai-total-marks">Total marks to distribute</label>
+              <input
+                id="ai-total-marks"
+                className="field-input"
+                type="number"
+                min={1}
+                step={1}
+                value={aiTotalMarks}
+                onChange={(event) => setAiTotalMarks(event.target.value)}
+              />
+            </div>
+            <Button
+              className="full-button"
+              variant="secondary"
+              disabled={generating || saving}
+              onClick={() => void handleAiGenerateClick()}
+            >
+              {generating ? (
+                <>
+                  <span className="button-spinner" />
+                  Generating… (up to a minute)
+                </>
+              ) : (
+                "Generate question prompts"
+              )}
             </Button>
           </Panel>
 

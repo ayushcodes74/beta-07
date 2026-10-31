@@ -1,9 +1,10 @@
 """Supabase implementation of AssignmentRepository and related models.
 
 Maps to existing Supabase tables:
-- assignments (id, teacher_id, course_id, title, instructions, due_at, total_marks, status, timestamps)
-- assignment_questions (id [UUID], assignment_id, position, question_type, question_text, marks, instructions, options, timestamps)
-- question_answer_keys (id, question_id, correct_option_id, expected_answer, teacher_notes, timestamps)
+- assignments (id, teacher_id, course_id, title, description, due_at, total_marks, status, version, timestamps)
+  (`description` stores the API's `instructions` field)
+- assignment_questions (id [UUID], assignment_id, position, question_type, question_text, marks, instructions, options, created_at)
+- question_answer_keys (question_id [PK], correct_option_id, expected_answer, teacher_notes)
 
 Enforces:
 - Real question UUIDs (never generates IDs from question positions).
@@ -64,6 +65,14 @@ class AssignmentQuestionRecord(BaseModel):
     options: Optional[List[Dict[str, Any]]] = None
 
 
+def _db_marks(value: Decimal) -> int | float:
+    """`total_marks`/`marks` are integer columns; send whole numbers as ints so Postgres accepts them.
+
+    Fractional marks are passed through unchanged and will be rejected by the database.
+    """
+    return int(value) if value == value.to_integral_value() else float(value)
+
+
 class QuestionAnswerKeyRecord(BaseModel):
     """Database representation of an answer key in question_answer_keys."""
 
@@ -106,9 +115,9 @@ class SupabaseAssignmentRepository:
                 "teacher_id": str(teacher_id),
                 "course_id": str(content.course_id) if getattr(content, "course_id", None) else None,
                 "title": content.title,
-                "instructions": content.instructions,
+                "description": content.instructions,
                 "due_at": content.due_at.isoformat(),
-                "total_marks": float(content.total_marks),
+                "total_marks": _db_marks(content.total_marks),
                 "status": AssignmentStatus.DRAFT.value,
                 "created_at": now_str,
                 "updated_at": now_str,
@@ -124,13 +133,12 @@ class SupabaseAssignmentRepository:
                     "position": position,
                     "question_type": question.type,
                     "question_text": question.text,
-                    "marks": float(question.marks),
+                    "marks": _db_marks(question.marks),
                     "instructions": getattr(question, "instructions", None),
                     "options": [opt.model_dump() for opt in question.options]
                     if isinstance(question, McqQuestion)
                     else None,
                     "created_at": now_str,
-                    "updated_at": now_str,
                 }
                 client.table("assignment_questions").insert(q_payload).execute()
 
@@ -139,13 +147,10 @@ class SupabaseAssignmentRepository:
                 expected_ans = getattr(question, "expected_answer", None)
                 if correct_opt is not None or expected_ans is not None:
                     ak_payload = {
-                        "id": str(uuid4()),
                         "question_id": str(question_id),
                         "correct_option_id": correct_opt,
                         "expected_answer": expected_ans,
                         "teacher_notes": None,
-                        "created_at": now_str,
-                        "updated_at": now_str,
                     }
                     client.table("question_answer_keys").insert(ak_payload).execute()
 
@@ -168,7 +173,7 @@ class SupabaseAssignmentRepository:
         try:
             resp = (
                 client.table("assignments")
-                .select("id, teacher_id, course_id, title, instructions, due_at, total_marks, status")
+                .select("id, teacher_id, course_id, title, description, due_at, total_marks, status")
                 .eq("id", str(assignment_id))
                 .execute()
             )
@@ -182,7 +187,7 @@ class SupabaseAssignmentRepository:
 
             content = AssignmentContent(
                 title=row["title"],
-                instructions=row.get("instructions"),
+                instructions=row.get("description"),
                 due_at=datetime.fromisoformat(row["due_at"]),
                 total_marks=Decimal(str(row["total_marks"])),
                 questions=questions,
@@ -223,7 +228,7 @@ class SupabaseAssignmentRepository:
         try:
             resp = (
                 client.table("assignments")
-                .select("id, teacher_id, course_id, title, instructions, due_at, total_marks, status")
+                .select("id, teacher_id, course_id, title, description, due_at, total_marks, status")
                 .eq("teacher_id", str(teacher_id))
                 .execute()
             )
@@ -235,7 +240,7 @@ class SupabaseAssignmentRepository:
                 questions = self._fetch_questions_with_keys(client, assignment_id)
                 content = AssignmentContent(
                     title=row["title"],
-                    instructions=row.get("instructions"),
+                    instructions=row.get("description"),
                     due_at=datetime.fromisoformat(row["due_at"]),
                     total_marks=Decimal(str(row["total_marks"])),
                     questions=questions,
@@ -265,7 +270,7 @@ class SupabaseAssignmentRepository:
         try:
             resp = (
                 client.table("assignments")
-                .select("id, teacher_id, course_id, title, instructions, due_at, total_marks, status")
+                .select("id, teacher_id, course_id, title, description, due_at, total_marks, status")
                 .eq("id", str(assignment_id))
                 .eq("status", AssignmentStatus.PUBLISHED.value)
                 .execute()
@@ -293,7 +298,7 @@ class SupabaseAssignmentRepository:
 
             content = AssignmentContent(
                 title=row["title"],
-                instructions=row.get("instructions"),
+                instructions=row.get("description"),
                 due_at=datetime.fromisoformat(row["due_at"]),
                 total_marks=Decimal(str(row["total_marks"])),
                 questions=questions,
@@ -320,7 +325,7 @@ class SupabaseAssignmentRepository:
         try:
             resp = (
                 client.table("assignments")
-                .select("id, teacher_id, course_id, title, instructions, due_at, total_marks, status")
+                .select("id, teacher_id, course_id, title, description, due_at, total_marks, status")
                 .eq("status", AssignmentStatus.PUBLISHED.value)
                 .execute()
             )
@@ -345,7 +350,7 @@ class SupabaseAssignmentRepository:
                 questions = self._fetch_questions_student_safe(client, assignment_id)
                 content = AssignmentContent(
                     title=row["title"],
-                    instructions=row.get("instructions"),
+                    instructions=row.get("description"),
                     due_at=datetime.fromisoformat(row["due_at"]),
                     total_marks=Decimal(str(row["total_marks"])),
                     questions=questions,
@@ -378,9 +383,9 @@ class SupabaseAssignmentRepository:
             # 1. Update assignment record
             update_payload = {
                 "title": content.title,
-                "instructions": content.instructions,
+                "description": content.instructions,
                 "due_at": content.due_at.isoformat(),
-                "total_marks": float(content.total_marks),
+                "total_marks": _db_marks(content.total_marks),
                 "updated_at": now_str,
             }
             update_resp = (
@@ -405,13 +410,12 @@ class SupabaseAssignmentRepository:
                     "position": position,
                     "question_type": question.type,
                     "question_text": question.text,
-                    "marks": float(question.marks),
+                    "marks": _db_marks(question.marks),
                     "instructions": getattr(question, "instructions", None),
                     "options": [opt.model_dump() for opt in question.options]
                     if isinstance(question, McqQuestion)
                     else None,
                     "created_at": now_str,
-                    "updated_at": now_str,
                 }
                 client.table("assignment_questions").insert(q_payload).execute()
 
@@ -419,13 +423,10 @@ class SupabaseAssignmentRepository:
                 expected_ans = getattr(question, "expected_answer", None)
                 if correct_opt is not None or expected_ans is not None:
                     ak_payload = {
-                        "id": str(uuid4()),
                         "question_id": str(question_id),
                         "correct_option_id": correct_opt,
                         "expected_answer": expected_ans,
                         "teacher_notes": None,
-                        "created_at": now_str,
-                        "updated_at": now_str,
                     }
                     client.table("question_answer_keys").insert(ak_payload).execute()
 
@@ -530,14 +531,14 @@ class SupabaseAssignmentRepository:
             q_ids = [str(q.id) for q in questions]
             ak_resp = (
                 client.table("question_answer_keys")
-                .select("id, question_id, correct_option_id, expected_answer, teacher_notes")
+                .select("question_id, correct_option_id, expected_answer, teacher_notes")
                 .in_("question_id", q_ids)
                 .execute()
             )
             rows = ak_resp.data or []
             return {
                 UUID(str(r["question_id"])): QuestionAnswerKeyRecord(
-                    id=UUID(str(r["id"])),
+                    id=UUID(str(r["question_id"])),  # question_id is the table's primary key
                     question_id=UUID(str(r["question_id"])),
                     correct_option_id=r.get("correct_option_id"),
                     expected_answer=r.get("expected_answer"),

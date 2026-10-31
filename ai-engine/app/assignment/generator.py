@@ -102,9 +102,13 @@ class AssignmentGenerator:
                 context_text = ContextBuilder().build_context_block(retrieval_res.chunks)
                 source_refs = ContextBuilder.to_source_references(retrieval_res.chunks)
 
-        if not context_text.strip():
-            logger.warning("No course materials provided or retrieved for topic '%s'", request.topic)
-            context_text = "No course material provided."
+        grounded = bool(context_text.strip())
+        if not grounded:
+            logger.warning("No course materials provided or retrieved for topic '%s'; using topic-only mode", request.topic)
+            context_text = prompts.NO_COURSE_MATERIAL
+        system_instruction = (
+            prompts.SYSTEM_ASSIGNMENT_GENERATOR if grounded else prompts.SYSTEM_ASSIGNMENT_GENERATOR_TOPIC_ONLY
+        )
 
         # 2. Determine question split
         num_mcq, num_sub = self._calculate_question_split(request.question_count, request.question_type)
@@ -116,6 +120,7 @@ class AssignmentGenerator:
             num_mcq=num_mcq,
             num_subjective=num_sub,
             target_difficulty=request.difficulty.value,
+            grounded=grounded,
         )
 
         if request.teacher_instructions:
@@ -127,7 +132,7 @@ class AssignmentGenerator:
         llm_response = self.gemini_client.generate_structured(
             prompt=prompt,
             response_schema=_GeneratedAssignmentResponse,
-            system_instruction=prompts.SYSTEM_ASSIGNMENT_GENERATOR,
+            system_instruction=system_instruction,
         )
 
         # 5. Process and assemble draft questions
@@ -156,10 +161,11 @@ class AssignmentGenerator:
                     max_marks=q_marks,
                     course_context=context_text,
                     model_answer=model_ans.text if model_ans else None,
+                    grounded=grounded,
                 )
 
             # Check evidence flag
-            has_evidence = q.has_sufficient_evidence and (context_text != "No course material provided.")
+            has_evidence = q.has_sufficient_evidence and grounded
 
             draft_q = QuestionDraft(
                 question_id=q_id,

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     OCR_POLL_INTERVAL_SECONDS: float = 1.0
     OCR_API_KEY: SecretStr | None = None
 
+    # AI Engine (ai-engine/app/server.py): internal assignment-generation service.
+    # Generation makes one Gemini call plus one per subjective question (rubrics), so reads are slow.
+    AI_SERVICE_URL: str = "http://127.0.0.1:8002"
+    AI_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    AI_READ_TIMEOUT_SECONDS: float = 240.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore"

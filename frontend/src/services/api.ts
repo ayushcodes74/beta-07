@@ -10,7 +10,9 @@ import type {
 
 // Base API Axios instance
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1",
+  // Relative by default so the Vite dev proxy (vite.config.ts) forwards /api to FastAPI on the same origin,
+  // avoiding a cross-origin preflight the backend does not handle. Set VITE_API_BASE_URL to override.
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api/v1",
   timeout: 20000,
   headers: { "Content-Type": "application/json" },
 });
@@ -237,7 +239,9 @@ export function adaptAssignment(b: BackendAssignment, defaultCourseId: string = 
     description: b.instructions || "",
     dueAt: b.due_at,
     totalMarks: Number(b.total_marks),
-    state: b.status === "published" ? "Published" : "Draft",
+    // Student responses (AssignmentStudentResponse) omit `status`: the API only ever returns
+    // published assignments to students. Teacher responses always include it.
+    state: (b.status ?? "published") === "published" ? "Published" : "Draft",
     submissionType,
     questions,
     rubricId: "rubric-ds-code",
@@ -320,6 +324,7 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     },
     answer: "",
     fileName: fileName || "submission.pdf",
+    backendStatus: b.status,
   };
 }
 
@@ -367,8 +372,81 @@ export const courseService = {
     return response.data;
   },
 
+  async enrollStudentByEmail(courseId: string, email: string) {
+    const response = await api.post(`/courses/${courseId}/enrollments/by-email`, { email: email.trim() });
+    return response.data;
+  },
+
   async removeStudent(courseId: string, studentId: string): Promise<void> {
     await api.delete(`/courses/${courseId}/enrollments/${studentId}`);
+  },
+};
+
+// AI-assisted drafting (POST /assignments/generate-ai). Suggestions only; nothing is saved.
+export interface AssignmentGenerationRequest {
+  topic: string;
+  instructions?: string;
+  questionCount: number;
+  questionFormat: "mixed" | "subjective" | "mcq";
+  difficulty: "easy" | "medium" | "hard" | "mixed";
+  totalMarks: number;
+}
+
+interface BackendGeneratedQuestion {
+  type: "mcq" | "subjective";
+  text: string;
+  marks: number;
+  expected_answer: string;
+  options?: string[] | null;
+  correct_option_index?: number | null;
+}
+
+interface BackendGeneratedDraft {
+  title: string;
+  instructions?: string | null;
+  questions: BackendGeneratedQuestion[];
+  grounded_in_course_materials: boolean;
+}
+
+export interface GeneratedAssignmentDraft {
+  title: string;
+  instructions: string;
+  questions: Question[];
+  groundedInCourseMaterials: boolean;
+}
+
+// Generation makes several sequential Gemini calls; allow well beyond the default 20s timeout.
+const AI_GENERATION_TIMEOUT_MS = 240_000;
+
+export const aiAssignmentService = {
+  async generateDraft(request: AssignmentGenerationRequest): Promise<GeneratedAssignmentDraft> {
+    const response = await api.post<BackendGeneratedDraft>(
+      "/assignments/generate-ai",
+      {
+        topic: request.topic,
+        instructions: request.instructions || undefined,
+        question_count: request.questionCount,
+        question_format: request.questionFormat,
+        difficulty: request.difficulty,
+        total_marks: request.totalMarks,
+      },
+      { timeout: AI_GENERATION_TIMEOUT_MS }
+    );
+    return {
+      title: response.data.title,
+      instructions: response.data.instructions ?? "",
+      groundedInCourseMaterials: response.data.grounded_in_course_materials,
+      questions: response.data.questions.map((q) => ({
+        id: crypto.randomUUID(),
+        prompt: q.text,
+        type: q.type === "mcq" ? "MCQ" : "Subjective",
+        marks: q.marks,
+        expectedAnswer: q.expected_answer,
+        ...(q.type === "mcq" && q.options
+          ? { options: q.options, correctOption: q.correct_option_index ?? 0 }
+          : {}),
+      })),
+    };
   },
 };
 

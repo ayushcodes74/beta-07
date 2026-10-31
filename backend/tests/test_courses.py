@@ -59,7 +59,23 @@ class FakeCourseRepository:
             "role": role,
             "is_disabled": is_disabled,
             "display_name": display_name or f"User {str(user_id)[:6]}",
+            "email": f"user-{str(user_id)[:8]}@school.example",
         }
+
+    def email_of(self, user_id: UUID) -> str:
+        return self.student_profiles[user_id]["email"]
+
+    def find_student_id_by_email(self, course_id: UUID, email: str, *, access_token: str) -> UUID | None:
+        """Mirrors the find_student_for_enrollment RPC: active student accounts only, case-insensitive."""
+        self.tokens.append(access_token)
+        for profile in self.student_profiles.values():
+            if (
+                profile["email"].lower() == email.strip().lower()
+                and profile["role"] == "student"
+                and not profile["is_disabled"]
+            ):
+                return profile["id"]
+        return None
 
     def create(
         self, teacher_id: UUID, name: str, description: str | None, *, access_token: str
@@ -720,3 +736,94 @@ def test_unconfigured_repository_returns_503(verifier, profiles, make_user):
     assert resp.status_code == 503
     assert resp.json()["detail"]["code"] == "course_service_unavailable"
 
+
+# --------------------------------------------------------------------------
+# Enroll by email
+# --------------------------------------------------------------------------
+
+
+class TestEnrollByEmail:
+    def _course(self, api, auth):
+        return api.post(BASE, json={"name": "Physics"}, headers=auth).json()
+
+    def test_teacher_enrolls_student_by_email_case_insensitively(self, api, make_user, repo):
+        _, teacher_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        course = self._course(api, teacher_auth)
+
+        resp = api.post(
+            f"{BASE}/{course['id']}/enrollments/by-email",
+            json={"email": repo.email_of(s_id).upper()},
+            headers=teacher_auth,
+        )
+
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["student_id"] == str(s_id)
+        assert api.get(f"{BASE}/{course['id']}", headers=teacher_auth).json()["students"] == 1
+
+    def test_enrolled_student_then_sees_the_course(self, api, make_user, repo):
+        _, teacher_auth = make_user("teacher")
+        s_id, student_auth = make_user("student")
+        course = self._course(api, teacher_auth)
+        api.post(f"{BASE}/{course['id']}/enrollments/by-email", json={"email": repo.email_of(s_id)}, headers=teacher_auth)
+
+        assert [c["id"] for c in api.get(BASE, headers=student_auth).json()] == [course["id"]]
+
+    @pytest.mark.parametrize("kind", ["unknown", "teacher", "disabled"])
+    def test_non_enrollable_accounts_share_one_error(self, api, make_user, repo, kind):
+        _, teacher_auth = make_user("teacher")
+        course = self._course(api, teacher_auth)
+        if kind == "unknown":
+            email = "nobody@school.example"
+        elif kind == "teacher":
+            email = repo.email_of(make_user("teacher")[0])
+        else:
+            email = repo.email_of(make_user("student", is_disabled=True)[0])
+
+        resp = api.post(f"{BASE}/{course['id']}/enrollments/by-email", json={"email": email}, headers=teacher_auth)
+
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == "student_not_found"
+
+    def test_duplicate_by_email_rejected(self, api, make_user, repo):
+        _, teacher_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        course = self._course(api, teacher_auth)
+        url = f"{BASE}/{course['id']}/enrollments/by-email"
+        api.post(url, json={"email": repo.email_of(s_id)}, headers=teacher_auth)
+
+        resp = api.post(url, json={"email": repo.email_of(s_id)}, headers=teacher_auth)
+
+        assert resp.status_code == 409
+
+    def test_other_teacher_cannot_enroll_into_course(self, api, make_user, repo):
+        _, owner_auth = make_user("teacher")
+        _, other_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        course = self._course(api, owner_auth)
+
+        resp = api.post(
+            f"{BASE}/{course['id']}/enrollments/by-email", json={"email": repo.email_of(s_id)}, headers=other_auth
+        )
+
+        assert resp.status_code == 404
+        assert not any(e.student_id == s_id for e in repo.enrollments.values())
+
+    def test_student_cannot_use_endpoint(self, api, make_user, repo):
+        _, teacher_auth = make_user("teacher")
+        s_id, student_auth = make_user("student")
+        course = self._course(api, teacher_auth)
+
+        resp = api.post(
+            f"{BASE}/{course['id']}/enrollments/by-email", json={"email": repo.email_of(s_id)}, headers=student_auth
+        )
+
+        assert resp.status_code == 403
+
+    def test_invalid_email_rejected(self, api, make_user):
+        _, teacher_auth = make_user("teacher")
+        course = self._course(api, teacher_auth)
+
+        resp = api.post(f"{BASE}/{course['id']}/enrollments/by-email", json={"email": "not-an-email"}, headers=teacher_auth)
+
+        assert resp.status_code == 422

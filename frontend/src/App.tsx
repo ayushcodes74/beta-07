@@ -8,7 +8,7 @@ import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 
 import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, CourseMaterial, Submission, User } from "./types/models";
-import { assignmentService, courseService, submissionService } from "./services/api";
+import { assignmentService, courseService, extractErrorMessage, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
@@ -32,7 +32,8 @@ interface AppState {
   materials: CourseMaterial[];
   setMaterials: Dispatch<SetStateAction<CourseMaterial[]>>;
   loading: boolean;
-  refreshSession: () => Promise<void>;
+  /** Loads the signed-in workspace. Resolves to an error message on failure, or null on success. */
+  refreshSession: () => Promise<string | null>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -52,7 +53,7 @@ function AppProvider({ children }: { children: ReactNode }) {
   const [submissionState, setSubmissions] = useState<Submission[]>([]);
   const [materialState, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
-  const refreshSession = async () => {
+  const refreshSession = async (): Promise<string | null> => {
     setLoading(true);
     try {
       const profile = await getProfile();
@@ -68,7 +69,8 @@ function AppProvider({ children }: { children: ReactNode }) {
       setSubmissions(submissions);
       setPeople([]);
       setMaterials([]);
-    } catch {
+      return null;
+    } catch (reason) {
       signOut();
       setUserState(null);
       setCourses([]);
@@ -77,6 +79,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       setSubmissions([]);
       setPeople([]);
       setMaterials([]);
+      return `Signed in, but your workspace could not be loaded: ${extractErrorMessage(reason, "unknown error")}`;
     } finally {
       setLoading(false);
     }

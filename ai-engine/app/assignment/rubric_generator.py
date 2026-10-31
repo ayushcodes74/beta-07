@@ -17,10 +17,24 @@ from app.schemas.assignment import Rubric, RubricCriterion
 logger = logging.getLogger(__name__)
 
 
+class _RawRubricCriterion(BaseModel):
+    """LLM-facing criterion schema.
+
+    Mirrors RubricCriterion but without `gt=0` on max_marks: the google-genai SDK cannot
+    express `exclusiveMinimum` in a response schema and rejects the request outright.
+    Positivity is enforced afterwards when building real RubricCriterion objects.
+    """
+    criterion_id: str
+    description: str
+    max_marks: float
+    expected_concepts: List[str] = Field(default_factory=list)
+    acceptable_alternatives: List[str] = Field(default_factory=list)
+
+
 class _RawRubricResponse(BaseModel):
     """Intermediate schema for LLM rubric generation."""
     instructions: Optional[str] = None
-    criteria: List[RubricCriterion] = Field(min_length=1)
+    criteria: List[_RawRubricCriterion] = Field(min_length=1)
 
 
 class RubricGenerator:
@@ -35,6 +49,7 @@ class RubricGenerator:
         max_marks: float,
         course_context: str,
         model_answer: Optional[str] = None,
+        grounded: bool = True,
     ) -> Rubric:
         """Generate a structured marking rubric for a subjective question.
 
@@ -43,6 +58,7 @@ class RubricGenerator:
             max_marks: Total marks available for the question.
             course_context: Course excerpts grounding the rubric.
             model_answer: Optional reference model answer.
+            grounded: False when no course material exists; the rubric then uses standard topic knowledge.
 
         Returns:
             Rubric with criteria strictly summing to max_marks.
@@ -53,30 +69,44 @@ class RubricGenerator:
             raise ValueError("question_text cannot be empty.")
 
         model_answer_section = f"\n### MODEL ANSWER REFERENCE:\n{model_answer}" if model_answer else ""
+        if grounded:
+            material_section = f"### RELEVANT COURSE MATERIAL:\n{course_context}"
+            alternatives_source = "supported by the course material"
+            system_instruction = prompts.SYSTEM_ASSIGNMENT_GENERATOR
+        else:
+            material_section = "### RELEVANT COURSE MATERIAL:\nNone available. Base the rubric on standard knowledge of the subject."
+            alternatives_source = "accepted in standard references"
+            system_instruction = prompts.SYSTEM_ASSIGNMENT_GENERATOR_TOPIC_ONLY
 
         prompt = f"""### QUESTION (Max Marks: {max_marks}):
 {question_text}
 {model_answer_section}
-### RELEVANT COURSE MATERIAL:
-{course_context}
+{material_section}
 
 Generate a clear, objective marking rubric for grading this subjective question.
 Requirements:
 1. Divide the evaluation into logical criteria (e.g. concept definitions, analysis, examples).
 2. The sum of all criteria marks MUST EXACTLY equal {max_marks}.
 3. Specify expected concepts for full marks on each criterion.
-4. Specify acceptable alternative formulations and equivalent terminology supported by the course material.
+4. Specify acceptable alternative formulations and equivalent terminology {alternatives_source}.
 5. Support partial credit within each criterion.
 """
 
         raw = self.gemini_client.generate_structured(
             prompt=prompt,
             response_schema=_RawRubricResponse,
-            system_instruction=prompts.SYSTEM_ASSIGNMENT_GENERATOR,
+            system_instruction=system_instruction,
         )
 
+        # Non-positive marks from the LLM become a small placeholder; reconciliation below rescales
+        # every criterion so the total matches max_marks exactly.
+        criteria = [
+            RubricCriterion(**{**c.model_dump(), "max_marks": c.max_marks if c.max_marks > 0 else 0.5})
+            for c in raw.criteria
+        ]
+
         # Normalize and reconcile criteria marks to guarantee exact equality with max_marks
-        reconciled_criteria = self._reconcile_marks(raw.criteria, max_marks)
+        reconciled_criteria = self._reconcile_marks(criteria, max_marks)
 
         return Rubric(
             criteria=reconciled_criteria,

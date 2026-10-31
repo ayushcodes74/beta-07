@@ -158,6 +158,10 @@ class CourseRepository(Protocol):
         self, course_id: UUID, student_id: UUID, *, access_token: str
     ) -> bool: ...
 
+    def find_student_id_by_email(
+        self, course_id: UUID, email: str, *, access_token: str
+    ) -> UUID | None: ...
+
 
 class UnconfiguredCourseRepository:
     """Fallback repository when Supabase connection is unconfigured."""
@@ -168,6 +172,7 @@ class UnconfiguredCourseRepository:
     create = get = list_by_teacher = list_by_student = is_student_enrolled = _fail
     update = get_student_profile = get_enrollment = enroll_student = _fail
     reactivate_enrollment = list_enrolled_students = deactivate_enrollment = _fail
+    find_student_id_by_email = _fail
 
 
 def get_course_repository() -> CourseRepository:
@@ -290,6 +295,24 @@ class CourseService:
 
         # Fresh enrollment
         return self._repository.enroll_student(course_id, student_id, access_token=access_token)
+
+    def enroll_student_by_email(
+        self, teacher: CurrentUser, course_id: UUID, email: str, *, access_token: str
+    ) -> EnrollmentRecord:
+        """Resolve a student's sign-in email, then enroll them with the same checks as enroll_student."""
+        self._require_role(teacher, Role.TEACHER)
+        course = self._repository.get(course_id, access_token=access_token)
+        if course is None or course.teacher_id != teacher.id:
+            raise CourseNotFoundError
+
+        student_id = self._repository.find_student_id_by_email(course_id, email, access_token=access_token)
+        if student_id is None:
+            # One message for unknown email, non-student and disabled accounts, so teachers
+            # cannot use this to probe which emails belong to which kind of account.
+            raise InvalidEnrollmentTargetError(
+                "student_not_found", "No active student account uses that email address."
+            )
+        return self.enroll_student(teacher, course_id, student_id, access_token=access_token)
 
     def list_students(
         self, teacher: CurrentUser, course_id: UUID, *, access_token: str

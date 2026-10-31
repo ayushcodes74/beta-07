@@ -121,7 +121,7 @@ class TestAssignmentRepository:
                     "teacher_id": str(tid),
                     "course_id": None,
                     "title": "Physics Exam 1",
-                    "instructions": "Answer all questions.",
+                    "description": "Answer all questions.",  # DB column backing `instructions`
                     "due_at": (datetime.now(UTC) + timedelta(days=5)).isoformat(),
                     "total_marks": "10.00",
                     "status": "draft",
@@ -170,6 +170,7 @@ class TestAssignmentRepository:
         assert record.id == aid
         assert record.teacher_id == tid
         assert record.status == AssignmentStatus.DRAFT
+        assert record.content.instructions == "Answer all questions."
         assert len(record.content.questions) == 2
         assert record.content.questions[0].correct_option_id == "A"
         assert record.content.questions[1].expected_answer == "An object remains at rest..."
@@ -325,15 +326,17 @@ class TestSubmissionRepository:
                     "id": str(submission_id),
                     "assignment_id": str(assignment_id),
                     "student_id": str(student_id),
-                    "filename": "answer.pdf",
-                    "status": "ocr_queued",
+                    "pdf_path": "submissions/answer.pdf",
+                    "status": "submitted",  # DB lifecycle value; OCR progress lives in ocr_jobs
                     "created_at": "",
                     "updated_at": "",
                 }
             ]
         )
+        # ocr_jobs.id is a DB UUID; the OCR engine job id lives in processing_metadata.
         mock_client.table("ocr_jobs").select.return_value.in_.return_value.execute.return_value = MagicMock(
-            data=[{"id": "job-123", "submission_id": str(submission_id)}]
+            data=[{"submission_id": str(submission_id), "status": "pending",
+                   "processing_metadata": {"ocr_job_id": "job-123"}}]
         )
 
         records = SupabaseSubmissionRepository().list_by_assignment(
@@ -341,6 +344,8 @@ class TestSubmissionRepository:
         )
 
         assert records[0].ocr_job_id == "job-123"
+        assert records[0].filename == "answer.pdf"
+        assert records[0].status == "ocr_queued"  # API status rebuilt from the OCR job
 
     @patch("app.database.submission_repository.get_user_supabase")
     def test_5_submission_belongs_to_expected_assignment(self, mock_get_client):
@@ -374,11 +379,10 @@ class TestSubmissionRepository:
         mock_client.table("ocr_jobs").select.return_value.eq.return_value.execute.return_value = MagicMock(
             data=[
                 {
-                    "id": job_id,
+                    "id": str(uuid4()),  # DB row UUID, distinct from the OCR engine job id
                     "submission_id": str(sub_id),
                     "status": "completed",
-                    "stage": "done",
-                    "progress": 100,
+                    "processing_metadata": {"ocr_job_id": job_id, "stage": "done", "progress": 100},
                     "created_at": datetime.now(UTC).isoformat(),
                     "updated_at": datetime.now(UTC).isoformat(),
                 }
@@ -390,6 +394,7 @@ class TestSubmissionRepository:
 
         assert ocr_job is not None
         assert ocr_job.id == job_id
+        assert ocr_job.stage == "done"
         assert ocr_job.submission_id == sub_id
         assert ocr_job.status == "completed"
         assert ocr_job.progress == 100

@@ -24,6 +24,7 @@ from app.schemas.course import (
     CourseResponse,
     CourseStudentResponse,
     CourseUpdate,
+    EnrollmentByEmailCreate,
     EnrollmentCreate,
     EnrollmentResponse,
 )
@@ -227,6 +228,24 @@ def enroll_student(
     course_id: UUID, payload: EnrollmentCreate, teacher: TeacherUser, token: AccessToken, service: Service
 ) -> EnrollmentResponse:
     record = _call(lambda: service.enroll_student(teacher, course_id, payload.student_id, access_token=token))
+    return enrollment_view(record)
+
+
+@router.post(
+    "/{course_id}/enrollments/by-email",
+    status_code=status.HTTP_201_CREATED,
+    response_model=EnrollmentResponse,
+    summary="Enroll student by email (owning teacher)",
+    description=(
+        "Looks up an active student account by sign-in email and enrolls it, with the same checks as "
+        "enrolling by id. Unknown, non-student and disabled accounts all return 422 student_not_found."
+    ),
+    responses=ERROR_RESPONSES,
+)
+def enroll_student_by_email(
+    course_id: UUID, payload: EnrollmentByEmailCreate, teacher: TeacherUser, token: AccessToken, service: Service
+) -> EnrollmentResponse:
+    record = _call(lambda: service.enroll_student_by_email(teacher, course_id, payload.email, access_token=token))
     return enrollment_view(record)
 
 

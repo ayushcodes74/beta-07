@@ -13,3 +13,6 @@ pytest-asyncio>=0.23.0
 # Future Modules (RAG & Sentence Transformers)
 sentence-transformers>=2.7.0
 
+# Internal HTTP service (app/server.py) used by the backend
+fastapi>=0.115.0
+uvicorn>=0.30.0

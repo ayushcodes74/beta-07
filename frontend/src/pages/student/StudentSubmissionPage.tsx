@@ -5,7 +5,7 @@ import { useAppState } from "../../App";
 import { Button, ConfirmDialog, GlassPanel, Panel, StatusBadge, useToast } from "../../components/ui";
 import { extractErrorMessage, submissionService } from "../../services/api";
 import { formatDate } from "../../lib/utils";
-import type { Submission } from "../../types/models";
+import { canReplaceSubmission, type Submission } from "../../types/models";
 
 export function StudentSubmissionPage({
   submissions: studentRows,
@@ -19,6 +19,9 @@ export function StudentSubmissionPage({
   const assignment = assignmentList.find((item) => item.id === assignmentId);
   const course = assignment ? courseList.find((item) => item.id === assignment.courseId) : undefined;
   const existing = studentRows.find((item) => item.studentId === user?.id && item.assignmentId === assignmentId);
+  // Replacing is allowed until grading starts; the backend enforces the same rule.
+  const replacing = Boolean(existing) && canReplaceSubmission(existing!);
+  const locked = Boolean(existing) && !replacing;
   const [file, setFile] = useState<File | null>(null);
   const [drag, setDrag] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -58,9 +61,16 @@ export function StudentSubmissionPage({
     setSubmitting(true);
     try {
       const created = await submissionService.submitPdf(assignment.id, file);
-      setSubmissions((current) => [created, ...current]);
+      // A replacement keeps the same submission id, so swap it in rather than adding a duplicate.
+      setSubmissions((current) => [
+        created,
+        ...current.filter(
+          (item) => item.id !== created.id && !(item.studentId === created.studentId && item.assignmentId === created.assignmentId)
+        ),
+      ]);
       setSubmittedItem(created);
-      toast("PDF uploaded successfully and queued for OCR processing!");
+      setFile(null);
+      toast(replacing ? "Submission replaced and queued for OCR processing." : "PDF uploaded successfully and queued for OCR processing!");
     } catch (err) {
       toast(extractErrorMessage(err, "Failed to submit PDF. Please verify your connection."), "info");
     } finally {
@@ -170,18 +180,32 @@ export function StudentSubmissionPage({
           <div className="submit-actions" style={{ marginTop: "16px" }}>
             <span style={{ fontSize: "10px", color: "#5C6E61", display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <ShieldCheck size={14} style={{ color: "#173D2B" }} />
-              The backend will record your submission and return its submission ID.
+              {locked
+                ? "Your submission is being reviewed, so it can no longer be replaced."
+                : replacing
+                  ? "You can replace your submission until your teacher starts reviewing it."
+                  : "The backend will record your submission and return its submission ID."}
             </span>
             <ConfirmDialog
               trigger={
-                <Button disabled={!file || submitting || Boolean(existing)}>
+                <Button disabled={!file || submitting || locked}>
                   <Upload size={14} />
-                  {existing ? "Already submitted" : submitting ? "Uploading…" : "Submit PDF"}
+                  {locked
+                    ? "Under review"
+                    : submitting
+                      ? "Uploading…"
+                      : replacing
+                        ? "Replace submission"
+                        : "Submit PDF"}
                 </Button>
               }
-              title="Submit your assignment?"
-              description={`This will submit ${file?.name ?? "your PDF"} for evaluation in ${assignment.title}.`}
-              confirmLabel="Confirm submission"
+              title={replacing ? "Replace your submission?" : "Submit your assignment?"}
+              description={
+                replacing
+                  ? `This will replace your previous PDF with ${file?.name ?? "your new PDF"} for ${assignment.title}. Only the new file will be graded.`
+                  : `This will submit ${file?.name ?? "your PDF"} for evaluation in ${assignment.title}.`
+              }
+              confirmLabel={replacing ? "Replace submission" : "Confirm submission"}
               onConfirm={submit}
             />
           </div>

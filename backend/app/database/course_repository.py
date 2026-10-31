@@ -404,10 +404,45 @@ class SupabaseCourseRepository:
             logger.exception("Failed to reactivate enrollment: %s", exc)
             raise CourseRepositoryError(f"Database error reactivating enrollment: {exc}") from exc
 
+    def find_student_id_by_email(
+        self, course_id: UUID, email: str, *, access_token: str
+    ) -> UUID | None:
+        """Resolve a student's sign-in email via the course-scoped RPC (owning teacher only)."""
+        client = self._client(access_token)
+        try:
+            resp = client.rpc(
+                "find_student_for_enrollment",
+                {"target_course_id": str(course_id), "student_email": email},
+            ).execute()
+        except Exception as exc:
+            logger.error("find_student_for_enrollment RPC failed: %s", type(exc).__name__)
+            raise CourseRepositoryError("Student lookup service unavailable") from exc
+        data = resp.data
+        if isinstance(data, list):  # some client versions wrap scalar results
+            data = data[0] if data else None
+        return UUID(str(data)) if data else None
+
     def list_enrolled_students(
         self, course_id: UUID, *, access_token: str
     ) -> list[EnrolledStudent]:
         client = self._client(access_token)
+        # Preferred: owner-only RPC that includes names and emails (phase2b_enrollment_by_email.sql).
+        # Teachers cannot read student profiles directly under RLS, so the fallback below
+        # (used until that SQL is applied) returns ids without names.
+        try:
+            roster = client.rpc("course_roster", {"target_course_id": str(course_id)}).execute()
+            return [
+                EnrolledStudent(
+                    student_id=UUID(str(r["student_id"])),
+                    name=r.get("display_name"),
+                    email=r.get("email"),
+                    status=str(r["status"]),
+                    enrolled_at=_parse_datetime(r["enrolled_at"]),
+                )
+                for r in (roster.data or [])
+            ]
+        except Exception as exc:
+            logger.warning("course_roster RPC unavailable, using basic roster: %s", type(exc).__name__)
         try:
             resp = (
                 client.table("course_enrollments")

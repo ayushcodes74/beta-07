@@ -103,6 +103,14 @@ export interface Submission {
   grading?: GradingResult;
   answer: string;
   fileName?: string;
+  /** Raw backend status, e.g. "ocr_processing", "submitted", "under_review", "graded". */
+  backendStatus?: string;
+}
+
+/** Students may replace a submission until grading starts (matches the backend and DB policy). */
+export function canReplaceSubmission(submission: Pick<Submission, "backendStatus">): boolean {
+  const status = submission.backendStatus ?? "submitted";
+  return status === "submitted" || status === "late_pending" || status.startsWith("ocr_");
 }
 
 export interface PublishedResult {

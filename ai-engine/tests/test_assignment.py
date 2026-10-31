@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.assignment.generator import AssignmentGenerator, _GeneratedAssignmentResponse, _GeneratedQuestion
-from app.assignment.rubric_generator import RubricGenerator, _RawRubricResponse
+from app.assignment.rubric_generator import RubricGenerator, _RawRubricCriterion, _RawRubricResponse
 from app.schemas.assignment import (
     AssignmentDraft,
     AssignmentGenerationRequest,
@@ -27,14 +27,14 @@ def test_rubric_generator_success():
     mock_client.generate_structured.return_value = _RawRubricResponse(
         instructions="Grade objectively.",
         criteria=[
-            RubricCriterion(
+            _RawRubricCriterion(
                 criterion_id="crit_1",
                 description="Define deadlock conditions.",
                 max_marks=4.0,
                 expected_concepts=["Mutual exclusion", "Hold and wait"],
                 acceptable_alternatives=["Coffman conditions"],
             ),
-            RubricCriterion(
+            _RawRubricCriterion(
                 criterion_id="crit_2",
                 description="Explain avoidance technique.",
                 max_marks=6.0,
@@ -63,8 +63,8 @@ def test_rubric_generator_reconciliation_on_rounding_difference():
     # LLM outputs 3.0 + 5.0 = 8.0, but max_marks is 10.0
     mock_client.generate_structured.return_value = _RawRubricResponse(
         criteria=[
-            RubricCriterion(criterion_id="c1", description="Part 1", max_marks=3.0),
-            RubricCriterion(criterion_id="c2", description="Part 2", max_marks=5.0),
+            _RawRubricCriterion(criterion_id="c1", description="Part 1", max_marks=3.0),
+            _RawRubricCriterion(criterion_id="c2", description="Part 2", max_marks=5.0),
         ],
     )
 
@@ -259,3 +259,82 @@ def test_teacher_editing():
     assert updated.questions[0].question_text == "Explain First Normal Form (1NF) with an example."
     assert updated.total_marks == 12.0  # 7.0 + 5.0
 
+
+
+# ---------------------------------------------------------------------------
+# Topic-only mode (no course material available)
+# ---------------------------------------------------------------------------
+
+from app.llm import prompts  # noqa: E402
+
+
+def _single_subjective_response():
+    return _GeneratedAssignmentResponse(
+        title="Newton's Laws",
+        instructions="Answer all questions.",
+        questions=[
+            _GeneratedQuestion(
+                question_text="Explain Newton's first law with an everyday example.",
+                question_type=QuestionType.SUBJECTIVE,
+                marks=5.0,
+                difficulty=DifficultyLevel.MEDIUM,
+                model_answer_text="An object stays at rest or in uniform motion unless acted on by a net force.",
+            )
+        ],
+    )
+
+
+def _generator_with_mocks():
+    client = MagicMock()
+    client.generate_structured.return_value = _single_subjective_response()
+    rubric_gen = MagicMock()
+    rubric_gen.generate_rubric.return_value = Rubric(
+        total_marks=5.0, criteria=[RubricCriterion(criterion_id="c1", description="States the law", max_marks=5.0)]
+    )
+    return AssignmentGenerator(gemini_client=client, rubric_generator=rubric_gen), client, rubric_gen
+
+
+REQUEST = AssignmentGenerationRequest(course_id="c1", topic="Newton's laws", question_count=1,
+                                      question_type=QuestionType.SUBJECTIVE, total_marks=5.0)
+
+
+def test_without_course_material_uses_topic_only_mode():
+    generator, client, rubric_gen = _generator_with_mocks()
+
+    draft = generator.generate_assignment(REQUEST)
+
+    kwargs = client.generate_structured.call_args.kwargs
+    assert kwargs["system_instruction"] == prompts.SYSTEM_ASSIGNMENT_GENERATOR_TOPIC_ONLY
+    assert "ONLY the provided course excerpts" not in kwargs["prompt"]
+    assert "SOURCE COURSE MATERIAL" not in kwargs["prompt"]
+    assert rubric_gen.generate_rubric.call_args.kwargs["grounded"] is False
+    assert draft.questions[0].has_sufficient_evidence is False
+
+
+def test_with_course_material_keeps_strict_grounding():
+    generator, client, rubric_gen = _generator_with_mocks()
+
+    draft = generator.generate_assignment(REQUEST, course_materials="Newton's first law: inertia ...")
+
+    kwargs = client.generate_structured.call_args.kwargs
+    assert kwargs["system_instruction"] == prompts.SYSTEM_ASSIGNMENT_GENERATOR
+    assert "Newton's first law: inertia" in kwargs["prompt"]
+    assert rubric_gen.generate_rubric.call_args.kwargs["grounded"] is True
+    assert draft.questions[0].has_sufficient_evidence is True
+
+
+def test_rubric_generator_topic_only_prompt():
+    client = MagicMock()
+    client.generate_structured.return_value = _RawRubricResponse(
+        criteria=[_RawRubricCriterion(criterion_id="c1", description="States the law", max_marks=0)]
+    )
+
+    rubric = RubricGenerator(gemini_client=client).generate_rubric(
+        question_text="Explain inertia.", max_marks=4.0, course_context=prompts.NO_COURSE_MATERIAL, grounded=False
+    )
+
+    kwargs = client.generate_structured.call_args.kwargs
+    assert kwargs["system_instruction"] == prompts.SYSTEM_ASSIGNMENT_GENERATOR_TOPIC_ONLY
+    assert prompts.NO_COURSE_MATERIAL not in kwargs["prompt"]
+    # A zero-mark criterion from the LLM is repaired, and marks still total max_marks.
+    assert rubric.total_marks == 4.0 and sum(c.max_marks for c in rubric.criteria) == 4.0

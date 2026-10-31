@@ -25,6 +25,7 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     field_validator,
     model_validator,
@@ -88,6 +89,12 @@ class EnrollmentCreate(_StrictModel):
     """Payload to enroll a student in a course."""
 
     student_id: UUID = Field(..., description="UUID of the student to enroll")
+
+
+class EnrollmentByEmailCreate(_StrictModel):
+    """Payload to enroll a student by the email they sign in with."""
+
+    email: EmailStr = Field(..., max_length=320, description="Student's sign-in email address")
 
 
 class EnrollmentResponse(BaseModel):
