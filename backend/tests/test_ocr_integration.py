@@ -716,6 +716,10 @@ def test_integrity_comparison_is_teacher_only_and_scoped_to_same_assignment(
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         job_id = request.url.path.rsplit("/", 1)[-1]
+        if "/handwriting/" in request.url.path:
+            # Within-submission handwriting check (only for the submission under review).
+            assert job_id == "current-job"
+            return httpx.Response(404, json={"detail": "not found"})
         requested_jobs.append(job_id)
         payload = deepcopy(sample_ocr_result_dict)
         payload["job_id"] = job_id

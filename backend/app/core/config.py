@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # Applied identically to every submission; the unscaled AI score is kept as raw_awarded_marks.
     GRADING_FULL_MARKS_AT: float = Field(default=0.7, gt=0.0, le=1.0)
 
+    # Teacher review queue thresholds (GET /reviews/queue).
+    # OCR: mean text-block confidence below this sends a submission to "OCR review"
+    # (matches LOW_OCR_CONFIDENCE in services/plagiarism.py).
+    REVIEW_OCR_CONFIDENCE_THRESHOLD: float = Field(default=0.65, ge=0.0, le=1.0)
+    # Trust: AI answer-check confidence below this sends a pending grade to "Low trust score"
+    # (matches the AI Engine's review_threshold in ai-engine/app/trust/confidence.py).
+    REVIEW_TRUST_THRESHOLD: float = Field(default=0.70, ge=0.0, le=1.0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore"

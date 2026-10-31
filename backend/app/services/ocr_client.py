@@ -187,6 +187,29 @@ class OCRServiceClient:
             except httpx.HTTPStatusError as e:
                 raise OCRServiceUnavailableError(f"OCR service returned status {e.response.status_code}") from e
 
+    async def get_handwriting_analysis(self, job_id: str) -> Dict[str, Any]:
+        """Within-submission handwriting consistency for a finished OCR job (teacher review signal).
+
+        Returns the OCR service's analysis dict; ``{"status": "processing"}`` while OCR is running and
+        ``{"status": "unavailable", ...}`` if the job is unknown. Network failures raise like other calls.
+        """
+        async with self._get_client() as client:
+            try:
+                resp = await client.get(f"/api/v1/ocr/handwriting/{job_id}")
+                if resp.status_code == 202:
+                    return {"status": "processing", "reason": "OCR is still processing this submission."}
+                if resp.status_code == 404:
+                    return {"status": "unavailable", "reason": "The OCR job for this submission was not found."}
+                resp.raise_for_status()
+                body = resp.json()
+                return body if isinstance(body, dict) else {"status": "unavailable", "reason": "Unexpected response."}
+            except httpx.TimeoutException as e:
+                raise OCRTimeoutError("Timeout running handwriting analysis") from e
+            except (httpx.ConnectError, httpx.NetworkError) as e:
+                raise OCRServiceUnavailableError("OCR service is currently unreachable") from e
+            except httpx.HTTPStatusError as e:
+                raise OCRServiceUnavailableError(f"OCR service returned status {e.response.status_code}") from e
+
     async def get_job_result(self, job_id: str) -> Union[OCRDocumentResult, JobStatusResponse]:
         """Retrieve the completed OCR document result.
 

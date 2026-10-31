@@ -1,6 +1,6 @@
 """Pydantic schemas for OCR engine integration and AI grading handoff."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -166,6 +166,15 @@ class SubmissionOCRStatusResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: str
     updated_at: str
+    submitted_at: Optional[str] = Field(default=None, description="When the work was (last) handed in")
+    late_status: Optional[Literal["pending", "accepted", "rejected"]] = Field(
+        default=None, description="Set only for submissions handed in after the due date"
+    )
+    late_penalty_percent: Optional[float] = Field(
+        default=None, description="Accepted late work: % deducted from the final score when published"
+    )
+    late_decision_note: Optional[str] = None
+    late_decided_at: Optional[str] = None
 
 
 class AIGradingPageContent(BaseModel):

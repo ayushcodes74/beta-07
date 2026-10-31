@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Protocol, Union
 from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas.integrity import IntegrityReport, OCRQualitySummary
+from app.schemas.integrity import HandwritingAnalysisStatus, IntegrityReport, OCRQualitySummary
 from app.schemas.ocr import (
     JobStatusResponse,
     OCRDocumentResult,
@@ -70,6 +70,26 @@ class SubmissionRecord(BaseModel):
     status: str = "submitted"  # 'submitted', 'ocr_queued', 'ocr_processing', 'ocr_completed', 'ocr_completed_with_warnings', 'ocr_degraded', 'ocr_failed', 'ocr_cancelled'
     created_at: str
     updated_at: str
+    # Belated submissions (set by the database when handed in after the due date).
+    submitted_at: Optional[str] = None
+    late_status: Optional[str] = None  # None (on time) | 'pending' | 'accepted' | 'rejected'
+    late_penalty_percent: Optional[float] = None
+    late_decision_note: Optional[str] = None
+    late_decided_at: Optional[str] = None
+
+
+LATE_DECIDED_STATUSES = ("accepted", "rejected")
+
+
+def late_fields(record: SubmissionRecord) -> Dict[str, Any]:
+    """Belated-submission fields shared by every submission status response."""
+    return {
+        "submitted_at": record.submitted_at,
+        "late_status": record.late_status,
+        "late_penalty_percent": record.late_penalty_percent,
+        "late_decision_note": record.late_decision_note,
+        "late_decided_at": record.late_decided_at,
+    }
 
 
 class SubmissionRepositoryError(Exception):
@@ -131,6 +151,18 @@ class SubmissionRepository(Protocol):
         access_token: str,
     ) -> Optional[SubmissionRecord]: ...
 
+    def set_late_decision(
+        self,
+        submission_id: UUID,
+        late_status: str,
+        penalty_percent: Optional[float],
+        note: Optional[str],
+        *,
+        access_token: str,
+    ) -> Optional[SubmissionRecord]:
+        """Record the owning teacher's ruling on a late submission."""
+        ...
+
 
 class UnconfiguredSubmissionRepository:
     """Placeholder repository until Person 4 / Database Owner confirms the submissions table contract."""
@@ -138,7 +170,7 @@ class UnconfiguredSubmissionRepository:
     def _fail(self, *args: Any, **kwargs: Any) -> Any:
         raise SubmissionIntegrationNotConfiguredError("submission repository is not configured")
 
-    create = get = list_by_assignment = list_by_student = update_status = _fail
+    create = get = list_by_assignment = list_by_student = update_status = set_late_decision = _fail
 
 
 def get_submission_repository() -> SubmissionRepository:
@@ -171,14 +203,18 @@ class SubmissionService:
                 reverse=True,
             )
         if user.role is Role.TEACHER:
-            assignments = self.assignment_service.list_for(user, access_token=access_token)
-            assignment_ids = sorted(record.id for record in assignments if record.teacher_id == user.id)
-            records = [
-                submission
-                for assignment_id in assignment_ids
-                for submission in self.repo.list_by_assignment(assignment_id, access_token=access_token)
-                if submission.assignment_id == assignment_id
-            ]
+            # Only the ids are needed (not questions/answer keys), and one batched submissions query
+            # replaces one query per assignment.
+            assignment_ids = sorted(set(self.assignment_service.owned_ids(user, access_token=access_token)))
+            owned = set(assignment_ids)
+            list_many = getattr(self.repo, "list_by_assignments", None)
+            if list_many is not None:
+                fetched = list_many(assignment_ids, access_token=access_token) if assignment_ids else []
+            else:
+                fetched = [
+                    s for aid in assignment_ids for s in self.repo.list_by_assignment(aid, access_token=access_token)
+                ]
+            records = [submission for submission in fetched if submission.assignment_id in owned]
             return sorted(records, key=lambda record: record.created_at, reverse=True)
         raise SubmissionPermissionError("Invalid role")
 
@@ -232,6 +268,11 @@ class SubmissionService:
             raise SubmissionValidationError(
                 "already_submitted",
                 "You have already submitted this assignment and it is being reviewed, so it can no longer be replaced.",
+            )
+        if previous is not None and previous.late_status in LATE_DECIDED_STATUSES:
+            raise SubmissionValidationError(
+                "late_decision_locked",
+                "Your teacher has already decided on this late submission, so it can no longer be replaced.",
             )
 
         # 2. Submit to OCR service
@@ -325,6 +366,7 @@ class SubmissionService:
             error_message=error_msg,
             created_at=submission.created_at,
             updated_at=submission.updated_at,
+            **late_fields(submission),
         )
 
     async def get_submission_ocr_result(
@@ -420,6 +462,7 @@ class SubmissionService:
             evidence.extend(matches)
 
         evidence.sort(key=lambda item: (-item.exact_match_score, item.source_submission_id.hex))
+        handwriting = await self._handwriting_analysis(submission.ocr_job_id)
         quality = summarize_ocr(current_result)
         notes = [
             "This compares OCR text only with submissions for the same assignment; it does not search the internet.",
@@ -431,17 +474,92 @@ class SubmissionService:
             notes.append(f"{skipped} same-assignment submission(s) could not be compared because OCR was unavailable or incomplete.")
         if quality.low_confidence_regions or quality.unreadable_pages or quality.missing_pages:
             notes.append("OCR uncertainty or page gaps may affect these comparisons; verify the original scan.")
+        if handwriting.status == "possible_different_handwriting":
+            notes.append(
+                "Possible different handwriting within this submission (unvalidated heuristic; teacher-only). "
+                "Compare the line samples yourself before drawing any conclusion."
+            )
 
         return IntegrityReport(
             submission_id=submission.id,
-            review_status="needs_teacher_review" if evidence else "no_matches",
+            review_status=(
+                "needs_teacher_review"
+                if evidence or handwriting.status == "possible_different_handwriting"
+                else "no_matches"
+            ),
             comparisons_completed=comparisons_completed,
             comparisons_skipped=skipped,
             comparison_complete=skipped == 0,
+            handwriting_analysis=handwriting,
             ocr_quality=quality,
             evidence=evidence,
             notes=notes,
         )
+
+    async def _handwriting_analysis(self, ocr_job_id: str) -> HandwritingAnalysisStatus:
+        """Within-submission handwriting consistency from the OCR service. Never fails the report."""
+        try:
+            raw = await self.ocr_client.get_handwriting_analysis(ocr_job_id)
+        except Exception as exc:  # noqa: BLE001 - an optional signal must not break integrity review
+            logger.warning("Handwriting analysis unavailable: %s", type(exc).__name__)
+            return HandwritingAnalysisStatus(reason="The OCR service could not run handwriting analysis.")
+        try:
+            return HandwritingAnalysisStatus(
+                status=raw.get("status", "unavailable"),
+                method=raw.get("method"),
+                model_version=raw.get("version"),
+                reason=raw.get("reason"),
+                threshold=raw.get("threshold"),
+                lines_analyzed=raw.get("lines_analyzed"),
+                flagged=raw.get("flagged") or [],
+                segments=raw.get("segments") or [],
+                limitations=raw.get("limitations"),
+            )
+        except ValueError as exc:  # pydantic ValidationError: unexpected payload
+            logger.warning("Unexpected handwriting analysis payload: %s", exc)
+            return HandwritingAnalysisStatus(reason="Handwriting analysis returned an unexpected result.")
+
+    async def decide_late_submission(
+        self,
+        teacher: CurrentUser,
+        submission_id: UUID,
+        decision: str,
+        penalty_percent: float,
+        note: str,
+        *,
+        access_token: str,
+    ) -> SubmissionRecord:
+        """Owning teacher accepts (optionally with a mark deduction), rejects, or re-opens a late submission.
+
+        The decision is locked once a grade is published, so a published score always matches the
+        decision it was calculated from.
+        """
+        if teacher.role is not Role.TEACHER:
+            raise SubmissionPermissionError("Only teachers can decide on late submissions")
+        submission = await asyncio.to_thread(self.repo.get, submission_id, access_token=access_token)
+        if not submission:
+            raise SubmissionNotFoundError("Submission not found")
+        await asyncio.to_thread(
+            self._check_teacher_assignment_ownership, teacher, submission.assignment_id, access_token=access_token
+        )
+        if submission.late_status is None:
+            raise SubmissionValidationError("not_late", "This submission was handed in on time.")
+        if submission.status == "published":
+            raise SubmissionValidationError(
+                "grade_already_published",
+                "A grade has already been published for this submission, so the late decision can no longer change.",
+            )
+        record = await asyncio.to_thread(
+            self.repo.set_late_decision,
+            submission_id,
+            decision,
+            round(penalty_percent, 2) if decision == "accepted" else None,
+            (note.strip() or None) if decision != "pending" else None,
+            access_token=access_token,
+        )
+        if record is None:
+            raise SubmissionRepositoryError("Late decision could not be saved (check submissions RLS)")
+        return record
 
     async def cancel_submission_ocr_job(
         self,

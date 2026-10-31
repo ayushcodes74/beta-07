@@ -147,6 +147,10 @@ class GradingRepository(Protocol):
         self, assignment_id: UUID, *, access_token: str
     ) -> List[GradingResultRecord]: ...
 
+    def list_by_submission_ids(
+        self, submission_ids: List[UUID], *, access_token: str
+    ) -> List[GradingResultRecord]: ...
+
     def update_review(
         self,
         submission_id: UUID,
@@ -161,6 +165,10 @@ class GradingRepository(Protocol):
 
     def update_status(
         self, submission_id: UUID, status: GradingStatus | str, *, access_token: str
+    ) -> Optional[GradingResultRecord]: ...
+
+    def update_flags(
+        self, submission_id: UUID, flags: Dict[str, Any], *, access_token: str
     ) -> Optional[GradingResultRecord]: ...
 
     def publish(
@@ -335,6 +343,31 @@ class SupabaseGradingRepository:
             logger.exception("Failed to list grading results by assignment: %s", exc)
             raise GradingRepositoryError("Failed to list assignment grading results") from exc
 
+    def list_by_submission_ids(
+        self, submission_ids: List[UUID], *, access_token: str
+    ) -> List[GradingResultRecord]:
+        """Grading results for the given submissions (rows outside the caller's RLS scope are omitted)."""
+        if not submission_ids:
+            return []
+        client = get_user_supabase(access_token)
+        try:
+            resp = (
+                client.table("grading_results")
+                .select(
+                    "submission_id, ai_score, final_score, ai_feedback, final_feedback, "
+                    "evidence, flags, confidence, status, reviewed_by, reviewed_at, "
+                    "published_at, created_at, updated_at"
+                )
+                .in_("submission_id", [str(i) for i in submission_ids])
+                .execute()
+            )
+            return [self._to_record(r) for r in (resp.data or [])]
+        except GradingRepositoryError:
+            raise
+        except Exception as exc:
+            logger.exception("Failed to list grading results by submission: %s", exc)
+            raise GradingRepositoryError("Failed to list grading results") from exc
+
     def update_review(
         self,
         submission_id: UUID,
@@ -415,6 +448,30 @@ class SupabaseGradingRepository:
         except Exception as exc:
             logger.exception("Failed to update grading status: %s", exc)
             raise GradingRepositoryError("Failed to update grading status") from exc
+
+    def update_flags(
+        self, submission_id: UUID, flags: Dict[str, Any], *, access_token: str
+    ) -> Optional[GradingResultRecord]:
+        """Replace the flags JSONB (e.g. teacher corrections) without touching status or scores."""
+        client = get_user_supabase(access_token)
+        now_str = datetime.now(UTC).isoformat()
+        try:
+            resp = (
+                client.table("grading_results")
+                .update({"flags": flags, "updated_at": now_str})
+                .eq("submission_id", str(submission_id))
+                .execute()
+            )
+            data = resp.data or []
+            if not data:
+                return None
+            row = data[0] if isinstance(data, list) else data
+            return self._to_record(row)
+        except GradingRepositoryError:
+            raise
+        except Exception as exc:
+            logger.exception("Failed to update grading flags: %s", exc)
+            raise GradingRepositoryError("Failed to update grading flags") from exc
 
     def publish(
         self,

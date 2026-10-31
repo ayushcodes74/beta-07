@@ -32,7 +32,7 @@ class TestGetMyProfile:
         user_id, token = student
         response = client.get(PROFILE, headers=bearer(token))
         assert response.status_code == 200
-        assert response.json() == {"id": str(user_id), "email": "student@example.com", "role": "student"}
+        assert response.json() == {"id": str(user_id), "email": "student@example.com", "role": "student", "display_name": None}
         assert profiles.get_calls == [(user_id, token)]
 
     def test_cannot_select_another_user(self, client, student, profiles):

@@ -41,4 +41,4 @@ AUTH_ERROR_RESPONSES: dict[int | str, dict] = {
 def read_authenticated_user(
     user: Annotated[CurrentUser, Depends(require_authenticated_user)],
 ) -> AuthenticatedUserResponse:
-    return AuthenticatedUserResponse(id=user.id, email=user.email, role=user.role)
+    return AuthenticatedUserResponse(id=user.id, email=user.email, role=user.role, display_name=user.display_name)

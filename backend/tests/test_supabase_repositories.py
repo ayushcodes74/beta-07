@@ -130,7 +130,7 @@ class TestAssignmentRepository:
         )
 
         # Mock assignment_questions response (ordered by position)
-        mock_client.table("assignment_questions").select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
+        mock_client.table("assignment_questions").select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
             data=[
                 {
                     "id": str(qid1),
@@ -279,7 +279,7 @@ class TestAssignmentRepository:
         )
 
         # Mock questions for student
-        mock_client.table("assignment_questions").select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
+        mock_client.table("assignment_questions").select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
             data=[
                 {
                     "id": str(qid1),

@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.services.course_material_service import MAX_MATERIAL_CHARS
 
 MAX_GENERATED_QUESTIONS = 10
+# Syllabus / rulebook text. Keep in sync with MAX_SYLLABUS_CHARS in frontend/src/services/api.ts
+# (the AI Engine accepts up to 60,000).
+MAX_SYLLABUS_CHARS = 50_000
 
 
 class AssignmentGenerationRequest(BaseModel):
@@ -25,6 +28,9 @@ class AssignmentGenerationRequest(BaseModel):
     # Course material attached in the editor (extracted file text and/or pasted notes). When
     # present, questions are grounded in it instead of the topic alone. Not stored.
     course_material: Annotated[str | None, Field(default=None, max_length=MAX_MATERIAL_CHARS)] = None
+    # Syllabus and/or rulebook for this assignment (extracted file text and/or pasted). Binding for
+    # the AI: questions stay within its scope and follow its rules. Not stored.
+    syllabus: Annotated[str | None, Field(default=None, max_length=MAX_SYLLABUS_CHARS)] = None
 
     @model_validator(mode="after")
     def _enough_marks(self) -> "AssignmentGenerationRequest":

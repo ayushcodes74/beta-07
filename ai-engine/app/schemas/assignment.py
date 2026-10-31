@@ -256,4 +256,12 @@ class AssignmentGenerationRequest(BaseSchema):
         default=None,
         description="Additional teacher instructions or focus areas.",
     )
+    syllabus: Optional[str] = Field(
+        default=None,
+        max_length=60_000,
+        description=(
+            "Teacher's syllabus and/or rulebook for this assignment. Binding: questions must stay "
+            "within its scope and follow its rules (question style, methods, answer length, marking)."
+        ),
+    )
 

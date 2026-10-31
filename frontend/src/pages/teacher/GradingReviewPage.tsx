@@ -5,8 +5,76 @@ import { useAppState } from "../../App";
 import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
-import { extractErrorMessage, submissionService, withPublishedGrade, type BackendGradingSuggestion } from "../../services/api";
+import {
+  extractErrorMessage,
+  lateAdjustedScore,
+  submissionService,
+  withPublishedGrade,
+  type BackendGradingCorrection,
+  type BackendGradingSuggestion,
+  type BackendHandwritingSample,
+  type BackendIntegrityReport,
+} from "../../services/api";
 import type { Submission } from "../../types/models";
+
+function HandwritingSamples({ title, samples }: { title: string; samples: BackendHandwritingSample[] }) {
+  return (
+    <div className="handwriting-samples">
+      <strong>{title}</strong>
+      {samples.map((sample, index) => (
+        <figure key={`${sample.page_number}-${index}`}>
+          {sample.image && <img src={sample.image} alt={`Handwritten line on page ${sample.page_number}`} />}
+          <figcaption>
+            Page {sample.page_number}: “{sample.text}”
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+/** Teacher-only, unvalidated within-submission handwriting consistency check. */
+function HandwritingCheck({ analysis }: { analysis: BackendIntegrityReport["handwriting_analysis"] }) {
+  if (analysis.status === "possible_different_handwriting") {
+    return (
+      <div className="handwriting-check handwriting-check-flagged">
+        <h4>Possible different handwriting — needs teacher review</h4>
+        {analysis.flagged.map((flag, index) => (
+          <div key={`${flag.label}-${index}`} className="handwriting-flag">
+            <p>
+              <strong>{flag.label}</strong>
+              {!flag.label.includes("different hands") && <> looks different from {flag.compared_with}</>} · difference{" "}
+              {flag.difference_score.toFixed(2)} (flag threshold {analysis.threshold?.toFixed(2) ?? "—"})
+            </p>
+            <div className="handwriting-compare">
+              <HandwritingSamples title={flag.label.split(" and ")[0]} samples={flag.samples} />
+              <HandwritingSamples title={flag.compared_with} samples={flag.reference_samples} />
+            </div>
+          </div>
+        ))}
+        {analysis.limitations && <p className="handwriting-note">{analysis.limitations}</p>}
+      </div>
+    );
+  }
+  const message =
+    analysis.status === "consistent"
+      ? `Handwriting looks consistent across this submission (${analysis.lines_analyzed ?? 0} lines compared; unvalidated check).`
+      : analysis.status === "insufficient_handwriting"
+      ? `Handwriting check: ${analysis.reason ?? "not enough handwriting to compare."}`
+      : analysis.status === "processing"
+      ? "Handwriting check will run once OCR has finished."
+      : `Handwriting check unavailable${analysis.reason ? `: ${analysis.reason}` : "."}`;
+  return <p className="handwriting-check">{message}</p>;
+}
+
+/** AI total with the teacher's corrected marks substituted for the questions they corrected. */
+function totalWithCorrections(check: BackendGradingSuggestion, corrections: BackendGradingCorrection[]): number {
+  const delta = corrections.reduce((sum, c) => {
+    const q = check.questions.find((item) => item.number === c.question_number);
+    return q ? sum + (c.teacher_marks - q.awarded_marks) : sum;
+  }, 0);
+  return Math.round((check.total_awarded_marks + delta) * 100) / 100;
+}
 
 export function GradingReviewPage({
   submissions: rows,
@@ -30,6 +98,7 @@ export function GradingReviewPage({
   );
   const [approving, setApproving] = useState(false);
   const [publishError, setPublishError] = useState("");
+  const [showSolutions, setShowSolutions] = useState(true);
   const [integrityReport, setIntegrityReport] = useState<Awaited<ReturnType<typeof submissionService.getIntegrity>> | null>(null);
   const [integrityError, setIntegrityError] = useState("");
   const [integrityLoading, setIntegrityLoading] = useState(false);
@@ -40,12 +109,21 @@ export function GradingReviewPage({
   const [answerCheckError, setAnswerCheckError] = useState("");
   const [checkingAnswers, setCheckingAnswers] = useState(false);
   const autoCheckedIds = useRef(new Set<string>());
+  // Teacher corrections of the AI check: stored per submission and given to future AI checks.
+  const [corrections, setCorrections] = useState<BackendGradingCorrection[]>([]);
+  const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
+  const [draftMarks, setDraftMarks] = useState(0);
+  const [draftNote, setDraftNote] = useState("");
+  const [savingCorrections, setSavingCorrections] = useState(false);
+  const [correctionError, setCorrectionError] = useState("");
 
   // Show the last stored AI answer check; if none exists yet, run one automatically (once per
   // submission per visit) so the teacher sees correctness without hunting for the button.
   useEffect(() => {
     setAnswerCheck(null);
     setAnswerCheckError("");
+    setCorrections([]);
+    setEditingQuestion(null);
     if (!submission) return;
     let active = true;
     const id = submission.id;
@@ -55,8 +133,10 @@ export function GradingReviewPage({
         if (!active) return;
         if (saved) {
           setAnswerCheck(saved);
+          const savedCorrections = saved.teacher_corrections ?? [];
+          setCorrections(savedCorrections);
           if (submission.state !== "Published") {
-            setScore(Math.round(saved.total_awarded_marks * 100) / 100);
+            setScore(totalWithCorrections(saved, savedCorrections));
             setFeedback((current) => current || saved.overall_feedback);
           }
         } else if (!autoCheckedIds.current.has(id)) {
@@ -91,7 +171,7 @@ export function GradingReviewPage({
     try {
       const result = await submissionService.checkAnswers(submission.id);
       setAnswerCheck(result);
-      setScore(Math.round(result.total_awarded_marks * 100) / 100);
+      if (submission.state !== "Published") setScore(totalWithCorrections(result, corrections));
       if (!feedback.trim()) setFeedback(result.overall_feedback);
     } catch (error) {
       setAnswerCheckError(extractErrorMessage(error, "Could not check the answers."));
@@ -99,6 +179,48 @@ export function GradingReviewPage({
       setCheckingAnswers(false);
     }
   };
+
+  const startCorrection = (number: number, aiMarks: number) => {
+    const existing = corrections.find((c) => c.question_number === number);
+    setEditingQuestion(number);
+    setDraftMarks(existing?.teacher_marks ?? aiMarks);
+    setDraftNote(existing?.note ?? "");
+    setCorrectionError("");
+  };
+
+  const persistCorrections = async (next: { question_number: number; teacher_marks: number; note: string }[]) => {
+    if (!submission) return;
+    setSavingCorrections(true);
+    setCorrectionError("");
+    try {
+      const saved = await submissionService.saveCorrections(submission.id, next);
+      setCorrections(saved);
+      setEditingQuestion(null);
+      if (answerCheck && submission.state !== "Published") setScore(totalWithCorrections(answerCheck, saved));
+      toast(
+        next.length
+          ? "Correction saved. The AI will follow it when grading this question for other students."
+          : "Corrections removed."
+      );
+    } catch (error) {
+      setCorrectionError(extractErrorMessage(error, "Could not save the correction."));
+    } finally {
+      setSavingCorrections(false);
+    }
+  };
+
+  const otherCorrections = (number: number) =>
+    corrections
+      .filter((c) => c.question_number !== number)
+      .map(({ question_number, teacher_marks, note }) => ({ question_number, teacher_marks, note }));
+
+  const saveCorrection = (number: number) =>
+    void persistCorrections([
+      ...otherCorrections(number),
+      { question_number: number, teacher_marks: draftMarks, note: draftNote.trim() },
+    ]);
+
+  const removeCorrection = (number: number) => void persistCorrections(otherCorrections(number));
 
   // The submissions list carries no OCR text, so fetch the OCR service result for this submission.
   useEffect(() => {
@@ -185,13 +307,18 @@ export function GradingReviewPage({
   const maxMarks = assignment?.totalMarks ?? answerCheck?.total_max_marks ?? 0;
   const scoreInvalid = !Number.isFinite(score) || score < 0 || (maxMarks > 0 && score > maxMarks);
   const alreadyPublished = submission.state === "Published";
+  // Late work needs the teacher's decision before a grade can be published (enforced by the API too).
+  const late = submission.late;
+  const lateBlocksPublish = late?.status === "pending" || late?.status === "rejected";
+  const latePenalty = late?.status === "accepted" ? late.penaltyPercent ?? 0 : 0;
+  const publishedScorePreview = lateAdjustedScore(Number.isFinite(score) ? score : 0, latePenalty);
 
   const approveGrade = async () => {
     if (scoreInvalid) return;
     setApproving(true);
     setPublishError("");
     try {
-      const grade = await submissionService.publishGrade(submission.id, score, feedback);
+      const grade = await submissionService.publishGrade(submission.id, score, feedback, showSolutions);
       setSubmissions((current) =>
         current.map((item) => (item.id === submission.id ? withPublishedGrade(item, grade) : item))
       );
@@ -292,10 +419,11 @@ export function GradingReviewPage({
                     {integrityReport.comparisons_completed + integrityReport.comparisons_skipped} submissions
                   </p>
                   <p>
-                    Exact matching compares OCR text within this assignment. Semantic similarity and handwriting
-                    analysis are unavailable; matches are review signals, not findings of misconduct.
+                    Exact matching compares OCR text within this assignment. Semantic similarity is unavailable;
+                    matches are review signals, not findings of misconduct.
                   </p>
                   {integrityReport.notes.map((note, index) => <p key={`note-${index}`}>{note}</p>)}
+                  <HandwritingCheck analysis={integrityReport.handwriting_analysis} />
                   {integrityReport.evidence.map((evidence, index) => (
                     <div className="integration-notice-card" key={`${evidence.source_submission_id}-${index}`}>
                       <div className="integration-notice-content">
@@ -358,6 +486,7 @@ export function GradingReviewPage({
                 {answerCheck.overall_feedback && <p className="answer-check-feedback">{answerCheck.overall_feedback}</p>}
 
                 {answerCheck.questions.map((q) => {
+                  const correction = corrections.find((c) => c.question_number === q.number);
                   const verdict =
                     q.awarded_marks >= q.max_marks ? "correct" : q.awarded_marks > 0 ? "partial" : "incorrect";
                   return (
@@ -375,6 +504,88 @@ export function GradingReviewPage({
                       {q.matched_concepts.length > 0 && <p>✓ {q.matched_concepts.join(" · ")}</p>}
                       {q.missing_concepts.length > 0 && <p>✗ Missing: {q.missing_concepts.join(" · ")}</p>}
                       {q.review_reasons.length > 0 && <p className="answer-check-review">⚑ {q.review_reasons.join(" ")}</p>}
+                      {(q.teacher_corrections_used ?? 0) > 0 && (
+                        <p className="answer-check-meta">
+                          Graded using {q.teacher_corrections_used} earlier teacher correction
+                          {q.teacher_corrections_used === 1 ? "" : "s"} of this question
+                        </p>
+                      )}
+
+                      {editingQuestion === q.number ? (
+                        <div className="answer-check-correction">
+                          <label>
+                            Correct mark{" "}
+                            <input
+                              type="number"
+                              min={0}
+                              max={q.max_marks}
+                              step={0.5}
+                              value={draftMarks}
+                              onChange={(e) => setDraftMarks(Number(e.target.value))}
+                            />{" "}
+                            / {q.max_marks}
+                          </label>
+                          <textarea
+                            className="feedback-textarea"
+                            value={draftNote}
+                            onChange={(e) => setDraftNote(e.target.value)}
+                            maxLength={2000}
+                            placeholder="Where was the AI wrong? e.g. Lowercase 'nand' is the NAND gate, accept it. The AI will apply this when grading this question for other students."
+                          />
+                          <div className="answer-check-correction-actions">
+                            <Button
+                              size="sm"
+                              disabled={
+                                savingCorrections ||
+                                !draftNote.trim() ||
+                                !Number.isFinite(draftMarks) ||
+                                draftMarks < 0 ||
+                                draftMarks > q.max_marks
+                              }
+                              onClick={() => saveCorrection(q.number)}
+                            >
+                              {savingCorrections ? "Saving…" : "Save correction"}
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => setEditingQuestion(null)}>
+                              Cancel
+                            </Button>
+                          </div>
+                          {correctionError && <p className="answer-check-error">{correctionError}</p>}
+                        </div>
+                      ) : correction ? (
+                        <div className="answer-check-correction">
+                          <p>
+                            <strong>
+                              Your correction: {correction.teacher_marks} / {correction.max_marks}
+                            </strong>{" "}
+                            — {correction.note}
+                          </p>
+                          <div className="answer-check-correction-actions">
+                            <Button size="sm" variant="secondary" onClick={() => startCorrection(q.number, q.awarded_marks)}>
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={savingCorrections}
+                              onClick={() => removeCorrection(q.number)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                          {correctionError && <p className="answer-check-error">{correctionError}</p>}
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!answerCheck.saved}
+                          title={answerCheck.saved ? undefined : "This check was not saved, so it cannot be corrected."}
+                          onClick={() => startCorrection(q.number, q.awarded_marks)}
+                        >
+                          AI got this wrong
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
@@ -387,6 +598,43 @@ export function GradingReviewPage({
           </div>
 
           <div className="grade-publish">
+            {integrityReport?.handwriting_analysis.status === "possible_different_handwriting" && (
+              <IntegrationNotice
+                tone="warning"
+                title="Possible different handwriting in this submission"
+                description={`${integrityReport.handwriting_analysis.flagged
+                  .map((flag) => flag.label)
+                  .join("; ")}. Compare the handwriting samples under Integrity review before publishing. This is an unvalidated check, visible only to teachers; it is never shown to the student.`}
+              />
+            )}
+            {late && (
+              <div className="late-banner">
+                <IntegrationNotice
+                  tone={lateBlocksPublish ? "warning" : "info"}
+                  title={
+                    late.status === "pending"
+                      ? "Late submission: decision needed"
+                      : late.status === "rejected"
+                      ? "Late submission rejected"
+                      : latePenalty
+                      ? `Late submission accepted with a ${latePenalty}% deduction`
+                      : "Late submission accepted for full marks"
+                  }
+                  description={
+                    late.status === "pending"
+                      ? "This work was handed in after the due date. Accept or reject it on the Late submissions page before publishing a grade."
+                      : late.status === "rejected"
+                      ? "You rejected this late submission, so no grade can be published. Change the decision on the Late submissions page to grade it."
+                      : latePenalty
+                      ? "Enter the score the work deserves; the deduction is applied when you publish, and the student sees both."
+                      : "Grade it like an on-time submission."
+                  }
+                />
+                <Button variant="secondary" size="sm" onClick={() => navigate("/app/late-submissions")}>
+                  Open Late submissions
+                </Button>
+              </div>
+            )}
             {alreadyPublished && (
               <IntegrationNotice
                 title="Grade published"
@@ -403,6 +651,11 @@ export function GradingReviewPage({
                     Maximum marks: {maxMarks || "—"}
                     {answerCheck && ` · AI suggested ${answerCheck.total_awarded_marks}`}
                   </p>
+                  {latePenalty > 0 && !scoreInvalid && (
+                    <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#b5524b" }}>
+                      Late deduction −{latePenalty}%: the student will receive {publishedScorePreview} / {maxMarks || "—"}
+                    </p>
+                  )}
                 </div>
                 <div className="rubric-score-input">
                   <input
@@ -434,9 +687,17 @@ export function GradingReviewPage({
           <div style={{ marginTop: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: "10px", color: "#5C6E61", display: "inline-flex", alignItems: "center", gap: "4px" }}>
               <ShieldCheck size={14} style={{ color: "#173D2B" }} />
-              Only you can publish; the AI suggestion is never shown to the student
+              The student will see each question's mark with the AI's explanation (or your correction note)
             </span>
-            <Button disabled={approving || scoreInvalid} onClick={() => void approveGrade()}>
+            <label className="publish-solutions-toggle">
+              <input type="checkbox" checked={showSolutions} onChange={(e) => setShowSolutions(e.target.checked)} />
+              Show expected solutions (after the due date)
+            </label>
+            <Button
+              disabled={approving || scoreInvalid || lateBlocksPublish}
+              title={lateBlocksPublish ? "Decide on this late submission first." : undefined}
+              onClick={() => void approveGrade()}
+            >
               <Check size={14} />
               {approving ? "Publishing…" : alreadyPublished ? "Update Published Grade" : "Approve & Publish Grade"}
             </Button>

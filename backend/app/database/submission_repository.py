@@ -122,6 +122,23 @@ def _job_engine_status(job_row: dict[str, Any]) -> str:
 _RESUBMITTABLE_DB_STATUSES = {"submitted", "late_pending"}
 
 
+# "*" rather than a column list: the late_* columns come from phase3b_late_submissions.sql, and
+# selecting them by name would break every submission query on a database without that migration.
+_SUBMISSION_COLUMNS = "*"
+
+
+def _late_decision_locked(exc: Exception) -> bool:
+    """Raised by the submissions_late_guard trigger when a judged late submission is replaced."""
+    return "late_decision_locked" in str(exc)
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _is_unique_violation(exc: Exception) -> bool:
     return getattr(exc, "code", None) == "23505" or "duplicate key value" in str(exc)
 
@@ -193,15 +210,16 @@ class SupabaseSubmissionRepository:
     def _ocr_jobs(client: Any, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """submission id -> its ocr_jobs row (status + processing_metadata)."""
         submission_ids = [str(row["id"]) for row in rows]
-        if not submission_ids:
-            return {}
-        response = (
-            client.table("ocr_jobs")
-            .select("submission_id, status, processing_metadata")
-            .in_("submission_id", submission_ids)
-            .execute()
-        )
-        return {str(row["submission_id"]): row for row in (response.data or [])}
+        jobs: dict[str, dict[str, Any]] = {}
+        for start in range(0, len(submission_ids), 100):  # keep the in.(...) filter URL short
+            response = (
+                client.table("ocr_jobs")
+                .select("submission_id, status, processing_metadata")
+                .in_("submission_id", submission_ids[start : start + 100])
+                .execute()
+            )
+            jobs.update({str(row["submission_id"]): row for row in (response.data or [])})
+        return jobs
 
     @staticmethod
     def _record(row: dict[str, Any], job_row: Optional[dict[str, Any]]) -> SubmissionRecord:
@@ -214,6 +232,11 @@ class SupabaseSubmissionRepository:
             status=_api_submission_status(row, job_row),
             created_at=row.get("created_at") or "",
             updated_at=row.get("updated_at") or "",
+            submitted_at=row.get("submitted_at"),
+            late_status=row.get("late_status"),
+            late_penalty_percent=_optional_float(row.get("late_penalty_percent")),
+            late_decision_note=row.get("late_decision_note"),
+            late_decided_at=row.get("late_decided_at"),
         )
 
     @staticmethod
@@ -237,7 +260,7 @@ class SupabaseSubmissionRepository:
                 "You have already submitted this assignment and it is being reviewed, so it can no longer be replaced.",
             )
         client.table("submissions").update(
-            {"status": _db_submission_status(status), "updated_at": now_str}
+            {"status": _db_submission_status(status), "submitted_at": now_str, "updated_at": now_str}
         ).eq("id", str(row["id"])).execute()
         return UUID(str(row["id"]))
 
@@ -288,6 +311,7 @@ class SupabaseSubmissionRepository:
                 "assignment_id": str(assignment_id),
                 "student_id": str(student_id),
                 "status": _db_submission_status(status),
+                "submitted_at": now_str,
                 "created_at": now_str,
                 "updated_at": now_str,
             }
@@ -318,6 +342,11 @@ class SupabaseSubmissionRepository:
         except (SubmissionRepositoryError, SubmissionValidationError):
             raise
         except Exception as exc:
+            if _late_decision_locked(exc):
+                raise SubmissionValidationError(
+                    "late_decision_locked",
+                    "Your teacher has already decided on this late submission, so it can no longer be replaced.",
+                ) from None
             logger.exception("Failed to create submission in Supabase: %s", exc)
             raise _storage_error(exc, "Failed to create submission") from exc
 
@@ -327,7 +356,7 @@ class SupabaseSubmissionRepository:
         try:
             resp = (
                 client.table("submissions")
-                .select("id, assignment_id, student_id, pdf_path, status, created_at, updated_at")
+                .select(_SUBMISSION_COLUMNS)
                 .eq("id", str(submission_id))
                 .execute()
             )
@@ -360,7 +389,7 @@ class SupabaseSubmissionRepository:
         try:
             resp = (
                 client.table("submissions")
-                .select("id, assignment_id, student_id, pdf_path, status, created_at, updated_at")
+                .select(_SUBMISSION_COLUMNS)
                 .eq("assignment_id", str(assignment_id))
                 .execute()
             )
@@ -371,6 +400,30 @@ class SupabaseSubmissionRepository:
             logger.exception("Failed to list submissions by assignment: %s", exc)
             raise _storage_error(exc, "Failed to list submissions") from exc
 
+    def list_by_assignments(
+        self, assignment_ids: List[UUID], *, access_token: str
+    ) -> List[SubmissionRecord]:
+        """Submissions for many assignments: one query per 100 assignments, not one per assignment."""
+        if not assignment_ids:
+            return []
+        client = self._client(access_token)
+        ids = [str(a) for a in assignment_ids]
+        rows: list[dict[str, Any]] = []
+        try:
+            for start in range(0, len(ids), 100):  # keep the in.(...) filter URL short
+                resp = (
+                    client.table("submissions")
+                    .select(_SUBMISSION_COLUMNS)
+                    .in_("assignment_id", ids[start : start + 100])
+                    .execute()
+                )
+                rows.extend(resp.data or [])
+            jobs = self._ocr_jobs(client, rows)
+            return [self._record(r, jobs.get(str(r["id"]))) for r in rows]
+        except Exception as exc:
+            logger.exception("Failed to list submissions by assignments: %s", exc)
+            raise _storage_error(exc, "Failed to list submissions") from exc
+
     def list_by_student(
         self, student_id: UUID, *, access_token: str
     ) -> List[SubmissionRecord]:
@@ -379,7 +432,7 @@ class SupabaseSubmissionRepository:
         try:
             resp = (
                 client.table("submissions")
-                .select("id, assignment_id, student_id, pdf_path, status, created_at, updated_at")
+                .select(_SUBMISSION_COLUMNS)
                 .eq("student_id", str(student_id))
                 .execute()
             )
@@ -424,6 +477,44 @@ class SupabaseSubmissionRepository:
         except Exception as exc:
             logger.exception("Failed to update submission status in Supabase: %s", exc)
             raise _storage_error(exc, "Failed to update submission status") from exc
+
+    def set_late_decision(
+        self,
+        submission_id: UUID,
+        late_status: str,
+        penalty_percent: Optional[float],
+        note: Optional[str],
+        *,
+        access_token: str,
+    ) -> Optional[SubmissionRecord]:
+        """Write the teacher's late decision. The trigger stamps late_decided_by / late_decided_at."""
+        client = self._client(access_token)
+        try:
+            resp = (
+                client.table("submissions")
+                .update(
+                    {
+                        "late_status": late_status,
+                        "late_penalty_percent": penalty_percent,
+                        "late_decision_note": note,
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                .eq("id", str(submission_id))
+                .execute()
+            )
+            if not resp.data:
+                return None
+            return self.get(submission_id, access_token=access_token)
+        except Exception as exc:
+            text = str(exc)
+            if "not_late" in text:
+                raise SubmissionValidationError("not_late", "This submission was handed in on time.") from None
+            if "late_status" in text and ("PGRST204" in text or "column" in text):
+                logger.error("Late-submission columns missing: run backend/phase3b_late_submissions.sql")
+                raise SubmissionIntegrationNotConfiguredError("late-submission columns are missing") from exc
+            logger.exception("Failed to save late decision: %s", exc)
+            raise _storage_error(exc, "Failed to save late decision") from exc
 
     def get_student_answers(
         self, submission_id: UUID, *, access_token: str

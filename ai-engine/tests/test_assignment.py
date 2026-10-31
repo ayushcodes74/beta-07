@@ -323,6 +323,24 @@ def test_with_course_material_keeps_strict_grounding():
     assert draft.questions[0].has_sufficient_evidence is True
 
 
+def test_syllabus_is_a_binding_prompt_section():
+    generator, client, _ = _generator_with_mocks()
+    request = REQUEST.model_copy(update={"syllabus": "Unit 2: Newton's laws only. No calculus. Max 150 words."})
+
+    generator.generate_assignment(request, course_materials="Newton's first law: inertia ...")
+
+    prompt = client.generate_structured.call_args.kwargs["prompt"]
+    assert "SYLLABUS / RULEBOOK" in prompt
+    assert "Unit 2: Newton's laws only. No calculus." in prompt
+    assert "Newton's first law: inertia" in prompt  # course material still used
+
+
+def test_without_syllabus_no_syllabus_section():
+    generator, client, _ = _generator_with_mocks()
+    generator.generate_assignment(REQUEST)
+    assert "SYLLABUS / RULEBOOK" not in client.generate_structured.call_args.kwargs["prompt"]
+
+
 def test_rubric_generator_topic_only_prompt():
     client = MagicMock()
     client.generate_structured.return_value = _RawRubricResponse(

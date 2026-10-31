@@ -12,9 +12,11 @@ export { CoursesPage } from "./pages/teacher/CoursesPage";
 export { CourseDetailPage } from "./pages/teacher/CourseDetailPage";
 export { AssignmentsPage } from "./pages/teacher/AssignmentsPage";
 export { AssignmentEditor } from "./pages/teacher/AssignmentEditor";
+export { LateSubmissionsPage } from "./pages/teacher/LateSubmissionsPage";
 export { SubmissionsPage } from "./pages/teacher/SubmissionsPage";
 export { GradingReviewPage } from "./pages/teacher/GradingReviewPage";
 export { OCRReviewPage } from "./pages/teacher/OCRReviewPage";
+export { ReviewQueuePage } from "./pages/teacher/ReviewQueuePage";
 
 export { StudentAssignmentsPage } from "./pages/student/StudentAssignmentsPage";
 export { StudentSubmissionPage } from "./pages/student/StudentSubmissionPage";

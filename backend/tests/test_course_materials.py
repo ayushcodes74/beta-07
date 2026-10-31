@@ -178,6 +178,25 @@ async def test_service_sends_course_material_and_reports_grounding(material, exp
     assert draft.grounded_in_course_materials is grounded
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize(("syllabus", "expected"), [("  Unit 2 only. No calculators.  ", "Unit 2 only. No calculators."), ("  ", None), (None, None)])
+async def test_service_sends_syllabus_to_engine(syllabus, expected):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=engine_draft())
+
+    service = AIGenerationService(base_url="http://ai.test", transport=httpx.MockTransport(handler))
+    await service.generate(AssignmentGenerationRequest(topic="Forces", total_marks=10, syllabus=syllabus))
+    assert seen["body"]["syllabus"] == expected
+
+
+def test_syllabus_length_is_limited():
+    with pytest.raises(ValueError):
+        AssignmentGenerationRequest(topic="Forces", total_marks=10, syllabus="x" * 50_001)
+
+
 def test_request_rejects_material_over_limit():
     with pytest.raises(ValueError):
         AssignmentGenerationRequest(topic="Forces", course_material="x" * (MAX_MATERIAL_CHARS + 1))

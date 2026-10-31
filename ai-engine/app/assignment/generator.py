@@ -129,6 +129,9 @@ class AssignmentGenerator:
             grounded=grounded,
         )
 
+        if request.syllabus and request.syllabus.strip():
+            prompt += prompts.build_syllabus_section(request.syllabus.strip())
+
         if request.teacher_instructions:
             prompt += f"\n### TEACHER SPECIAL INSTRUCTIONS:\n{request.teacher_instructions}\n"
 

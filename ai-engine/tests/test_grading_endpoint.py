@@ -106,8 +106,9 @@ def test_grades_each_question_against_answer_key(client, fake):
 
     _, _, requests = fake.calls[0]
     q1, q2 = requests
-    # Whole transcript goes to every question, with a hint to grade only that question's part
-    assert q1.student_answer == BODY["student_text"]
+    # Numbered transcript ("Q1:", "Q2:") is split: each question sees only its own answer
+    assert q1.student_answer == "Q1: 53.625 = (110101.101)2"
+    assert q2.student_answer == "Q2: B"
     assert "question 1" in q1.instructions and "Show the division table." in q1.instructions
     assert q1.expected_answer == "110101.101"
     assert q1.ocr_confidence == 0.9
@@ -266,3 +267,51 @@ def test_point_with_evidence_gets_at_least_half_marks(client, monkeypatch):
     assert by_id == {"point_1": 1, "point_4": 1, "point_5": 0}  # evidence -> half; no evidence -> unchanged
     assert q["awarded_marks"] == 2 and q["max_marks"] == 7
     assert result["total_awarded_marks"] == 2
+
+
+def test_teacher_corrections_reach_the_grading_request(client, fake):
+    body = {**BODY, "questions": [dict(BODY["questions"][0]), BODY["questions"][1]]}
+    body["questions"][0]["teacher_corrections"] = [
+        {"ai_marks": 1, "ai_explanation": "No division table shown.", "teacher_marks": 4, "max_marks": 4,
+         "note": "The division table is optional; a correct final answer earns full marks."}
+    ]
+    response = client.post("/v1/grading/grade-submission", json=body)
+    assert response.status_code == 200, response.text
+
+    _, _, (q1, q2) = fake.calls[0]
+    assert q1.teacher_corrections == [
+        "The AI awarded 1/4 (AI reasoning: No division table shown.). The teacher corrected it to 4/4. "
+        "Teacher's explanation of the mistake: The division table is optional; a correct final answer earns full marks."
+    ]
+    assert q2.teacher_corrections == []
+
+
+def test_teacher_corrections_are_injected_into_the_prompt_as_rules():
+    from unittest.mock import MagicMock
+
+    from app.grading.evaluator import AnswerEvaluator, _LLMQuestionGradeResponse, _LLMCriterionEvaluation
+    from app.schemas.grading import GradingRequest
+
+    llm = MagicMock()
+    llm.generate_structured.return_value = _LLMQuestionGradeResponse(
+        awarded_marks=4,
+        criterion_evaluations=[_LLMCriterionEvaluation(criterion_id="holistic_eval", awarded_marks=4, max_marks=4,
+                                                       explanation="ok")],
+        overall_explanation="ok",
+    )
+    trust = MagicMock()
+    trust.get_approved_reference_snippets.return_value = []
+    trust.assess_submission.return_value = MagicMock(
+        review_items=[], review_required=False, confidence_breakdown=MagicMock(overall=0.9)
+    )
+    evaluator = AnswerEvaluator(gemini_client=llm, evidence_retriever=MagicMock(), trust_service=trust)
+    request = GradingRequest(
+        course_id="c", assignment_id="a", submission_id="s", question_id="q1", question_text="Convert 53.625.",
+        question_max_marks=4, student_answer="110101.101", expected_answer="110101.101",
+        teacher_corrections=["Teacher's explanation of the mistake: division table is optional."],
+    )
+    evaluator.evaluate_question(request, retrieved_evidence=[], skip_evidence_retrieval=True)
+
+    prompt = llm.generate_structured.call_args.kwargs["prompt"]
+    assert "TEACHER CORRECTIONS OF EARLIER AI GRADING (MUST FOLLOW)" in prompt
+    assert "[Reference Correction 1]: Teacher's explanation of the mistake: division table is optional." in prompt

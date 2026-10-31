@@ -292,7 +292,7 @@ class TestAuthMe:
         response = client.get(ME, headers=bearer(token))
 
         assert response.status_code == 200
-        assert response.json() == {"id": str(user_id), "email": "teacher@example.com", "role": "teacher"}
+        assert response.json() == {"id": str(user_id), "email": "teacher@example.com", "role": "teacher", "display_name": None}
         # Profile is looked up for the verified subject, with the caller's token (for RLS).
         assert profiles.get_calls == [(user_id, token)]
 
@@ -339,14 +339,14 @@ class TestAuthMe:
         profiles.add(user_id, "student", is_disabled=False)
         response = client.get(ME, headers=bearer(make_token(user_id, email="student@example.com")))
         assert response.status_code == 200
-        assert response.json() == {"id": str(user_id), "email": "student@example.com", "role": "student"}
+        assert response.json() == {"id": str(user_id), "email": "student@example.com", "role": "student", "display_name": None}
 
     def test_active_teacher_authenticates(self, client, make_token, profiles):
         user_id = uuid4()
         profiles.add(user_id, "teacher", is_disabled=False)
         response = client.get(ME, headers=bearer(make_token(user_id, email="teacher@example.com")))
         assert response.status_code == 200
-        assert response.json() == {"id": str(user_id), "email": "teacher@example.com", "role": "teacher"}
+        assert response.json() == {"id": str(user_id), "email": "teacher@example.com", "role": "teacher", "display_name": None}
 
     def test_disabled_student_returns_403_account_disabled(self, client, make_token, profiles):
         user_id = uuid4()

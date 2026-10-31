@@ -94,7 +94,12 @@ def build_grading_prompt(
             [f"[Reference Correction {i+1}]: {ex}" for i, ex in enumerate(teacher_examples)]
         )
         examples_block = f"""
-### APPROVED TEACHER CORRECTION EXAMPLES (For Reference Only):
+### TEACHER CORRECTIONS OF EARLIER AI GRADING (MUST FOLLOW):
+The teacher reviewed earlier AI grading of this same question on other students' work and corrected it.
+Treat these corrections as authoritative marking rules from the teacher: apply the same judgement
+consistently, and do not repeat the mistakes they describe. If this student's answer has the feature a
+correction describes, grade that feature the way the teacher did. Grade parts of the answer the corrections
+do not cover on their own merits; never copy a corrected mark onto an answer that differs.
 {joined_examples}
 """
 
@@ -132,6 +137,20 @@ def build_syllabus_prompt(
 Determine whether the question is within the supplied syllabus.
 Classify as IN_SYLLABUS, PARTIALLY_IN_SYLLABUS, OUT_OF_SYLLABUS, or UNCERTAIN.
 Cite supporting text and state clear reasoning.
+"""
+
+
+def build_syllabus_section(syllabus: str) -> str:
+    """Binding scope/rules block from the teacher's syllabus or rulebook (appended to generation prompts)."""
+    return f"""
+### SYLLABUS / RULEBOOK (binding, provided by the teacher):
+{syllabus}
+
+Rules for using the syllabus / rulebook above:
+- Every question must stay within the topics and learning outcomes it lists. Do not test anything outside it.
+- Follow every rule it sets for the assessment (question style, permitted methods or tools, answer length,
+  notation, marking conventions) in the questions, model answers and rubrics.
+- If it conflicts with the course material, the syllabus / rulebook wins on scope and rules.
 """
 
 

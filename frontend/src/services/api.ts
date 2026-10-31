@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
   Assignment,
   Course,
+  LateDecision,
   OCRResult,
   Question,
   Submission,
@@ -81,6 +82,11 @@ export interface BackendSubmissionStatus {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+  submitted_at?: string | null;
+  late_status?: LateDecision | null;
+  late_penalty_percent?: number | null;
+  late_decision_note?: string | null;
+  late_decided_at?: string | null;
 }
 
 export interface BackendOCRTextBlock {
@@ -136,6 +142,21 @@ export interface BackendQuestionGradeSuggestion {
   confidence: number | null;
   review_required: boolean;
   review_reasons: string[];
+  /** How many earlier teacher corrections of this question the AI was given. */
+  teacher_corrections_used?: number;
+}
+
+/** A teacher's correction of the AI's grading of one question; reused by future AI checks. */
+export interface BackendGradingCorrection {
+  question_number: number;
+  question_text: string;
+  max_marks: number;
+  ai_marks: number | null;
+  ai_explanation: string;
+  teacher_marks: number;
+  note: string;
+  teacher_id: string | null;
+  created_at: string | null;
 }
 
 export interface BackendGradingSuggestion {
@@ -152,6 +173,7 @@ export interface BackendGradingSuggestion {
   graded_at: string;
   saved: boolean;
   status: string;
+  teacher_corrections?: BackendGradingCorrection[];
 }
 
 export interface BackendPublishedGrade {
@@ -162,6 +184,22 @@ export interface BackendPublishedGrade {
   status: string;
   reviewed_at: string | null;
   published_at: string | null;
+  late_penalty_percent?: number | null;
+  score_before_late_penalty?: number | null;
+  questions?: BackendPublishedQuestion[];
+  solutions_available_at?: string | null;
+}
+
+export interface BackendPublishedQuestion {
+  number: number;
+  question_text: string;
+  awarded_marks: number | null;
+  max_marks: number;
+  explanation: string;
+  strengths: string[];
+  areas_for_improvement: string[];
+  teacher_comment: string | null;
+  expected_solution?: string | null;
 }
 
 /** Attach a published grade to a submission so result views can render it. */
@@ -177,6 +215,18 @@ export function withPublishedGrade(submission: Submission, grade: BackendPublish
       rubric: [],
       feedback: { id: grade.submission_id, comment: grade.final_feedback, deductions: [], courseReferences: [] },
       teacherApproved: true,
+      questionResults: (grade.questions ?? []).map((q) => ({
+        number: q.number,
+        questionText: q.question_text,
+        awardedMarks: q.awarded_marks,
+        maxMarks: q.max_marks,
+        explanation: q.explanation,
+        strengths: q.strengths ?? [],
+        areasForImprovement: q.areas_for_improvement ?? [],
+        teacherComment: q.teacher_comment,
+        expectedSolution: q.expected_solution ?? null,
+      })),
+      solutionsAvailableAt: grade.solutions_available_at ?? null,
     },
   };
 }
@@ -216,6 +266,23 @@ export interface BackendIntegrityEvidence {
   detected_at: string;
 }
 
+export interface BackendHandwritingSample {
+  page_number: number;
+  text: string;
+  /** PNG data URL of the handwritten line */
+  image: string;
+}
+
+export interface BackendHandwritingFlag {
+  label: string;
+  page_numbers: number[];
+  compared_with: string;
+  difference_score: number;
+  p_value: number | null;
+  samples: BackendHandwritingSample[];
+  reference_samples: BackendHandwritingSample[];
+}
+
 export interface BackendIntegrityReport {
   submission_id: string;
   review_status: "processing" | "needs_teacher_review" | "no_matches";
@@ -225,12 +292,28 @@ export interface BackendIntegrityReport {
   comparison_complete: boolean;
   exact_matching: "normalized_token_sequence";
   semantic_similarity: "unavailable";
+  /** Teacher-only, unvalidated within-submission handwriting consistency check. Never shown to students. */
   handwriting_analysis: {
-    status: "unavailable";
+    status: "unavailable" | "processing" | "insufficient_handwriting" | "consistent" | "possible_different_handwriting";
+    method: string | null;
+    validated: false;
     calibrated_score: null;
     model_name: null;
-    model_version: null;
-    reason: string;
+    model_version: string | null;
+    reason: string | null;
+    threshold: number | null;
+    lines_analyzed: number | null;
+    flagged: BackendHandwritingFlag[];
+    segments: {
+      label: string;
+      kind: string;
+      page_numbers: number[];
+      line_count: number;
+      difference_score: number | null;
+      p_value: number | null;
+      flagged: boolean;
+    }[];
+    limitations: string | null;
   };
   ocr_quality: {
     mean_confidence: number | null;
@@ -373,7 +456,7 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     id: b.submission_id,
     studentId: b.student_id,
     assignmentId: b.assignment_id,
-    submittedAt: b.created_at,
+    submittedAt: b.submitted_at || b.created_at,
     deadline: b.created_at,
     state,
     ocr: {
@@ -386,7 +469,21 @@ export function adaptSubmissionStatus(b: BackendSubmissionStatus, fileName?: str
     answer: "",
     fileName: fileName || "submission.pdf",
     backendStatus: b.status,
+    late: b.late_status
+      ? {
+          status: b.late_status,
+          penaltyPercent: b.late_penalty_percent ?? null,
+          note: b.late_decision_note ?? null,
+          decidedAt: b.late_decided_at ?? null,
+        }
+      : undefined,
   };
+}
+
+/** Final score after a late-submission deduction (mirrors the backend's late_adjusted_score). */
+export function lateAdjustedScore(score: number, penaltyPercent: number | null | undefined): number {
+  if (!penaltyPercent) return Math.round(score * 100) / 100;
+  return Math.round(score * (1 - penaltyPercent / 100) * 100) / 100;
 }
 
 export function extractErrorMessage(error: unknown, fallback: string = "An error occurred."): string {
@@ -453,7 +550,12 @@ export interface AssignmentGenerationRequest {
   totalMarks: number;
   /** Course material attached in the editor (extracted file text + pasted notes). Not stored. */
   courseMaterial?: string;
+  /** Syllabus and/or rulebook: questions stay within its scope and follow its rules. Not stored. */
+  syllabus?: string;
 }
+
+/** Must match MAX_SYLLABUS_CHARS in backend/app/schemas/ai_generation.py. */
+export const MAX_SYLLABUS_CHARS = 50_000;
 
 /** Must match MAX_MATERIAL_CHARS in backend/app/services/course_material_service.py. */
 export const MAX_COURSE_MATERIAL_CHARS = 100_000;
@@ -515,6 +617,7 @@ export const aiAssignmentService = {
         difficulty: request.difficulty,
         total_marks: request.totalMarks,
         course_material: request.courseMaterial?.trim() || undefined,
+        syllabus: request.syllabus?.trim() || undefined,
       },
       { timeout: AI_GENERATION_TIMEOUT_MS }
     );
@@ -604,16 +707,24 @@ export const assignmentService = {
 
 export const submissionService = {
   async getSubmissions(): Promise<Submission[]> {
-    const response = await api.get<BackendSubmissionStatus[]>("/submissions");
-    const rows = (response.data || []).map((item) => adaptSubmissionStatus(item));
-    // Published grades live in grading_results; load them so result views have the final score.
-    return Promise.all(
-      rows.map(async (row) => {
-        if (row.backendStatus !== "published") return row;
-        const grade = await submissionService.getPublishedResult(row.id).catch(() => null);
-        return grade ? withPublishedGrade(row, grade) : row;
-      })
-    );
+    // Published grades live in grading_results: fetch them all in ONE request, in parallel with the
+    // submission list (previously one /result request per published submission, after the list).
+    const [response, grades] = await Promise.all([
+      api.get<BackendSubmissionStatus[]>("/submissions"),
+      submissionService.getPublishedResults().catch(() => [] as BackendPublishedGrade[]),
+    ]);
+    const bySubmission = new Map(grades.map((grade) => [grade.submission_id, grade]));
+    return (response.data || []).map((item) => {
+      const row = adaptSubmissionStatus(item);
+      const grade = row.backendStatus === "published" ? bySubmission.get(row.id) : undefined;
+      return grade ? withPublishedGrade(row, grade) : row;
+    });
+  },
+
+  /** Every published grade the caller may see (student: own; teacher: own assignments). */
+  async getPublishedResults(): Promise<BackendPublishedGrade[]> {
+    const response = await api.get<BackendPublishedGrade[]>("/results");
+    return response.data || [];
   },
 
   async submitPdf(assignmentId: string, file: File): Promise<Submission> {
@@ -670,13 +781,48 @@ export const submissionService = {
     }
   },
 
+  /** Teacher: replace this submission's corrections of the AI check (empty list removes them). */
+  async saveCorrections(
+    submissionId: string,
+    corrections: { question_number: number; teacher_marks: number; note: string }[]
+  ): Promise<BackendGradingCorrection[]> {
+    const response = await api.put<BackendGradingCorrection[]>(`/submissions/${submissionId}/grading/corrections`, {
+      corrections,
+    });
+    return response.data;
+  },
+
   /** Teacher: approve the final score/feedback and publish it to the student. */
-  async publishGrade(submissionId: string, finalScore: number, finalFeedback: string): Promise<BackendPublishedGrade> {
+  async publishGrade(
+    submissionId: string,
+    finalScore: number,
+    finalFeedback: string,
+    showSolutions = true
+  ): Promise<BackendPublishedGrade> {
     const response = await api.post<BackendPublishedGrade>(`/submissions/${submissionId}/grading/publish`, {
       final_score: finalScore,
       final_feedback: finalFeedback,
+      show_solutions: showSolutions,
     });
     return response.data;
+  },
+
+  /**
+   * Owning teacher rules on a late submission. `accepted` deducts `penaltyPercent` (50 = half marks)
+   * from the final score when the grade is published; `rejected` blocks publishing; `pending` undoes.
+   */
+  async decideLateSubmission(
+    submissionId: string,
+    decision: LateDecision,
+    penaltyPercent = 0,
+    note = ""
+  ): Promise<Submission> {
+    const response = await api.post<BackendSubmissionStatus>(`/submissions/${submissionId}/late-decision`, {
+      decision,
+      penalty_percent: penaltyPercent,
+      note,
+    });
+    return adaptSubmissionStatus(response.data);
   },
 
   /** Student (own) or owning teacher: the published grade, or null if not published yet. */
@@ -692,6 +838,124 @@ export const submissionService = {
 
   async cancelOcrJob(submissionId: string) {
     const response = await api.delete(`/submissions/${submissionId}/ocr-job`);
+    return response.data;
+  },
+};
+
+// --------------------------------------------------------------------------
+// Review queue (teacher) and review requests (student re-evaluation)
+// --------------------------------------------------------------------------
+
+export type ReviewRequestStatus = "open" | "resolved" | "dismissed";
+
+export interface ReviewRequest {
+  id: string;
+  submission_id: string;
+  student_id: string;
+  reason: string;
+  status: ReviewRequestStatus;
+  teacher_response: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewCategory = "ocr" | "low_trust" | "student_request";
+
+export interface ReviewQueueItem {
+  category: ReviewCategory;
+  submission_id: string;
+  assignment_id: string;
+  student_id: string;
+  submission_status: string;
+  submitted_at: string;
+  reasons: string[];
+  /** Mean OCR text-block confidence, 0-1. */
+  ocr_confidence: number | null;
+  /** AI answer-check confidence, 0-1. */
+  trust_score: number | null;
+  ai_score: number | null;
+  final_score: number | null;
+  max_score: number | null;
+  grading_status: string | null;
+  review_request: ReviewRequest | null;
+}
+
+export interface ReviewQueue {
+  ocr: ReviewQueueItem[];
+  low_trust: ReviewQueueItem[];
+  student_requests: ReviewQueueItem[];
+  thresholds: { ocr_confidence: number; trust_score: number };
+  /** Parts of the queue that could not be checked (e.g. OCR engine offline). */
+  notes: string[];
+}
+
+export const reviewService = {
+  /** Teacher: everything that needs manual review, grouped into OCR / low trust / student requests. */
+  async getQueue(): Promise<ReviewQueue> {
+    // Checks OCR results for every unpublished submission, so allow longer than the default.
+    const response = await api.get<ReviewQueue>("/reviews/queue", { timeout: 60_000 });
+    return response.data;
+  },
+
+  /** Student: own requests. Teacher: requests on own assignments. */
+  async listRequests(): Promise<ReviewRequest[]> {
+    const response = await api.get<ReviewRequest[]>("/review-requests");
+    return response.data || [];
+  },
+
+  /** Student: flag a published grade for teacher review. */
+  async requestReview(submissionId: string, reason: string): Promise<ReviewRequest> {
+    const response = await api.post<ReviewRequest>(`/submissions/${submissionId}/review-requests`, {
+      reason: reason.trim(),
+    });
+    return response.data;
+  },
+
+  /** Teacher: close a student's request with an optional reply the student can read. */
+  async resolveRequest(
+    requestId: string,
+    status: "resolved" | "dismissed",
+    teacherResponse?: string
+  ): Promise<ReviewRequest> {
+    const response = await api.patch<ReviewRequest>(`/review-requests/${requestId}`, {
+      status,
+      teacher_response: teacherResponse?.trim() || null,
+    });
+    return response.data;
+  },
+};
+
+// --------------------------------------------------------------------------
+// Course leaderboard (GET /courses/{id}/leaderboard): total marks from published grades
+// --------------------------------------------------------------------------
+
+export interface LeaderboardStanding {
+  /** Ties share a rank (1, 2, 2, 4). */
+  rank: number;
+  student_id: string;
+  name: string;
+  total_score: number;
+  /** total_score / total_possible * 100; null while nothing is published. */
+  percentage: number | null;
+  assignments_graded: number;
+  last_published_at: string | null;
+  /** The signed-in student's own row. */
+  is_you: boolean;
+}
+
+export interface CourseLeaderboard {
+  course_id: string;
+  course_name: string;
+  total_possible: number;
+  assignments_counted: number;
+  entries: LeaderboardStanding[];
+}
+
+export const leaderboardService = {
+  async getCourseLeaderboard(courseId: string): Promise<CourseLeaderboard> {
+    const response = await api.get<CourseLeaderboard>(`/courses/${courseId}/leaderboard`);
     return response.data;
   },
 };

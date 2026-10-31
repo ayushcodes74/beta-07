@@ -251,10 +251,13 @@ class SupabaseAssignmentRepository:
             )
             rows = resp.data or []
             records: list[AssignmentRecord] = []
+            questions_by_id = self._questions_by_assignment(
+                client, [UUID(str(row["id"])) for row in rows], with_keys=True
+            )
 
             for row in rows:
                 assignment_id = UUID(str(row["id"]))
-                questions = self._fetch_questions_with_keys(client, assignment_id)
+                questions = questions_by_id.get(assignment_id, [])
                 content = AssignmentContent(
                     title=row["title"],
                     instructions=row.get("description"),
@@ -277,6 +280,16 @@ class SupabaseAssignmentRepository:
             raise
         except Exception as exc:
             logger.exception("Failed to list assignments by teacher: %s", exc)
+            raise AssignmentRepositoryError("Failed to list assignments") from exc
+
+    def list_ids_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[UUID]:
+        """Ids of the teacher's assignments: one small query, no questions or answer keys."""
+        client = self._client(access_token)
+        try:
+            resp = client.table("assignments").select("id").eq("teacher_id", str(teacher_id)).execute()
+            return [UUID(str(row["id"])) for row in (resp.data or [])]
+        except Exception as exc:
+            logger.exception("Failed to list assignment ids by teacher: %s", exc)
             raise AssignmentRepositoryError("Failed to list assignments") from exc
 
     def get_published_for_student(
@@ -349,22 +362,24 @@ class SupabaseAssignmentRepository:
             rows = resp.data or []
             records: list[AssignmentRecord] = []
 
+            # One query for all of the student's enrollments instead of one per assignment.
+            if any(row.get("course_id") for row in rows):
+                enroll_resp = (
+                    client.table("course_enrollments")
+                    .select("course_id")
+                    .eq("student_id", str(student_id))
+                    .execute()
+                )
+                enrolled = {str(r["course_id"]) for r in (enroll_resp.data or [])}
+                rows = [row for row in rows if not row.get("course_id") or str(row["course_id"]) in enrolled]
+            questions_by_id = self._questions_by_assignment(
+                client, [UUID(str(row["id"])) for row in rows], with_keys=False
+            )
+
             for row in rows:
                 assignment_id = UUID(str(row["id"]))
                 course_id = row.get("course_id")
-
-                if course_id:
-                    enroll_resp = (
-                        client.table("course_enrollments")
-                        .select("id")
-                        .eq("course_id", str(course_id))
-                        .eq("student_id", str(student_id))
-                        .execute()
-                    )
-                    if not enroll_resp.data:
-                        continue
-
-                questions = self._fetch_questions_student_safe(client, assignment_id)
+                questions = questions_by_id.get(assignment_id, [])
                 content = AssignmentContent(
                     title=row["title"],
                     instructions=row.get("description"),
@@ -625,102 +640,80 @@ class SupabaseAssignmentRepository:
 
     # ---- Internal Helpers -------------------------------------------------
 
-    def _fetch_questions_with_keys(
-        self, client: Any, assignment_id: UUID
-    ) -> list[Any]:
+    # Max ids per PostgREST ``in.(...)`` filter, keeping request URLs well under proxy limits.
+    _IN_CHUNK = 100
+
+    def _fetch_questions_with_keys(self, client: Any, assignment_id: UUID) -> list[Any]:
         """Fetch questions in position order with teacher-only answer keys attached."""
-        q_resp = (
-            client.table("assignment_questions")
-            .select("id, assignment_id, position, question_type, question_text, marks, instructions, options")
-            .eq("assignment_id", str(assignment_id))
-            .order("position")
-            .execute()
-        )
-        q_rows = q_resp.data or []
-        if not q_rows:
-            return []
+        return self._questions_by_assignment(client, [assignment_id], with_keys=True)[assignment_id]
 
-        q_ids = [str(r["id"]) for r in q_rows]
-        ak_resp = (
-            client.table("question_answer_keys")
-            .select("question_id, correct_option_id, expected_answer")
-            .in_("question_id", q_ids)
-            .execute()
-        )
-        ak_map = {str(r["question_id"]): r for r in (ak_resp.data or [])}
-
-        questions: list[Any] = []
-        for r in q_rows:
-            qid = str(r["id"])
-            ak = ak_map.get(qid, {})
-            if r["question_type"] == "mcq":
-                raw_options = r.get("options") or []
-                options = [
-                    McqOption(id=opt["id"], text=opt["text"])
-                    for opt in raw_options
-                ]
-                questions.append(
-                    McqQuestion(
-                        type="mcq",
-                        text=r["question_text"],
-                        marks=Decimal(str(r["marks"])),
-                        options=options,
-                        correct_option_id=ak.get("correct_option_id") or (options[0].id if options else "A"),
-                    )
-                )
-            else:
-                questions.append(
-                    SubjectiveQuestion(
-                        type="subjective",
-                        text=r["question_text"],
-                        marks=Decimal(str(r["marks"])),
-                        instructions=r.get("instructions"),
-                        expected_answer=ak.get("expected_answer"),
-                    )
-                )
-        return questions
-
-    def _fetch_questions_student_safe(
-        self, client: Any, assignment_id: UUID
-    ) -> list[Any]:
+    def _fetch_questions_student_safe(self, client: Any, assignment_id: UUID) -> list[Any]:
         """Fetch questions in position order. Answer keys are strictly omitted from DB queries."""
-        q_resp = (
-            client.table("assignment_questions")
-            .select("id, assignment_id, position, question_type, question_text, marks, instructions, options")
-            .eq("assignment_id", str(assignment_id))
-            .order("position")
-            .execute()
-        )
-        q_rows = q_resp.data or []
-        questions: list[Any] = []
+        return self._questions_by_assignment(client, [assignment_id], with_keys=False)[assignment_id]
 
-        for r in q_rows:
-            if r["question_type"] == "mcq":
-                raw_options = r.get("options") or []
-                options = [
-                    McqOption(id=opt["id"], text=opt["text"])
-                    for opt in raw_options
-                ]
-                # Placeholder so McqQuestion model passes internal validation
-                # (student_view serializer strips this field before returning to client)
-                first_opt_id = options[0].id if options else "PROTECTED"
-                questions.append(
-                    McqQuestion(
-                        type="mcq",
-                        text=r["question_text"],
-                        marks=Decimal(str(r["marks"])),
-                        options=options,
-                        correct_option_id=first_opt_id,
-                    )
+    def _questions_by_assignment(
+        self, client: Any, assignment_ids: list[UUID], *, with_keys: bool
+    ) -> dict[UUID, list[Any]]:
+        """Questions for many assignments at once, in position order, keyed by assignment id.
+
+        One query for all questions (plus one for answer keys when ``with_keys``) instead of one or two
+        per assignment, which made listing N assignments cost 2N sequential round trips to Supabase.
+        Without ``with_keys`` the answer-key table is never queried (student-safe).
+        """
+        grouped: dict[UUID, list[Any]] = {aid: [] for aid in assignment_ids}
+        if not assignment_ids:
+            return grouped
+        q_rows: list[dict[str, Any]] = []
+        for chunk in _chunks([str(a) for a in assignment_ids], self._IN_CHUNK):
+            q_resp = (
+                client.table("assignment_questions")
+                .select("id, assignment_id, position, question_type, question_text, marks, instructions, options")
+                .in_("assignment_id", chunk)
+                .order("position")
+                .execute()
+            )
+            q_rows.extend(q_resp.data or [])
+
+        ak_map: dict[str, dict[str, Any]] = {}
+        if with_keys and q_rows:
+            for chunk in _chunks([str(r["id"]) for r in q_rows], self._IN_CHUNK):
+                ak_resp = (
+                    client.table("question_answer_keys")
+                    .select("question_id, correct_option_id, expected_answer")
+                    .in_("question_id", chunk)
+                    .execute()
                 )
-            else:
-                questions.append(
-                    SubjectiveQuestion(
-                        type="subjective",
-                        text=r["question_text"],
-                        marks=Decimal(str(r["marks"])),
-                        instructions=r.get("instructions"),
-                        expected_answer=None,  # Never populated for students
-                    )
-                )
-        return questions
+                ak_map.update({str(r["question_id"]): r for r in (ak_resp.data or [])})
+
+        for r in sorted(q_rows, key=lambda row: row.get("position") or 0):
+            question = _question_from_row(r, ak_map.get(str(r["id"]), {}), with_keys=with_keys)
+            grouped.setdefault(UUID(str(r["assignment_id"])), []).append(question)
+        return grouped
+
+
+def _chunks(items: list[str], size: int) -> list[list[str]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _question_from_row(r: dict[str, Any], ak: dict[str, Any], *, with_keys: bool) -> Any:
+    if r["question_type"] == "mcq":
+        options = [McqOption(id=opt["id"], text=opt["text"]) for opt in (r.get("options") or [])]
+        if with_keys:
+            correct = ak.get("correct_option_id") or (options[0].id if options else "A")
+        else:
+            # Placeholder so McqQuestion passes validation; the student serializer strips it.
+            correct = options[0].id if options else "PROTECTED"
+        return McqQuestion(
+            type="mcq",
+            text=r["question_text"],
+            marks=Decimal(str(r["marks"])),
+            options=options,
+            correct_option_id=correct,
+        )
+    return SubjectiveQuestion(
+        type="subjective",
+        text=r["question_text"],
+        marks=Decimal(str(r["marks"])),
+        instructions=r.get("instructions"),
+        expected_answer=ak.get("expected_answer") if with_keys else None,  # never populated for students
+    )

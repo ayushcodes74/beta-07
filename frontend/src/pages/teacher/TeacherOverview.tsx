@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity, ArrowRight, BookOpen, CheckCircle2, ChevronRight, FileText,
-  Plus, ShieldCheck, Sparkles, Users,
+  MessageSquareWarning, Plus, ScanText, ShieldAlert, ShieldCheck, Sparkles, Users,
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
@@ -11,7 +12,64 @@ import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import { formatDate } from "../../lib/utils";
+import { reviewService, type ReviewQueue } from "../../services/api";
 import type { Submission } from "../../types/models";
+
+/** Dashboard summary of the Review queue: one card per manual-review section. */
+function ReviewSummary() {
+  const navigate = useNavigate();
+  const [queue, setQueue] = useState<ReviewQueue | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    reviewService
+      .getQueue()
+      .then((result) => active && setQueue(result))
+      .catch(() => active && setFailed(true));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const sections = [
+    { tab: "ocr", label: "OCR review", hint: "OCR failed or low OCR confidence", icon: ScanText, count: queue?.ocr.length },
+    { tab: "trust", label: "Low trust score", hint: "AI grades that need a check", icon: ShieldAlert, count: queue?.low_trust.length },
+    { tab: "requests", label: "Student requests", hint: "Students asking for a re-check", icon: MessageSquareWarning, count: queue?.student_requests.length },
+  ];
+
+  return (
+    <Panel className="review-panel dashboard-review">
+      <div className="section-heading">
+        <div>
+          <h2>Needs your review</h2>
+          <p>{failed ? "The review queue could not be loaded." : "Submissions waiting for a manual decision"}</p>
+        </div>
+        <button className="text-button" onClick={() => navigate("/app/reviews")}>
+          Open queue
+          <ArrowRight size={13} />
+        </button>
+      </div>
+      <div className="review-summary" style={{ marginBottom: 0 }}>
+        {sections.map(({ tab, label, hint, icon: Icon, count }) => (
+          <button
+            key={tab}
+            type="button"
+            className={`review-summary-card${count ? " has-items" : ""}`}
+            onClick={() => navigate(`/app/reviews?tab=${tab}`)}
+          >
+            <span className="review-summary-icon"><Icon size={16} /></span>
+            <span className="review-summary-copy">
+              <small>{label}</small>
+              <strong>{count ?? (failed ? "—" : "…")}</strong>
+              <small style={{ fontWeight: 400 }}>{hint}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
 
 function TrendChart({ height = 190 }: { height?: number }) {
   const data = [
@@ -289,6 +347,8 @@ export function TeacherOverview() {
           <StatCard key={item.title} {...item} />
         ))}
       </div>
+
+      <ReviewSummary />
 
       <div className="dashboard-grid">
         <Panel className="grading-feature">

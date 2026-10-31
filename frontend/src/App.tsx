@@ -1,7 +1,7 @@
-import { AnimatePresence, motion } from "framer-motion";
 import {
-  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, FileText, GraduationCap,
-  LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, Sparkles, Upload, X,
+  Award, Bell, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, FileText, GraduationCap,
+  LayoutDashboard, LogOut, Menu, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
+  Sparkles, Upload, X,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -10,10 +10,11 @@ import { Avatar, ToastProvider, useToast } from "./components/ui";
 import type { Assignment, Course, Submission, User } from "./types/models";
 import { assignmentService, courseService, extractErrorMessage, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
+import { NamePrompt } from "./components/common/NamePrompt";
 import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
-  GradingReviewPage, LandingPage, LeaderboardPage, NotFoundPage, OCRReviewPage,
-  OverviewPage, ResultsPage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
+  GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, NotFoundPage, OCRReviewPage,
+  OverviewPage, ResultsPage, ReviewQueuePage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
   SubmissionsPage,
 } from "./pages";
 
@@ -53,13 +54,17 @@ function AppProvider({ children }: { children: ReactNode }) {
   const refreshSession = async (): Promise<string | null> => {
     setLoading(true);
     try {
-      const profile = await getProfile();
-      setUserState(profile);
-      const [courses, assignments, submissions] = await Promise.all([
+      // All four requests start together (the lists don't depend on the profile: the backend reads the
+      // user from the token), saving a full round trip before the workspace appears.
+      const workspace = Promise.all([
         courseService.getCourses(),
         assignmentService.getAssignments(),
         submissionService.getSubmissions(),
       ]);
+      workspace.catch(() => undefined); // handled below; avoids an unhandled rejection if the profile fails first
+      const profile = await getProfile();
+      setUserState(profile);
+      const [courses, assignments, submissions] = await workspace;
       setCourses(courses);
       setAssignments(assignments);
       setJoinedCourseIds(courses.map((course) => course.id));
@@ -133,9 +138,18 @@ const teacherNavigation = [
     ],
   },
   {
+    // Manual review: all three link to the Review queue page, one tab each.
+    title: "Review",
+    items: [
+      { label: "OCR review", to: "/app/reviews?tab=ocr", icon: ScanText },
+      { label: "Low trust score", to: "/app/reviews?tab=trust", icon: ShieldAlert },
+      { label: "Student requests", to: "/app/reviews?tab=requests", icon: MessageSquareWarning },
+      { label: "Late submissions", to: "/app/late-submissions", icon: Clock },
+    ],
+  },
+  {
     title: "Resources",
     items: [
-      { label: "OCR review", to: "/app/ocr/review", icon: Search },
       { label: "Results", to: "/app/results", icon: ClipboardCheck },
       { label: "Leaderboard", to: "/app/leaderboard", icon: Award },
     ],
@@ -156,8 +170,18 @@ const studentNavigation = [
   },
 ];
 
+/** Query-string links (Review queue tabs) match on path + tab; the first tab is the default. */
+function isNavItemActive(to: string, pathname: string, search: string) {
+  const [path, query] = to.split("?");
+  if (!query) return pathname === path || (path !== "/app" && pathname.startsWith(path));
+  if (pathname !== path) return false;
+  const tab = new URLSearchParams(query).get("tab");
+  const current = new URLSearchParams(search).get("tab") ?? "ocr";
+  return tab === current;
+}
+
 function ApplicationShell() {
-  const { user, setUser, loading, submissions } = useAppState();
+  const { user, setUser, loading, submissions, refreshSession } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -178,13 +202,16 @@ function ApplicationShell() {
 
   const isStudent = user.role === "student";
   const rawNavigation = isStudent ? studentNavigation : teacherNavigation;
-  // Dynamic submission count badge if real submissions exist
+  // Dynamic count badges: all submissions, and late submissions still awaiting a decision.
+  const pendingLate = submissions.filter((item) => item.late?.status === "pending").length;
+  const navCount = (label: string) => {
+    if (label === "Submissions" && submissions.length > 0) return String(submissions.length);
+    if (label === "Late submissions" && pendingLate > 0) return String(pendingLate);
+    return undefined;
+  };
   const navigation = rawNavigation.map((group) => ({
     ...group,
-    items: group.items.map((item) => ({
-      ...item,
-      count: item.label === "Submissions" && submissions.length > 0 ? String(submissions.length) : undefined,
-    })),
+    items: group.items.map((item) => ({ ...item, count: navCount(item.label) })),
   }));
 
   const pageName = location.pathname.endsWith("/app")
@@ -233,7 +260,7 @@ function ApplicationShell() {
             <div className="nav-group" key={group.title}>
               <div className="nav-label">{group.title}</div>
               {group.items.map(({ label, to, icon: Icon, count }) => {
-                const active = location.pathname === to || (to !== "/app" && location.pathname.startsWith(to));
+                const active = isNavItemActive(to, location.pathname, location.search);
                 return (
                   <Link
                     key={to}
@@ -332,18 +359,13 @@ function ApplicationShell() {
           </div>
         </header>
         <div className="route-stage">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.main
-              key={location.pathname}
-              className="page-content"
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -3 }}
-              transition={{ duration: 0.18 }}
-            >
+          {/* The new page renders immediately with a short CSS fade-in. (A framer-motion
+              AnimatePresence in "wait" mode held every navigation until the old page had faded out.) */}
+          <main key={location.pathname} className="page-content page-enter">
+            <Suspense fallback={<PageLoading />}>
               <Outlet />
-            </motion.main>
-          </AnimatePresence>
+            </Suspense>
+          </main>
         </div>
         <footer className="app-footnote">
           <ShieldCheck size={13} />
@@ -389,6 +411,10 @@ function AppRoutes() {
         <Route path="assignment/:assignmentId/edit" element={<AssignmentEditor courses={courseState} assignments={assignmentState} setAssignments={setAssignments} />} />
         <Route path="submissions" element={<SubmissionsPage submissions={submissionState} />} />
         <Route path="grading/:submissionId" element={<GradingReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
+        <Route path="reviews" element={<ReviewQueuePage />} />
+        <Route path="late-submissions" element={<LateSubmissionsPage />} />
+        {/* The old "OCR review" sidebar link pointed here; it is now a Review queue tab. */}
+        <Route path="ocr/review" element={<Navigate to="/app/reviews?tab=ocr" replace />} />
         <Route path="ocr/:submissionId" element={<OCRReviewPage submissions={submissionState} setSubmissions={setSubmissions} />} />
         <Route path="results" element={<ResultsPage submissions={submissionState} />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />

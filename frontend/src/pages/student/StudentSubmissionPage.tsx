@@ -5,7 +5,8 @@ import { useAppState } from "../../App";
 import { Button, ConfirmDialog, GlassPanel, Panel, StatusBadge, useToast } from "../../components/ui";
 import { extractErrorMessage, submissionService } from "../../services/api";
 import { formatDate } from "../../lib/utils";
-import { canReplaceSubmission, type Submission } from "../../types/models";
+import { canReplaceSubmission, describeLate, type Submission } from "../../types/models";
+import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 
 export function StudentSubmissionPage({
   submissions: studentRows,
@@ -22,6 +23,7 @@ export function StudentSubmissionPage({
   // Replacing is allowed until grading starts; the backend enforces the same rule.
   const replacing = Boolean(existing) && canReplaceSubmission(existing!);
   const locked = Boolean(existing) && !replacing;
+  const pastDue = assignment ? Date.parse(assignment.dueAt) < Date.now() : false;
   const [file, setFile] = useState<File | null>(null);
   const [drag, setDrag] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -113,12 +115,45 @@ export function StudentSubmissionPage({
             <ul>
               <li>Submit a single PDF containing all answer sheets and scratch work.</li>
               <li>Ensure handwriting, figures, and mathematical notations are clearly lit and legible.</li>
-              <li>Submissions are timestamped; a late-submission policy is not configured in the backend.</li>
+              <li>
+                Submissions are timestamped. Work handed in after the due date is marked late, and your teacher
+                decides whether to accept it, possibly with reduced marks.
+              </li>
             </ul>
             <div className="assignment-instruction-footer">
               <span>{assignment.totalMarks} marks total</span>
             </div>
           </Panel>
+
+          {existing?.late ? (
+            <div style={{ marginTop: "14px" }}>
+              <IntegrationNotice
+                tone={existing.late.status === "rejected" ? "warning" : "info"}
+                title={describeLate(existing.late)}
+                description={
+                  (existing.late.note ? `Teacher's note: “${existing.late.note}”. ` : "") +
+                  (existing.late.status === "pending"
+                    ? "Your teacher will review it and decide whether to accept it."
+                    : existing.late.status === "rejected"
+                    ? "This submission will not be graded."
+                    : existing.late.penaltyPercent
+                    ? "The deduction is applied to your final score when it is published."
+                    : "It will be graded like an on-time submission.")
+                }
+              />
+            </div>
+          ) : (
+            pastDue &&
+            !locked && (
+              <div style={{ marginTop: "14px" }}>
+                <IntegrationNotice
+                  tone="warning"
+                  title="The due date has passed"
+                  description="You can still submit, but it will be marked late. Your teacher decides whether to accept it and may reduce the marks."
+                />
+              </div>
+            )
+          )}
 
           <div className="section-heading" style={{ marginTop: "20px" }}>
             <div>
@@ -180,7 +215,9 @@ export function StudentSubmissionPage({
           <div className="submit-actions" style={{ marginTop: "16px" }}>
             <span style={{ fontSize: "10px", color: "#5C6E61", display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <ShieldCheck size={14} style={{ color: "#173D2B" }} />
-              {locked
+              {locked && existing?.late && existing.late.status !== "pending"
+                ? "Your teacher has already decided on this late submission, so it can no longer be replaced."
+                : locked
                 ? "Your submission is being reviewed, so it can no longer be replaced."
                 : replacing
                   ? "You can replace your submission until your teacher starts reviewing it."
@@ -237,6 +274,21 @@ export function StudentSubmissionPage({
                   <StatusBadge status={existing ? existing.state : "Not Started"} />
                 </dd>
               </div>
+              {existing?.late && (
+                <div>
+                  <dt>Handed in</dt>
+                  <dd>
+                    {formatDate(existing.submittedAt)} · late
+                    {existing.late.status === "accepted" && existing.late.penaltyPercent
+                      ? ` (−${existing.late.penaltyPercent}%)`
+                      : existing.late.status === "rejected"
+                      ? " (not accepted)"
+                      : existing.late.status === "pending"
+                      ? " (awaiting decision)"
+                      : ""}
+                  </dd>
+                </div>
+              )}
             </dl>
           </Panel>
         </aside>

@@ -104,6 +104,7 @@ def _engine_payload(request: AssignmentGenerationRequest) -> dict[str, Any]:
         "total_marks": float(request.total_marks),
         "teacher_instructions": "\n".join(notes) or None,
         "course_materials": (request.course_material or "").strip() or None,
+        "syllabus": (request.syllabus or "").strip() or None,
     }
 
 

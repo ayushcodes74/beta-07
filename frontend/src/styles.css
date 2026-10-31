@@ -204,6 +204,15 @@ a {
 
 .sidebar-nav {
   flex: 1;
+  /* Scroll the links when they don't fit, so Settings / profile / logout stay visible. */
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.sidebar-bottom {
+  flex-shrink: 0;
 }
 
 .nav-group {
@@ -2492,6 +2501,14 @@ h1 {
 .material-loading {
   color: #85877e;
   font-size: 8px;
+}
+
+.attachment-hint {
+  display: block;
+  margin: -2px 0 6px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
 }
 
 .material-notes {
@@ -8777,3 +8794,381 @@ h1 {
 .answer-check-question-text { color: #5C6E61; font-style: italic; }
 .answer-check-review { color: #8A5A00; }
 .answer-check-meta { margin-top: 10px; color: #5C6E61; font-size: 10px; }
+.answer-check-question > button { margin-top: 8px; }
+.answer-check-correction {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #F8F9F4;
+  border: 1px dashed #A8C98A;
+  display: grid;
+  gap: 8px;
+}
+.answer-check-correction label { font-size: 11px; font-weight: 700; }
+.answer-check-correction input { width: 64px; margin: 0 4px; }
+.answer-check-correction textarea { min-height: 70px; }
+.answer-check-correction-actions { display: flex; gap: 8px; }
+
+/* Review queue (ReviewQueuePage) */
+.review-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.review-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #E7EBE3;
+  border-radius: 12px;
+  background: #FFFFFF;
+  color: #202820;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.review-summary-card:hover { border-color: #A8C98A; }
+.review-summary-card.active {
+  border-color: #173D2B;
+  box-shadow: 0 0 0 1px #173D2B inset, 0 6px 18px rgba(16, 42, 32, .06);
+}
+.review-summary-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  color: #5C6E61;
+  background: #F1F4EC;
+}
+.review-summary-card.has-items .review-summary-icon { color: #8A5A00; background: #FBF1DC; }
+.review-summary-copy { display: grid; gap: 2px; }
+.review-summary-copy small { color: #5C6E61; font-size: 10px; font-weight: 600; }
+.review-summary-copy strong { font-size: 20px; line-height: 1.1; }
+.review-note {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid #F0DDB4;
+  border-radius: 8px;
+  background: #FFF9EC;
+  color: #7A5300;
+  font-size: 10px;
+}
+.review-panel { padding: 18px 20px; }
+.review-empty { padding: 2.25rem 0; text-align: center; color: #5C6E61; }
+.review-list { display: grid; gap: 10px; margin-top: 6px; }
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid #E7EBE3;
+  border-left: 4px solid #C9CFC4;
+  border-radius: 10px;
+  background: #FFFFFF;
+  font-size: 11px;
+  color: #202820;
+}
+.review-row-ocr { border-left-color: #C08A1E; }
+.review-row-low_trust { border-left-color: #B23B3B; }
+.review-row-student_request { border-left-color: #2D6346; }
+.review-row-main { flex: 1; min-width: 0; }
+.review-row-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.review-row-title strong { font-size: 12px; }
+.review-row-title span { color: #5C6E61; }
+.review-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.review-row-date { color: #7A8C7F; font-size: 10px; }
+.review-reasons { margin: 8px 0 0; padding-left: 16px; color: #3C4A40; line-height: 1.5; }
+.review-reason {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid #A8C98A;
+  border-radius: 0 8px 8px 0;
+  background: #F8F9F4;
+  color: #202820;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.review-reply { display: grid; gap: 6px; margin-top: 10px; }
+.review-reply label { color: #5C6E61; font-size: 10px; font-weight: 600; }
+.review-reply-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-row-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.spin { animation: spin .75s linear infinite; }
+@media (max-width: 760px) {
+  .review-summary { grid-template-columns: 1fr; }
+  .review-row { flex-direction: column; }
+  .review-row-actions { flex-direction: row; align-items: center; }
+}
+
+/* Per-question marks and reasons (ResultsPage) */
+.result-questions { margin-top: 14px; display: grid; gap: 8px; font-size: 11px; }
+.result-questions-title { font-size: 12px; color: #173D2B; }
+.result-question-good { color: #2F7A4F; }
+.result-question-improve { color: #8A5A00; }
+.result-questions-note { margin: 0; color: #5C6E61; font-size: 10px; }
+.answer-check-unmarked { border-left-color: #C9CFC4; }
+.result-question-solution { margin-top: 6px; }
+.result-question-solution summary { cursor: pointer; font-weight: 700; color: #173D2B; font-size: 10px; }
+.result-question-solution p {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: #F2F8EA;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+.publish-solutions-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: #173D2B; }
+.result-question-recheck {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #173D2B;
+  font-size: 10px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Student review request (ResultsPage) */
+.result-review { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #E7EBE3; font-size: 11px; }
+.result-review-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #5C6E61; }
+.result-review-response {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #F8F9F4;
+  border: 1px solid #E7EBE3;
+  color: #202820;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.result-review-form { display: grid; gap: 6px; margin-top: 8px; }
+.result-review-form label { color: #5C6E61; font-size: 10px; font-weight: 600; }
+.result-review-actions { display: flex; gap: 6px; align-items: center; }
+.result-review-hint { color: #7A8C7F; font-size: 10px; }
+.dashboard-review { margin-bottom: 14px; }
+
+/* Belated (late) submissions */
+.late-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.late-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 11px;
+}
+
+.late-card-main {
+  min-width: 170px;
+  flex: 1;
+}
+
+.late-card-main strong,
+.late-card-main small {
+  display: block;
+}
+
+.late-card-main small,
+.late-card-times {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.late-card-times {
+  display: grid;
+  gap: 3px;
+}
+
+.late-card-times span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.late-card-decision {
+  display: grid;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.late-custom-penalty {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  color: var(--muted);
+}
+
+.late-custom-penalty .field-input {
+  width: 80px;
+}
+
+.late-preview {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.late-decision-note {
+  min-height: 110px;
+}
+
+.late-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.late-card-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.late-card-summary p,
+.late-card-locked {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+}
+
+.late-card-locked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.late-card-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.late-banner {
+  margin-bottom: 12px;
+}
+
+
+/* Within-submission handwriting check (teacher-only, GradingReviewPage integrity review) */
+.handwriting-check { margin: 10px 0; font-size: 11px; color: #3C4A40; }
+.handwriting-check-flagged {
+  padding: 12px;
+  border: 1px solid #E8C77A;
+  border-left: 4px solid #C08A1E;
+  border-radius: 10px;
+  background: #FFF9EC;
+}
+.handwriting-check h4 { margin: 0 0 8px; font-size: 12px; color: #8A5A00; }
+.handwriting-flag { margin-top: 8px; }
+.handwriting-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.handwriting-samples { display: grid; gap: 6px; align-content: start; }
+.handwriting-samples figure { margin: 0; padding: 6px; background: #FFFFFF; border: 1px solid #E7EBE3; border-radius: 8px; }
+.handwriting-samples img { display: block; max-width: 100%; height: 40px; object-fit: contain; object-position: left; }
+.handwriting-samples figcaption { margin-top: 4px; font-size: 10px; color: #5C6E61; }
+.handwriting-note { margin-top: 8px; font-size: 10px; color: #5C6E61; }
+
+/* Leaderboard (LeaderboardPage) */
+.leaderboard-courses { flex-wrap: wrap; }
+.leaderboard-loading { color: #5C6E61; font-size: 11px; }
+.leaderboard-empty { padding: 3rem; text-align: center; color: #5C6E61; }
+.leaderboard-empty svg { margin: 0 auto 12px; color: #173D2B; opacity: .8; }
+.leaderboard-empty p { margin-top: 8px; font-size: 11px; }
+.leaderboard-you-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(168, 201, 138, .6);
+  background: rgba(200, 241, 105, .12);
+}
+.leaderboard-you-card > div { display: grid; gap: 2px; }
+.leaderboard-you-card small { color: #5C6E61; font-size: 10px; font-weight: 600; }
+.leaderboard-you-card strong { color: #173D2B; font-size: 22px; line-height: 1.1; }
+.leaderboard-you-card span { color: #7A8C7F; font-size: 10px; }
+.leaderboard-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.podium-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px 14px 14px;
+  text-align: center;
+  font-size: 11px;
+}
+.podium-card strong { font-size: 12px; color: #202820; }
+.podium-1 { border-color: #C8F169; box-shadow: 0 8px 22px rgba(16, 42, 32, .08); }
+.podium-card.is-you { outline: 2px solid #A8C98A; outline-offset: -2px; }
+.podium-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: #8A5A00;
+  background: #FBF1DC;
+}
+.podium-1 .podium-icon { color: #173D2B; background: rgba(200, 241, 105, .45); }
+.podium-score { color: #173D2B; font-size: 18px; font-weight: 700; }
+.podium-score small { color: #7A8C7F; font-size: 10px; font-weight: 500; }
+.leaderboard-panel { padding: 18px 20px; }
+.leaderboard-rank { font-weight: 700; color: #173D2B; }
+.leaderboard-you td { background: rgba(200, 241, 105, .14); }
+.leaderboard-bar {
+  display: inline-block;
+  width: 90px;
+  height: 6px;
+  margin-right: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #E7EBE3;
+  vertical-align: middle;
+}
+.leaderboard-bar span { display: block; height: 100%; border-radius: 3px; background: #173D2B; }
+.leaderboard-pct { color: #5C6E61; font-size: 10px; }
+.leaderboard-footnote { margin: 12px 0 0; color: #7A8C7F; font-size: 10px; }
+@media (max-width: 760px) {
+  .leaderboard-you-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .leaderboard-podium { grid-template-columns: 1fr; }
+}
+
+/* "Add your name" prompt (App shell) */
+.name-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid #E8C77A;
+  border-radius: 12px;
+  background: #FFF9EC;
+  font-size: 12px;
+  color: #3C4A40;
+}
+.name-prompt label { flex: 1 1 260px; }
+.name-prompt input {
+  flex: 0 1 220px;
+  padding: 6px 10px;
+  border: 1px solid #D5DBD0;
+  border-radius: 8px;
+  font: inherit;
+}
+.name-prompt-error { flex-basis: 100%; color: #9B2C2C; font-weight: 600; }

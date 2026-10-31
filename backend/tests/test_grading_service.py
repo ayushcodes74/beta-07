@@ -14,6 +14,7 @@ import pytest
 
 from app.database.grading_repository import GradingResultRecord, GradingStatus
 from app.schemas.assignment import AssignmentContent, AssignmentStatus
+from app.schemas.grading import GradingCorrectionIn
 from app.schemas.ocr import JobStatusResponse, OCRDocumentResult
 from app.schemas.user import Role
 from app.services.ai_generation_service import AIRateLimitedError
@@ -37,6 +38,9 @@ class Repo:
 class AssignmentRepo(Repo):
     def is_owned_by(self, assignment_id, teacher_id, *, access_token):
         return self.record.id == assignment_id and self.record.teacher_id == teacher_id
+
+    def list_ids_by_teacher(self, teacher_id, *, access_token):
+        return [self.record.id] if self.record.teacher_id == teacher_id else []
 
 
 class FakeOCR:
@@ -318,6 +322,38 @@ def test_publish_rejects_score_above_total_and_other_teachers():
     assert repo.row is None and service.submissions.statuses == []
 
 
+def _late_publish_service(repo, late_status, penalty=None):
+    service, submission, assignment = _publish_service(repo)
+    late = submission.model_copy(update={"late_status": late_status, "late_penalty_percent": penalty})
+    service.submissions = StatusRepo(late)
+    return service, late
+
+
+@pytest.mark.parametrize(
+    ("late_status", "code"), [("pending", "late_decision_required"), ("rejected", "late_submission_rejected")]
+)
+def test_publish_blocked_for_undecided_or_rejected_late_work(late_status, code):
+    repo = StatefulGradingRepo()
+    service, submission = _late_publish_service(repo, late_status)
+    with pytest.raises(SubmissionValidationError) as caught:
+        run(service.publish_grade(TEACHER, submission.id, 4, "", access_token="t"))
+    assert caught.value.code == code
+    assert repo.row is None and service.submissions.statuses == []
+
+
+def test_publish_applies_late_penalty_and_republish_without_penalty_clears_it():
+    repo = StatefulGradingRepo()
+    service, submission = _late_publish_service(repo, "accepted", penalty=50.0)
+    result = run(service.publish_grade(TEACHER, submission.id, 4, "Late, half marks", access_token="t"))
+    assert result.final_score == 2.0
+    assert result.late_penalty_percent == 50.0 and result.score_before_late_penalty == 4.0
+
+    service.submissions = StatusRepo(submission.model_copy(update={"late_penalty_percent": 0.0}))
+    result = run(service.publish_grade(TEACHER, submission.id, 4, "", access_token="t"))
+    assert result.final_score == 4.0 and result.late_penalty_percent is None
+    assert "late_penalty_percent" not in repo.row.flags
+
+
 def test_student_sees_only_own_published_grade():
     repo = StatefulGradingRepo()
     service, submission, _ = _publish_service(repo)
@@ -334,3 +370,215 @@ def test_student_sees_only_own_published_grade():
     with pytest.raises(SubmissionNotFoundError):
         run(service.get_published_grade(stranger, submission.id, access_token="t"))
     assert run(service.get_published_grade(TEACHER, submission.id, access_token="t")).final_score == 4.0
+
+
+# --------------------------------------------------------------------------- teacher corrections
+
+
+class MultiGradingRepo:
+    """grading_results keyed by submission, with list_by_assignment returning every row."""
+
+    def __init__(self):
+        self.rows: dict = {}
+
+    def get_by_submission_id(self, submission_id, *, access_token):
+        return self.rows.get(submission_id)
+
+    def list_by_assignment(self, assignment_id, *, access_token):
+        return list(self.rows.values())
+
+    def insert(self, data, *, access_token):
+        self.rows[data.submission_id] = GradingResultRecord(
+            submission_id=data.submission_id, ai_score=data.ai_score, final_score=data.ai_score,
+            ai_feedback=data.ai_feedback, final_feedback=data.ai_feedback, evidence=data.evidence,
+            flags=data.flags, confidence=data.confidence, status=data.status,
+        )
+        return self.rows[data.submission_id]
+
+    def update_flags(self, submission_id, flags, *, access_token):
+        self.rows[submission_id] = self.rows[submission_id].model_copy(update={"flags": flags})
+        return self.rows[submission_id]
+
+
+def _correction(number=2, marks=1.0, note="Lowercase 'nand' is the NAND gate; accept it."):
+    return GradingCorrectionIn(question_number=number, teacher_marks=marks, note=note)
+
+
+def test_correction_is_stored_and_followed_by_later_checks():
+    captured: list = []
+    repo = MultiGradingRepo()
+    service, submission, _ = _service(grading_repo=repo, captured=captured)
+
+    first = run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    assert "teacher_corrections" not in captured[0]["questions"][1]
+    assert first.questions[1].teacher_corrections_used == 0
+
+    saved = run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+    assert saved[0].ai_marks == 0.0 and saved[0].ai_explanation == "Answer not found."
+    assert saved[0].question_text == "Universal gate?" and saved[0].teacher_id == TEACHER.id
+
+    # Another student's submission of the same assignment is checked: the correction goes to the AI.
+    other = submission.model_copy(update={"id": uuid4()})
+    service.submissions = Repo(other)
+    second = run(service.grade_submission(TEACHER, other.id, access_token="t"))
+    sent_q2 = captured[1]["questions"][1]["teacher_corrections"]
+    assert sent_q2 == [{
+        "ai_marks": 0.0, "ai_explanation": "Answer not found.", "teacher_marks": 1.0, "max_marks": 1.0,
+        "note": "Lowercase 'nand' is the NAND gate; accept it.",
+    }]
+    assert "teacher_corrections" not in captured[1]["questions"][0]
+    assert second.questions[1].teacher_corrections_used == 1
+
+
+def test_recheck_keeps_corrections_and_saved_check_returns_them():
+    repo = MultiGradingRepo()
+    service, submission, _ = _service(grading_repo=repo)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))  # re-check overwrites the suggestion
+    loaded = run(service.get_saved_suggestion(TEACHER, submission.id, access_token="t"))
+    assert [c.note for c in loaded.teacher_corrections] == ["Lowercase 'nand' is the NAND gate; accept it."]
+
+    run(service.save_corrections(TEACHER, submission.id, [], access_token="t"))  # empty list removes them
+    assert run(service.get_saved_suggestion(TEACHER, submission.id, access_token="t")).teacher_corrections == []
+
+
+def test_correction_for_an_edited_question_is_not_applied():
+    captured: list = []
+    repo = MultiGradingRepo()
+    service, submission, _ = _service(grading_repo=repo, captured=captured)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+    row = repo.rows[submission.id]
+    stale = [dict(c, question_text="An older wording of Q2") for c in row.flags["teacher_corrections"]]
+    repo.rows[submission.id] = row.model_copy(update={"flags": {**row.flags, "teacher_corrections": stale}})
+
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    assert "teacher_corrections" not in captured[-1]["questions"][1]
+
+
+def test_correction_validation():
+    repo = MultiGradingRepo()
+    service, submission, _ = _service(grading_repo=repo)
+    with pytest.raises(SubmissionValidationError) as no_check:
+        run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+    assert no_check.value.code == "no_answer_check"
+
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    for bad in ([_correction(number=3)], [_correction(marks=1.5)], [_correction(), _correction()]):
+        with pytest.raises(SubmissionValidationError):
+            run(service.save_corrections(TEACHER, submission.id, bad, access_token="t"))
+    with pytest.raises(AssignmentNotFoundError):
+        run(service.save_corrections(OTHER_TEACHER, submission.id, [_correction()], access_token="t"))
+    assert "teacher_corrections" not in repo.rows[submission.id].flags
+
+
+# --------------------------------------------------------------------------- student breakdown
+
+
+class BreakdownRepo(StatefulGradingRepo):
+    def list_by_assignment(self, assignment_id, *, access_token):
+        return [self.row] if self.row else []
+
+    def update_flags(self, submission_id, flags, *, access_token):
+        self.row = self.row.model_copy(update={"flags": flags})
+        return self.row
+
+
+def test_student_sees_why_each_question_got_its_mark():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+    run(service.publish_grade(TEACHER, submission.id, 5, "Well done", access_token="t"))
+
+    seen = run(service.get_published_grade(student, submission.id, access_token="t"))
+    q1, q2 = seen.questions
+    assert (q1.number, q1.awarded_marks, q1.max_marks) == (1, 4.0, 4.0)
+    assert q1.explanation == "Correct binary." and q1.strengths == ["Accurate"] and q1.teacher_comment is None
+    # The teacher changed Q2: the student sees the teacher's mark and note, not the AI's "not found".
+    assert (q2.awarded_marks, q2.explanation) == (1.0, "")
+    assert q2.teacher_comment == "Lowercase 'nand' is the NAND gate; accept it."
+    # Answer-key-derived details never reach the student.
+    dumped = seen.model_dump()
+    assert "missing_concepts" not in str(dumped) and "matched_concepts" not in str(dumped)
+
+
+def test_teacher_only_grade_lists_solutions_without_marks():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    result = run(service.publish_grade(TEACHER, submission.id, 3, "", access_token="t"))
+    assert [(q.number, q.awarded_marks) for q in result.questions] == [(1, None), (2, None)]
+    assert [q.expected_solution for q in result.questions] == ["(110101.101)2", "B) NAND"]
+
+    hidden = run(service.publish_grade(TEACHER, submission.id, 3, "", access_token="t", show_solutions=False))
+    assert hidden.questions == []
+
+
+def _past_release(repo):
+    flags = dict(repo.row.flags)
+    flags["solutions_visible_from"] = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    repo.row = repo.row.model_copy(update={"flags": flags})
+
+
+def test_expected_solutions_reach_students_only_after_the_due_date():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.publish_grade(TEACHER, submission.id, 4, "", access_token="t"))
+
+    # Due date is 3 days away: the student sees marks and reasons, but not the solutions yet.
+    early = run(service.get_published_grade(student, submission.id, access_token="t"))
+    assert [q.expected_solution for q in early.questions] == [None, None]
+    assert early.questions[0].explanation == "Correct binary."
+    assert early.solutions_available_at is not None and early.solutions_available_at > datetime.now(UTC)
+    # The teacher always sees what will be released.
+    teacher_view = run(service.get_published_grade(TEACHER, submission.id, access_token="t"))
+    assert teacher_view.questions[1].expected_solution == "B) NAND" and teacher_view.solutions_available_at is None
+
+    _past_release(repo)
+    later = run(service.get_published_grade(student, submission.id, access_token="t"))
+    assert [q.expected_solution for q in later.questions] == ["(110101.101)2", "B) NAND"]
+    assert later.solutions_available_at is None
+
+
+def test_teacher_can_withhold_expected_solutions():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.publish_grade(TEACHER, submission.id, 4, "", access_token="t", show_solutions=False))
+    _past_release(repo)  # even past the due date
+    seen = run(service.get_published_grade(student, submission.id, access_token="t"))
+    assert [q.expected_solution for q in seen.questions] == [None, None]
+    assert seen.questions[0].explanation == "Correct binary."
+
+
+def test_list_published_grades_in_one_call():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.publish_grade(TEACHER, submission.id, 4, "ok", access_token="t"))
+    published = submission.model_copy(update={"status": "published"})
+    pending = submission.model_copy(update={"id": uuid4(), "status": "ocr_completed"})
+
+    class Listing(StatusRepo):
+        def list_by_student(self, student_id, *, access_token):
+            return [published, pending]
+
+        def list_by_assignment(self, assignment_id, *, access_token):
+            return [published, pending]
+
+    service.submissions = Listing(published)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    mine = run(service.list_published_grades(student, access_token="t"))
+    assert [g.submission_id for g in mine] == [submission.id]
+    assert mine[0].final_score == 4.0
+    assert mine[0].solutions_available_at is not None  # students: solutions still withheld before due date
+    teacher_view = run(service.list_published_grades(TEACHER, access_token="t"))
+    assert [g.submission_id for g in teacher_view] == [submission.id]
+    assert teacher_view[0].questions[0].expected_solution == "(110101.101)2"
+    assert run(service.list_published_grades(OTHER_TEACHER, access_token="t")) == []

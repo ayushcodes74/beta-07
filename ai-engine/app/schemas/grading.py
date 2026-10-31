@@ -66,6 +66,10 @@ class GradingRequest(BaseSchema):
         default=None,
         description="Optional additional course or question context.",
     )
+    teacher_corrections: List[str] = Field(
+        default_factory=list,
+        description="Teacher corrections of earlier AI grading of this question; the grader must follow them.",
+    )
 
 
 class CriterionEvaluation(BaseSchema):

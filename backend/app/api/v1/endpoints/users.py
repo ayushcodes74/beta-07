@@ -47,7 +47,7 @@ def read_my_profile(
     user: Annotated[CurrentUser, Depends(require_authenticated_user)],
 ) -> UserProfileResponse:
     # The profile (and role) was already loaded while authenticating the caller.
-    return UserProfileResponse(id=user.id, email=user.email, role=user.role)
+    return UserProfileResponse(id=user.id, email=user.email, role=user.role, display_name=user.display_name)
 
 
 @router.patch(
@@ -80,4 +80,6 @@ def update_my_profile(
         ) from None
     except (ProfileNotFoundError, DisabledAccountError, InvalidRoleError, ProfileRepositoryError) as exc:
         raise profile_error_to_http(exc) from None
-    return UserProfileResponse(id=profile.user_id, email=user.email, role=profile.role)
+    return UserProfileResponse(
+        id=profile.user_id, email=user.email, role=profile.role, display_name=profile.display_name
+    )

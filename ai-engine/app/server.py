@@ -29,7 +29,7 @@ from app.rag.embeddings import EmbeddingsUnavailableError
 from app.schemas.common import SourceReference
 from app.grading.feedback_generator import FeedbackGenerator
 from app.schemas.assignment import QuestionType, Rubric, RubricCriterion
-from app.schemas.grading import GradingRequest, GradingResult
+from app.schemas.grading import GradingRequest, GradingResult, GradingStatus
 from app.llm.fallback_client import get_llm_client
 from app.llm.gemini_client import (
     LLMAPIError,
@@ -60,6 +60,25 @@ class GenerateAssignmentRequest(AssignmentGenerationRequest):
     )
 
 
+class TeacherCorrectionInput(BaseModel):
+    """A teacher's correction of earlier AI grading of this same question (on another submission)."""
+
+    ai_marks: Optional[float] = Field(default=None, ge=0)
+    ai_explanation: Optional[str] = Field(default=None, max_length=2000)
+    teacher_marks: float = Field(ge=0)
+    max_marks: float = Field(gt=0)
+    note: str = Field(min_length=1, max_length=2000, description="Why the AI's grading was wrong")
+
+
+def _format_correction(c: TeacherCorrectionInput) -> str:
+    ai = f"The AI awarded {c.ai_marks:g}/{c.max_marks:g}" if c.ai_marks is not None else "The AI graded it"
+    reasoning = f" (AI reasoning: {c.ai_explanation.strip()[:500]})" if c.ai_explanation and c.ai_explanation.strip() else ""
+    return (
+        f"{ai}{reasoning}. The teacher corrected it to {c.teacher_marks:g}/{c.max_marks:g}. "
+        f"Teacher's explanation of the mistake: {c.note.strip()}"
+    )
+
+
 class GradeQuestionInput(BaseModel):
     """One assignment question with the teacher's answer key (sent by the backend, never by students)."""
 
@@ -71,6 +90,7 @@ class GradeQuestionInput(BaseModel):
     instructions: Optional[str] = Field(default=None, max_length=5000)
     options: List[dict] = Field(default_factory=list, max_length=20)
     correct_option_id: Optional[str] = Field(default=None, max_length=20)
+    teacher_corrections: List[TeacherCorrectionInput] = Field(default_factory=list, max_length=10)
 
 
 class GradeSubmissionRequest(BaseModel):
@@ -93,6 +113,47 @@ _LOCATE_ANSWER_HINT = (
     "answers this question, award 0 marks and say the answer was not found. Do not penalize obvious OCR "
     "misspellings of otherwise correct terms."
 )
+
+
+# Used when the transcript could be split by question number: the grader sees only this answer.
+_SEGMENTED_ANSWER_HINT = (
+    "The student answer is the OCR text the student wrote under question {number} (located by its question "
+    "number; it may start with the copied question and contain OCR spelling errors). Grade only this text. "
+    "Do not penalize obvious OCR misspellings of otherwise correct terms."
+)
+
+# "1.", "2)", "3:" at the start of a line, but not a decimal like "1.25" or "16.46".
+_BARE_NUMBER_MARKER = re.compile(r"^\s*(\d{1,2})\s*[.):](?!\d)")
+# "Q1", "Q.2", "Q 3", "Question 4", "Q. No. 5"
+_PREFIXED_MARKER = re.compile(r"^\s*q(?:uestion)?\s*\.?\s*(?:no\.?\s*)?(\d{1,2})\b", re.I)
+_PAGE_HEADER = re.compile(r"^\s*\[Page \d+\]\s*$")
+
+
+def _segment_answers(text: str, question_count: int) -> Optional[Dict[int, str]]:
+    """Split an OCR transcript into answers by the question numbers the student wrote.
+
+    Markers must be increasing and within 1..question_count. Returns {question number: text} for the
+    numbers found, or None when numbering is not reliable (fewer than 2 markers on a multi-question
+    paper), in which case callers grade against the whole transcript.
+    """
+    lines = [line for line in (text or "").splitlines() if not _PAGE_HEADER.match(line)]
+    markers: List[Tuple[int, int]] = []  # (line index, question number)
+    last = 0
+    for index, line in enumerate(lines):
+        match = _PREFIXED_MARKER.match(line) or _BARE_NUMBER_MARKER.match(line)
+        if not match:
+            continue
+        number = int(match.group(1))
+        if last < number <= question_count:
+            markers.append((index, number))
+            last = number
+    if len(markers) < min(2, question_count):
+        return None
+    segments: Dict[int, str] = {}
+    for position, (start, number) in enumerate(markers):
+        end = markers[position + 1][0] if position + 1 < len(markers) else len(lines)
+        segments[number] = "\n".join(lines[start:end]).strip()
+    return segments
 
 
 _PER_POINT_HINT = (
@@ -256,7 +317,14 @@ def _cap_to_question_marks(
     )
 
 
-def _to_grading_request(body: GradeSubmissionRequest, question: GradeQuestionInput, number: int) -> GradingRequest:
+def _to_grading_request(
+    body: GradeSubmissionRequest,
+    question: GradeQuestionInput,
+    number: int,
+    answer_text: Optional[str] = None,
+) -> GradingRequest:
+    """``answer_text``: this question's own answer when the transcript was split by question number
+    ("" = no answer found); None = grade against the whole transcript."""
     question_text = question.text
     expected = question.expected_answer
     if question.type == "mcq":
@@ -268,7 +336,8 @@ def _to_grading_request(body: GradeSubmissionRequest, question: GradeQuestionInp
         if question.correct_option_id:
             expected = f"Correct option: {question.correct_option_id}" + (f") {correct.get('text')}" if correct else "")
     settings = get_settings()
-    instructions = _LOCATE_ANSWER_HINT.format(number=number)
+    hint = _SEGMENTED_ANSWER_HINT if answer_text is not None else _LOCATE_ANSWER_HINT
+    instructions = hint.format(number=number)
     if settings.grading_leniency == "lenient":
         instructions += "\n" + _lenient_hint(settings.grading_partial_credit)
     rubric = _rubric_from_mark_scheme(expected, question.marks) if expected else None
@@ -285,11 +354,12 @@ def _to_grading_request(body: GradeSubmissionRequest, question: GradeQuestionInp
         question_text=question_text,
         # Over-allocated mark schemes are graded on their own total, then capped (see _cap_to_question_marks).
         question_max_marks=rubric.total_marks if rubric is not None else question.marks,
-        student_answer=body.student_text,
+        student_answer=body.student_text if answer_text is None else answer_text,
         expected_answer=expected,
         instructions=instructions,
         question_type=QuestionType.SUBJECTIVE,
         ocr_confidence=body.ocr_confidence,
+        teacher_corrections=[_format_correction(c) for c in question.teacher_corrections],
     )
 
 
@@ -378,6 +448,28 @@ def _retrieve_evidence(body: GradeSubmissionRequest):
     if reason:
         summary["reason"] = reason
     return evidence, info, summary
+
+
+def _flag_unlocated_answers(result: GradingResult, body: GradeSubmissionRequest, segments: Dict[int, str]) -> None:
+    """Questions whose number never appears in the transcript were graded as blank; ask for a check in
+    case the student answered without numbering it."""
+    missing = {q.question_id: n for n, q in enumerate(body.questions, start=1) if n not in segments}
+    if not missing:
+        return
+    for grade in result.question_results:
+        number = missing.get(grade.question_id)
+        if number is None:
+            continue
+        reason = (
+            f"No answer was found under question {number}'s number in the transcript, so it was graded as "
+            "unanswered. Check the script in case it was answered without its number."
+        )
+        object.__setattr__(grade, "review_required", True)
+        object.__setattr__(grade, "review_reasons", [*grade.review_reasons, reason])
+        object.__setattr__(result, "review_required", True)
+        object.__setattr__(result, "review_reasons", [*result.review_reasons, f"Q[{grade.question_id}]: {reason}"])
+    if result.grading_status == GradingStatus.COMPLETED:
+        object.__setattr__(result, "grading_status", GradingStatus.NEEDS_REVIEW)
 
 
 def _attach_evidence(result: GradingResult, info, summary: Dict[str, Any]) -> None:
@@ -537,13 +629,19 @@ def grade_submission(body: GradeSubmissionRequest) -> GradingResult:
 
     The result is a suggestion for teacher review, never a final grade.
     """
-    requests = [_to_grading_request(body, q, i) for i, q in enumerate(body.questions, start=1)]
+    segments = _segment_answers(body.student_text, len(body.questions))
+    requests = [
+        _to_grading_request(body, q, i, None if segments is None else segments.get(i, ""))
+        for i, q in enumerate(body.questions, start=1)
+    ]
     evidence, evidence_info, rag_summary = _retrieve_evidence(body)
     try:
         result = get_evaluator().grade_submission(
             body.submission_id, body.assignment_id, requests, evidence=evidence
         )
         _attach_evidence(result, evidence_info, rag_summary)
+        if segments is not None:
+            _flag_unlocated_answers(result, body, segments)
         settings = get_settings()
         partial_credit = settings.grading_partial_credit if settings.grading_leniency == "lenient" else 0.0
         return _cap_to_question_marks(result, {q.question_id: q.marks for q in body.questions}, partial_credit)

@@ -30,6 +30,7 @@ class ProfileRecord:
     user_id: UUID
     role: str
     is_disabled: bool
+    display_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class UserProfile:
 
     user_id: UUID
     role: Role
+    display_name: str | None = None
 
 
 class ProfileRepositoryError(Exception):
@@ -118,6 +120,7 @@ class SupabaseProfileRepository:
                 user_id=UUID(str(data["id"])),
                 role=str(data["role"]),
                 is_disabled=is_disabled,
+                display_name=(data.get("display_name") or None),
             )
         except ProfileRepositoryError:
             raise
@@ -132,7 +135,7 @@ class SupabaseProfileRepository:
 
             response = (
                 client.table("profiles")
-                .select("id, role, is_disabled")
+                .select("id, role, is_disabled, display_name")
                 .eq("id", str(user_id))
                 .execute()
             )
@@ -159,7 +162,7 @@ class SupabaseProfileRepository:
                 client.table("profiles")
                 .update(dict(changes))
                 .eq("id", str(user_id))
-                .select("id, role, is_disabled")
+                .select("id, role, is_disabled, display_name")
                 .execute()
             )
 
@@ -209,4 +212,4 @@ class UserService:
         except ValueError:
             logger.warning("User %s has an unrecognised role in their profile", user_id)
             raise InvalidRoleError from None
-        return UserProfile(user_id=record.user_id, role=role)
+        return UserProfile(user_id=record.user_id, role=role, display_name=record.display_name)

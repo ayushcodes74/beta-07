@@ -5,6 +5,7 @@ import { useAppState } from "../../App";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import {
   MAX_COURSE_MATERIAL_CHARS,
+  MAX_SYLLABUS_CHARS,
   aiAssignmentService,
   assignmentService,
   extractErrorMessage,
@@ -119,10 +120,168 @@ const MAX_MATERIAL_FILE_BYTES = 25 * 1024 * 1024;
 type AttachedMaterial = ExtractedCourseMaterial & { id: string };
 
 /** Combine attached files and pasted notes into the single text block sent to the AI. */
-function combineCourseMaterial(materials: AttachedMaterial[], pastedNotes: string): string {
+function combineAttachments(materials: AttachedMaterial[], pastedNotes: string, notesHeading: string): string {
   const parts = materials.map((m) => `### Source: ${m.filename}\n${m.text}`);
-  if (pastedNotes.trim()) parts.push(`### Teacher notes\n${pastedNotes.trim()}`);
+  if (pastedNotes.trim()) parts.push(`### ${notesHeading}\n${pastedNotes.trim()}`);
   return parts.join("\n\n");
+}
+
+/** Files + pasted text for one AI input (course material, or syllabus / rulebook). Nothing is stored. */
+function useAttachments(maxChars: number, notesHeading: string) {
+  const toast = useToast();
+  const [materials, setMaterials] = useState<AttachedMaterial[]>([]);
+  const [notes, setNotes] = useState("");
+  const [extracting, setExtracting] = useState(0);
+  const text = combineAttachments(materials, notes, notesHeading);
+
+  const attach = async (files: FileList | null) => {
+    if (!files?.length) return;
+    for (const file of Array.from(files)) {
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!MATERIAL_EXTENSIONS.includes(extension)) {
+        toast(`${file.name}: attach a PDF, DOCX, PPTX or TXT file.`, "info");
+        continue;
+      }
+      if (file.size > MAX_MATERIAL_FILE_BYTES) {
+        toast(`${file.name}: file exceeds the 25 MB limit.`, "info");
+        continue;
+      }
+      setExtracting((n) => n + 1);
+      try {
+        const extracted = await aiAssignmentService.extractCourseMaterial(file);
+        setMaterials((current) => [...current, { ...extracted, id: crypto.randomUUID() }]);
+        if (extracted.truncated || extracted.characters > maxChars) {
+          toast(`${file.name} is very long; keep the total under ${maxChars.toLocaleString()} characters.`, "info");
+        }
+      } catch (err) {
+        toast(`${file.name}: ${extractErrorMessage(err, "could not read this file.")}`, "info");
+      } finally {
+        setExtracting((n) => n - 1);
+      }
+    }
+  };
+
+  return {
+    materials,
+    remove: (id: string) => setMaterials((current) => current.filter((m) => m.id !== id)),
+    notes,
+    setNotes,
+    extracting,
+    attach,
+    text,
+    maxChars,
+    tooLong: text.length > maxChars,
+  };
+}
+
+type Attachments = ReturnType<typeof useAttachments>;
+
+/** Drop zone + attached file list + paste box for one AI input. */
+function AttachmentField({
+  id,
+  label,
+  hint,
+  buttonLabel,
+  notesPlaceholder,
+  attachments,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  buttonLabel: string;
+  notesPlaceholder: string;
+  attachments: Attachments;
+  disabled: boolean;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { materials, extracting, text, maxChars, tooLong } = attachments;
+
+  return (
+    <div className="field-block">
+      <label htmlFor={`${id}-notes`}>{label}</label>
+      {hint && <small className="attachment-hint">{hint}</small>}
+      <div
+        className={`material-drop ${dragging ? "drag-active" : ""}`}
+        onDragOver={(event: DragEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event: DragEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          setDragging(false);
+          void attachments.attach(event.dataTransfer.files);
+        }}
+      >
+        <input
+          ref={inputRef}
+          className="visually-hidden"
+          type="file"
+          multiple
+          accept=".pdf,.docx,.pptx,.txt,.md"
+          onChange={(event) => {
+            void attachments.attach(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <Button variant="secondary" size="sm" disabled={disabled} onClick={() => inputRef.current?.click()}>
+          <Paperclip size={13} />
+          {buttonLabel}
+        </Button>
+        <small>PDF, DOCX, PPTX or TXT · up to 25 MB each · or drop files here</small>
+      </div>
+
+      {(materials.length > 0 || extracting > 0) && (
+        <ul className="material-list">
+          {materials.map((material) => (
+            <li className="material-item" key={material.id}>
+              <span className="file-icon">
+                <FileText size={14} />
+              </span>
+              <span className="material-meta">
+                <strong title={material.filename}>{material.filename}</strong>
+                <small>
+                  {material.characters.toLocaleString()} characters
+                  {material.pages ? ` · ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
+                  {material.truncated ? " · truncated" : ""}
+                </small>
+              </span>
+              <button
+                className="icon-button"
+                aria-label={`Remove ${material.filename}`}
+                disabled={disabled}
+                onClick={() => attachments.remove(material.id)}
+              >
+                <X size={13} />
+              </button>
+            </li>
+          ))}
+          {extracting > 0 && (
+            <li className="material-item material-loading">
+              <span className="button-spinner" />
+              Reading {extracting} file{extracting === 1 ? "" : "s"}…
+            </li>
+          )}
+        </ul>
+      )}
+
+      <textarea
+        id={`${id}-notes`}
+        className="field-textarea material-notes"
+        value={attachments.notes}
+        onChange={(event) => attachments.setNotes(event.target.value)}
+        placeholder={notesPlaceholder}
+      />
+      {text.length > 0 && (
+        <small className={`material-count ${tooLong ? "over-limit" : ""}`}>
+          {text.length.toLocaleString()} / {maxChars.toLocaleString()} characters
+          {tooLong ? " — too long, remove a file or shorten the text" : ""}
+        </small>
+      )}
+    </div>
+  );
 }
 
 /** ISO timestamp -> value for an <input type="datetime-local"> in the browser's timezone. */
@@ -164,16 +323,11 @@ export function AssignmentEditor({
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [courseId, setCourseId] = useState(searchParams.get("courseId") ?? courseList[0]?.id ?? "");
-  // Course material is attached here, while creating the assignment, and only used for AI drafting.
-  const [materials, setMaterials] = useState<AttachedMaterial[]>([]);
-  const [pastedNotes, setPastedNotes] = useState("");
-  const [extractingCount, setExtractingCount] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const materialInputRef = useRef<HTMLInputElement>(null);
+  // Attached while creating the assignment and only used for AI drafting; neither is stored.
+  const courseMaterial = useAttachments(MAX_COURSE_MATERIAL_CHARS, "Teacher notes");
+  const syllabus = useAttachments(MAX_SYLLABUS_CHARS, "Syllabus / rules (pasted)");
+  const extractingCount = courseMaterial.extracting + syllabus.extracting;
   const total = questions.reduce((sum, item) => sum + item.marks, 0);
-  const courseMaterial = combineCourseMaterial(materials, pastedNotes);
-  const materialChars = courseMaterial.length;
-  const materialTooLong = materialChars > MAX_COURSE_MATERIAL_CHARS;
   const submissionCount = editing ? submissions.filter((s) => s.assignmentId === editing.id).length : 0;
 
   useEffect(() => {
@@ -210,36 +364,9 @@ export function AssignmentEditor({
   const updateQuestion = (id: string, patch: Partial<Question>) =>
     setQuestions((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
-  const attachMaterials = async (files: FileList | null) => {
-    if (!files?.length) return;
-    for (const file of Array.from(files)) {
-      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-      if (!MATERIAL_EXTENSIONS.includes(extension)) {
-        toast(`${file.name}: attach a PDF, DOCX, PPTX or TXT file.`, "info");
-        continue;
-      }
-      if (file.size > MAX_MATERIAL_FILE_BYTES) {
-        toast(`${file.name}: file exceeds the 25 MB limit.`, "info");
-        continue;
-      }
-      setExtractingCount((n) => n + 1);
-      try {
-        const extracted = await aiAssignmentService.extractCourseMaterial(file);
-        setMaterials((current) => [...current, { ...extracted, id: crypto.randomUUID() }]);
-        if (extracted.truncated) {
-          toast(`${file.name} is very long; only the first ${MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters are used.`, "info");
-        }
-      } catch (err) {
-        toast(`${file.name}: ${extractErrorMessage(err, "could not read this file.")}`, "info");
-      } finally {
-        setExtractingCount((n) => n - 1);
-      }
-    }
-  };
-
   const handleAiGenerateClick = async () => {
     // With material attached, fall back to the first file's name so a topic isn't mandatory.
-    const materialTopic = materials[0]?.filename.replace(/\.[^.]+$/, "") ?? "";
+    const materialTopic = courseMaterial.materials[0]?.filename.replace(/\.[^.]+$/, "") ?? "";
     const aiTopic = (topic.trim() || title.trim() || materialTopic).slice(0, 300);
     const questionCount = Number(count);
     const targetMarks = Math.floor(Number(aiTotalMarks));
@@ -252,15 +379,20 @@ export function AssignmentEditor({
       return;
     }
     if (extractingCount > 0) {
-      toast("Wait for the attached course material to finish reading.", "info");
+      toast("Wait for the attached files to finish reading.", "info");
       return;
     }
-    if (materialTooLong) {
-      toast(
-        `Course material is too long (${materialChars.toLocaleString()} / ${MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters). Remove a file or shorten the pasted notes.`,
-        "info"
-      );
-      return;
+    for (const [name, input] of [
+      ["Course material", courseMaterial],
+      ["Syllabus / rulebook", syllabus],
+    ] as const) {
+      if (input.tooLong) {
+        toast(
+          `${name} is too long (${input.text.length.toLocaleString()} / ${input.maxChars.toLocaleString()} characters). Remove a file or shorten the pasted text.`,
+          "info"
+        );
+        return;
+      }
     }
 
     setGenerating(true);
@@ -272,7 +404,8 @@ export function AssignmentEditor({
         questionFormat: type.toLowerCase() as "mixed" | "subjective" | "mcq",
         difficulty: difficulty.toLowerCase() as "easy" | "medium" | "hard" | "mixed",
         totalMarks: targetMarks,
-        courseMaterial: courseMaterial || undefined,
+        courseMaterial: courseMaterial.text || undefined,
+        syllabus: syllabus.text || undefined,
       });
       // Replace the editor's blank starter question(s); otherwise append to the teacher's work.
       const editorIsBlank = questions.every((q) => !q.prompt.trim() && !q.expectedAnswer.trim());
@@ -282,8 +415,10 @@ export function AssignmentEditor({
       toast(
         `Added ${draft.questions.length} AI-drafted question${draft.questions.length === 1 ? "" : "s"}. ` +
           (draft.groundedInCourseMaterials
-            ? "They are based on your attached course material. Review them before saving."
-            : "They are based on the topic only (no course material attached), so review them carefully before saving.")
+            ? "They are based on your attached course material"
+            : "They are based on the topic only (no course material attached)") +
+          (syllabus.text ? " and follow your syllabus / rulebook." : ".") +
+          " Review them before saving."
       );
     } catch (err) {
       toast(extractErrorMessage(err, "AI generation failed. Try again."), "info");
@@ -523,97 +658,29 @@ export function AssignmentEditor({
 
             <p className="modal-description">
               Drafts questions, model answers and rubrics with AI. Attach the course material for this
-              assignment so questions are based on it; without it, questions come from the topic alone.
-              Nothing is saved until you save the assignment.
+              assignment so questions are based on it; without it, questions come from the topic alone. Add a
+              syllabus or rulebook to keep questions in scope and following your rules. Files are only read for
+              drafting; nothing is saved until you save the assignment.
             </p>
 
-            <div className="field-block">
-              <label>Course material</label>
-              <div
-                className={`material-drop ${dragging ? "drag-active" : ""}`}
-                onDragOver={(event: DragEvent<HTMLDivElement>) => {
-                  event.preventDefault();
-                  setDragging(true);
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(event: DragEvent<HTMLDivElement>) => {
-                  event.preventDefault();
-                  setDragging(false);
-                  void attachMaterials(event.dataTransfer.files);
-                }}
-              >
-                <input
-                  ref={materialInputRef}
-                  className="visually-hidden"
-                  type="file"
-                  multiple
-                  accept=".pdf,.docx,.pptx,.txt,.md"
-                  onChange={(event) => {
-                    void attachMaterials(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={generating}
-                  onClick={() => materialInputRef.current?.click()}
-                >
-                  <Paperclip size={13} />
-                  Attach notes, slides or readings
-                </Button>
-                <small>PDF, DOCX, PPTX or TXT · up to 25 MB each · or drop files here</small>
-              </div>
+            <AttachmentField
+              id="ai-material"
+              label="Course material"
+              buttonLabel="Attach notes, slides or readings"
+              notesPlaceholder="…or paste course notes / key points here (optional)"
+              attachments={courseMaterial}
+              disabled={generating}
+            />
 
-              {(materials.length > 0 || extractingCount > 0) && (
-                <ul className="material-list">
-                  {materials.map((material) => (
-                    <li className="material-item" key={material.id}>
-                      <span className="file-icon">
-                        <FileText size={14} />
-                      </span>
-                      <span className="material-meta">
-                        <strong title={material.filename}>{material.filename}</strong>
-                        <small>
-                          {material.characters.toLocaleString()} characters
-                          {material.pages ? ` · ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
-                          {material.truncated ? " · truncated" : ""}
-                        </small>
-                      </span>
-                      <button
-                        className="icon-button"
-                        aria-label={`Remove ${material.filename}`}
-                        disabled={generating}
-                        onClick={() => setMaterials((current) => current.filter((m) => m.id !== material.id))}
-                      >
-                        <X size={13} />
-                      </button>
-                    </li>
-                  ))}
-                  {extractingCount > 0 && (
-                    <li className="material-item material-loading">
-                      <span className="button-spinner" />
-                      Reading {extractingCount} file{extractingCount === 1 ? "" : "s"}…
-                    </li>
-                  )}
-                </ul>
-              )}
-
-              <textarea
-                id="ai-material-notes"
-                className="field-textarea material-notes"
-                value={pastedNotes}
-                onChange={(event) => setPastedNotes(event.target.value)}
-                placeholder="…or paste course notes / key points here (optional)"
-                aria-label="Paste course material"
-              />
-              {materialChars > 0 && (
-                <small className={`material-count ${materialTooLong ? "over-limit" : ""}`}>
-                  {materialChars.toLocaleString()} / {MAX_COURSE_MATERIAL_CHARS.toLocaleString()} characters
-                  {materialTooLong ? " — too long, remove a file or shorten the notes" : ""}
-                </small>
-              )}
-            </div>
+            <AttachmentField
+              id="ai-syllabus"
+              label="Syllabus or rulebook"
+              hint="Questions stay within this syllabus and follow its rules (allowed methods, answer length, marking conventions)."
+              buttonLabel="Attach syllabus or rulebook"
+              notesPlaceholder="…or paste the syllabus topics / assessment rules here (optional)"
+              attachments={syllabus}
+              disabled={generating}
+            />
 
             <div className="field-block">
               <label htmlFor="ai-topic">Topic</label>

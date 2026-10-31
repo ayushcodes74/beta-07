@@ -170,6 +170,14 @@ class AssignmentService:
             return [record for record in records if record.status is AssignmentStatus.PUBLISHED]
         raise AssignmentPermissionError
 
+    def owned_ids(self, teacher: CurrentUser, *, access_token: str) -> list[UUID]:
+        """Ids of the teacher's own assignments, without loading questions or answer keys."""
+        self._require_role(teacher, Role.TEACHER)
+        list_ids = getattr(self._repository, "list_ids_by_teacher", None)
+        if list_ids is not None:
+            return list(list_ids(teacher.id, access_token=access_token))
+        return [record.id for record in self.list_for(teacher, access_token=access_token)]
+
     def get_for(self, user: CurrentUser, assignment_id: UUID, *, access_token: str) -> AssignmentRecord:
         if user.role is Role.TEACHER:
             return self._get_owned(user, assignment_id, access_token)

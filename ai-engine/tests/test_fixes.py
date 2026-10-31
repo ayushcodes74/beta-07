@@ -16,11 +16,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.grading.evaluator import AnswerEvaluator
-from app.llm.gemini_client import GeminiClient, LLMAPIError, LLMRateLimitError
+from app.llm.gemini_client import GeminiClient, LLMRateLimitError, LLMResponseValidationError
 from app.rag.chunker import TextChunker
 from app.schemas.assignment import ModelAnswer, QuestionType, Rubric, RubricCriterion
 from app.schemas.common import SourceReference
-from app.schemas.grading import GradingRequest, QuestionGrade
+from app.schemas.grading import CriterionEvaluation, GradingRequest, QuestionGrade
 from app.trust.confidence import ConfidenceEstimator
 
 
@@ -111,7 +111,9 @@ class TestFix1EmptyOcrProtection:
         assert grade.confidence > 0.0
         assert grade.review_required is True
         assert any("ocr extraction failure" in r.lower() for r in grade.review_reasons)
-        assert "potential ocr extraction failure" in grade.overall_explanation.lower()
+        # The summary must say OCR failed rather than treating the answer as genuinely blank.
+        explanation = grade.overall_explanation.lower()
+        assert "ocr" in explanation and "could not be verified as intentionally blank" in explanation
 
     def test_case_b_failed_ocr_via_method_argument(self):
         """OCR confidence passed via method argument triggers extraction failure review."""
@@ -715,14 +717,18 @@ class TestFix6QualityImprovements:
             assert c.text.count("$") % 2 == 0
 
     def test_malformed_llm_json_handling(self):
-        """When LLM returns completely invalid non-JSON output, raises LLMAPIError."""
+        """Completely invalid non-JSON output raises LLMResponseValidationError.
+
+        It is deliberately not an LLMAPIError: the server maps it to its own 502 "unusable response"
+        and the fallback client treats it differently from transport/API failures.
+        """
         mock_genai = MagicMock()
         mock_resp = MagicMock()
         mock_resp.text = "NOT JSON AT ALL"
         mock_genai.models.generate_content.return_value = mock_resp
 
         client = GeminiClient(api_key="test", client=mock_genai)
-        with pytest.raises(LLMAPIError):
+        with pytest.raises(LLMResponseValidationError):
             client.generate_structured("prompt", Rubric)
 
     def test_retry_exhaustion_raises_rate_limit(self):

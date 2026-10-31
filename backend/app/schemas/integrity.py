@@ -24,14 +24,54 @@ class OCRQualitySummary(BaseModel):
     missing_pages: list[int] = Field(default_factory=list)
 
 
+class HandwritingSample(BaseModel):
+    page_number: int
+    bounding_box: BoundingBox | None = None
+    text: str = ""
+    image: str = Field(default="", description="PNG data URL of the handwritten line")
+
+
+class HandwritingFlag(BaseModel):
+    label: str = Field(description="Answer/page that looks written by a different hand")
+    page_numbers: list[int] = Field(default_factory=list)
+    compared_with: str = ""
+    difference_score: float
+    p_value: float | None = None
+    samples: list[HandwritingSample] = Field(default_factory=list)
+    reference_samples: list[HandwritingSample] = Field(default_factory=list)
+
+
+class HandwritingSegmentSummary(BaseModel):
+    label: str
+    kind: str = ""
+    page_numbers: list[int] = Field(default_factory=list)
+    line_count: int = 0
+    difference_score: float | None = None
+    p_value: float | None = None
+    flagged: bool = False
+
+
 class HandwritingAnalysisStatus(BaseModel):
-    status: Literal["unavailable"] = "unavailable"
+    """Within-submission handwriting consistency. TEACHER-ONLY review signal, never shown to students.
+
+    An unvalidated heuristic (no trained writer-verification model): it flags parts of one submission whose
+    handwriting style differs from the rest. It is not evidence of misconduct.
+    """
+
+    status: Literal[
+        "unavailable", "processing", "insufficient_handwriting", "consistent", "possible_different_handwriting"
+    ] = "unavailable"
+    method: str | None = None
+    validated: Literal[False] = False
     calibrated_score: None = None
     model_name: None = None
-    model_version: None = None
-    reason: str = (
-        "No validated writer-verification model or labeled validation set is configured."
-    )
+    model_version: str | None = None
+    reason: str | None = "Handwriting analysis has not run for this submission."
+    threshold: float | None = None
+    lines_analyzed: int | None = None
+    flagged: list[HandwritingFlag] = Field(default_factory=list)
+    segments: list[HandwritingSegmentSummary] = Field(default_factory=list)
+    limitations: str | None = None
 
 
 class IntegrityEvidence(BaseModel):

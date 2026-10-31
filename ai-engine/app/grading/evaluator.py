@@ -140,6 +140,10 @@ class AnswerEvaluator:
             course_id=request.course_id,
             question_id=request.question_id,
         )
+        # Corrections of this exact question sent by the backend come first (most specific, newest first).
+        teacher_examples = list(request.teacher_corrections) + [
+            ex for ex in teacher_examples if ex not in request.teacher_corrections
+        ]
 
         # 6. Format rubric text for prompt
         rubric_lines = [f"Total Question Marks: {request.question_max_marks}"]

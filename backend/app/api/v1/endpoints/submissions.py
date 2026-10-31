@@ -29,7 +29,14 @@ from app.core.dependencies import (
 )
 from app.schemas.auth import ErrorResponse
 from app.database.grading_repository import GradingRepositoryError
-from app.schemas.grading import GradePublishRequest, GradingSuggestionResponse, PublishedGradeResponse
+from app.schemas.grading import (
+    GradePublishRequest,
+    GradingCorrection,
+    GradingCorrectionsRequest,
+    GradingSuggestionResponse,
+    LateDecisionRequest,
+    PublishedGradeResponse,
+)
 from app.schemas.integrity import IntegrityReport
 from app.schemas.ocr import (
     JobStatusResponse,
@@ -67,6 +74,7 @@ from app.services.submission_service import (
     SubmissionService,
     SubmissionValidationError,
     get_submission_repository,
+    late_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,9 +193,52 @@ def list_submissions(
                 ocr_job_id=record.ocr_job_id,
                 created_at=record.created_at,
                 updated_at=record.updated_at,
+                **late_fields(record),
             )
             for record in records
         ]
+    except Exception as exc:
+        _handle_error(exc)
+
+
+@router.post(
+    "/submissions/{submission_id}/late-decision",
+    response_model=SubmissionOCRStatusResponse,
+    summary="Accept, reject or re-open a late submission (owning teacher)",
+    description=(
+        "For submissions handed in after the due date (`late_status` is set). `accepted` keeps the work "
+        "for grading and deducts `penalty_percent` (0-100; 50 = half marks) from the final score when the "
+        "grade is published. `rejected` means the work is not accepted and no grade can be published. "
+        "`pending` undoes an earlier decision. The decision is locked once a grade is published."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def decide_late_submission(
+    submission_id: UUID,
+    body: LateDecisionRequest,
+    teacher: TeacherUser,
+    token: AccessToken,
+    service: Service,
+) -> SubmissionOCRStatusResponse:
+    try:
+        record = await service.decide_late_submission(
+            teacher,
+            submission_id,
+            body.decision,
+            body.penalty_percent,
+            body.note,
+            access_token=token,
+        )
+        return SubmissionOCRStatusResponse(
+            submission_id=record.id,
+            assignment_id=record.assignment_id,
+            student_id=record.student_id,
+            status=record.status,
+            ocr_job_id=record.ocr_job_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            **late_fields(record),
+        )
     except Exception as exc:
         _handle_error(exc)
 
@@ -352,14 +403,40 @@ async def get_submission_grading(
     return saved
 
 
+@router.put(
+    "/submissions/{submission_id}/grading/corrections",
+    response_model=list[GradingCorrection],
+    summary="Tell the AI where its grading was wrong (teacher only)",
+    description=(
+        "Owning teacher only. Replaces this submission's corrections: per question, the right mark and why the "
+        "AI was wrong. Future AI answer checks of the same question in this assignment are given these "
+        "corrections and told to follow them. No model is retrained; send an empty list to remove them."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def save_grading_corrections(
+    submission_id: UUID,
+    body: GradingCorrectionsRequest,
+    teacher: TeacherUser,
+    token: AccessToken,
+    grading: Grading,
+) -> list[GradingCorrection]:
+    try:
+        return await grading.save_corrections(teacher, submission_id, body.corrections, access_token=token)
+    except Exception as exc:
+        _handle_grading_error(exc)
+
+
 @router.post(
     "/submissions/{submission_id}/grading/publish",
     response_model=PublishedGradeResponse,
     summary="Approve and publish the final grade (teacher only)",
     description=(
         "Owning teacher only. Stores the teacher's final score and feedback as approved and publishes it, "
-        "making it visible to the student. The AI suggestion, if any, is kept as evidence and is never "
-        "shown to the student. Calling again replaces the published grade."
+        "making it visible to the student. A per-question breakdown (mark, AI explanation, strengths, areas to "
+        "improve, or the teacher's correction note) is frozen for the student at this point; answer-key details "
+        "(matched/missing concepts, course evidence) are never published. Calling again replaces the published "
+        "grade and refreshes the breakdown."
     ),
     responses=ERROR_RESPONSES,
 )
@@ -372,8 +449,26 @@ async def publish_submission_grade(
 ) -> PublishedGradeResponse:
     try:
         return await grading.publish_grade(
-            teacher, submission_id, body.final_score, body.final_feedback, access_token=token
+            teacher, submission_id, body.final_score, body.final_feedback, access_token=token,
+            show_solutions=body.show_solutions,
         )
+    except Exception as exc:
+        _handle_grading_error(exc)
+
+
+@router.get(
+    "/results",
+    response_model=list[PublishedGradeResponse],
+    summary="All published grades visible to the caller",
+    description=(
+        "Students: published grades of their own submissions. Teachers: published grades on their own "
+        "assignments. One request instead of one per submission."
+    ),
+    responses=ERROR_RESPONSES,
+)
+async def list_results(user: AnyUser, token: AccessToken, grading: Grading) -> list[PublishedGradeResponse]:
+    try:
+        return await grading.list_published_grades(user, access_token=token)
     except Exception as exc:
         _handle_grading_error(exc)
 

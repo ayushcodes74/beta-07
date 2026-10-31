@@ -29,6 +29,7 @@ class CurrentUser:
     id: UUID
     email: str | None
     role: Role
+    display_name: str | None = None
 
 
 class AuthService:
@@ -44,4 +45,6 @@ class AuthService:
         """
         claims = self._verifier.verify(access_token)
         profile = self._users.get_profile(claims.user_id, access_token=access_token)
-        return CurrentUser(id=claims.user_id, email=claims.email, role=profile.role)
+        return CurrentUser(
+            id=claims.user_id, email=claims.email, role=profile.role, display_name=profile.display_name
+        )

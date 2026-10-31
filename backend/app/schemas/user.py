@@ -26,6 +26,7 @@ class UserProfileResponse(BaseModel):
     id: UUID = Field(description="Supabase Auth user id (verified token subject).")
     email: EmailStr | None = Field(description="Email from the verified access token, if present.")
     role: Role = Field(description="Role from the trusted profiles record.")
+    display_name: str | None = Field(default=None, description="Name the user chose; null if never set.")
 
 
 class ProfileUpdate(BaseModel):

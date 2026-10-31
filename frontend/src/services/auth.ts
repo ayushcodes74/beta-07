@@ -9,6 +9,8 @@ export interface AuthenticatedProfile {
   id: string;
   email: string;
   role: "teacher" | "student";
+  /** Name the user chose; null until they set one. */
+  display_name?: string | null;
 }
 
 // Supabase Auth returns `{ msg }` or `{ error_description }` rather than a FastAPI-style `detail`.
@@ -49,15 +51,27 @@ export async function signUp(email: string, password: string): Promise<void> {
 
 export async function getProfile(): Promise<User> {
   const response = await api.get<AuthenticatedProfile>("/auth/me");
-  const name = response.data.email.split("@")[0].replace(/[._-]+/g, " ");
+  const chosen = response.data.display_name?.trim();
+  // Until the user saves a name, derive one from the email (shown only to the user themselves).
+  const fallback = response.data.email
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+  const name = chosen || fallback;
   const initials = name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   return {
     id: response.data.id,
     email: response.data.email,
-    name: name.replace(/\b\w/g, (character) => character.toUpperCase()),
+    name,
     role: response.data.role,
     initials,
+    needsName: !chosen,
   };
+}
+
+/** Save the name shown to teachers and on the course leaderboard. */
+export async function updateDisplayName(displayName: string): Promise<void> {
+  await api.patch("/users/me", { display_name: displayName.trim() });
 }
 
 export function signOut(): void {
