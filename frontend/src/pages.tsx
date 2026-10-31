@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Activity, AlertCircle, ArrowLeft, ArrowRight, BookOpen, CalendarDays,
   Check, CheckCircle2, ChevronLeft, ChevronRight, CloudUpload,
-  FileCheck2, FileText, GraduationCap, MoreHorizontal, Plus,
+  FileCheck2, FileText, GraduationCap, LayoutDashboard, MoreHorizontal, Plus,
   Search, ShieldCheck, Sparkles, Upload, Users, X,
 } from "lucide-react";
 import {
@@ -1096,45 +1096,63 @@ export function SettingsPage() {
 
 export function LandingPage() {
   const navigate = useNavigate();
+  const steps = [
+    ["01", "Bring your course context", "Syllabi, rubrics, and teaching materials inform review."],
+    ["02", "Review with useful assistance", "OCR and rubric-grounded suggestions surface evidence—not verdicts."],
+    ["03", "Publish with confidence", "Teachers approve marks and feedback before students can see them."],
+  ];
   return (
     <div className="landing-page">
-      <header className="landing-topbar">
-        <Link to="/" className="brand">
-          <span className="brand-mark"><Check size={19} /></span>
-          <span className="brand-word">Trust<span>Grade</span></span>
-        </Link>
-        <div className="landing-actions">
-          <Button variant="secondary" onClick={() => navigate("/login")}>Sign in</Button>
-          <Button onClick={() => navigate("/register")}>Get started</Button>
-        </div>
+      <header className="landing-nav">
+        <Link to="/" className="brand"><span className="brand-mark"><Check size={19} /></span><span className="brand-word">Trust<span>Grade</span></span></Link>
+        <nav><a href="#how-it-works">How it works</a><a href="#trust">Our approach</a></nav>
+        <div><Button variant="quiet" onClick={() => navigate("/login")}>Sign in</Button><Button onClick={() => navigate("/register")}>Create account<ArrowRight size={14} /></Button></div>
       </header>
       <main className="landing-hero">
-        <span className="eyebrow">AI-ASSISTED GRADING YOU CAN TRUST</span>
-        <h1>Every mark has a reason.<br /><em>Every decision has evidence.</em></h1>
-        <p className="hero-copy">TrustGrade combines OCR technology, AI evaluation, and teacher supervision to make grading faster, transparent, and fair.</p>
-        <div className="hero-cta-row">
-          <Button onClick={() => navigate("/register")}>Create an account<ArrowRight size={15} /></Button>
-          <Button variant="secondary" onClick={() => navigate("/login")}>Sign in to workspace</Button>
+        <div className="landing-copy">
+          <span className="landing-kicker"><span className="kicker-line" />A more thoughtful way to grade</span>
+          <h1>Grading, with<br /><em>intelligence.</em></h1>
+          <p>TrustGrade combines course-grounded AI evaluation with human review to make academic grading faster, clearer, and more trustworthy.</p>
+          <div className="landing-actions"><Button onClick={() => navigate("/login")}>Explore TrustGrade<ArrowRight size={15} /></Button><a href="#how-it-works">See how it works<ChevronRight size={14} /></a></div>
+          <div className="landing-trust"><span><ShieldCheck size={15} />Human-approved, always</span><span><BookOpen size={15} />Grounded in your course</span></div>
+        </div>
+        <div className="product-stage">
+          <div className="product-window">
+            <div className="product-window-top"><span className="brand-mark mini-brand"><Check size={12} /></span><strong>TrustGrade</strong><span className="window-caption">FACULTY WORKSPACE</span><span className="window-avatar">AM</span></div>
+            <div className="product-window-body">
+              <div className="product-sidebar"><span className="sidebar-mark active"><LayoutDashboard size={14} /></span><span className="sidebar-mark"><BookOpen size={14} /></span><span className="sidebar-mark"><FileText size={14} /></span><span className="sidebar-mark"><Sparkles size={14} /></span></div>
+              <div className="product-dashboard">
+                <span className="eyebrow">SATURDAY, OCTOBER 31, 2026</span><strong className="product-greeting">Good morning, Alex.</strong>
+                <div className="product-stat-row"><span><small>ACTIVE COURSES</small><b>8</b></span><span><small>STUDENTS</small><b>248</b></span><span><small>TO REVIEW</small><b>18</b></span></div>
+                <div className="product-grade-card"><span className="feature-symbol"><Sparkles size={12} /></span><span><small>AI GRADING ACTIVITY</small><b>Data Structures — Assignment 03</b><span className="product-progress"><i /></span><small>72 / 96 submissions reviewed</small></span><Badge tone="sage">In progress</Badge></div>
+                <div className="product-chart-row"><span className="product-chart"><small>PERFORMANCE TREND</small><svg viewBox="0 0 180 48"><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6" fill="none" stroke="#64242f" strokeWidth="2" /><path d="M2 39 C24 34 31 35 48 30S70 35 88 23 119 27 134 16 160 19 178 6L178 48H2Z" fill="#b44446" fillOpacity=".08" /></svg></span><span className="product-confidence"><CheckCircle2 size={15} /><span><small>TEACHER IN CONTROL</small><b>Every grade reviewed</b></span></span></div>
+              </div>
+            </div>
+          </div>
+          <div className="product-float"><span className="float-check"><Check size={14} /></span><span><b>Clear, evidence-based feedback</b><small>Teacher-approved before it’s shared.</small></span></div>
         </div>
       </main>
-      <footer className="landing-footer">
-        <span>© 2026 TrustGrade</span>
-        <span>AI assists. Teachers decide. Students understand.</span>
-      </footer>
+      <section className="landing-proof" id="trust"><span>BUILT AROUND A SIMPLE PROMISE</span><strong>AI assists. Teachers decide. Students understand.</strong><p>Transparent evidence. Human judgment. Feedback that helps students move forward.</p></section>
+      <section className="landing-how" id="how-it-works"><SectionTitle title="Thoughtful by design." subtitle="The right support at every step of the grading journey." />{steps.map(([number, title, copy]) => <article key={number}><span>{number}</span><strong>{title}</strong><p>{copy}</p></article>)}</section>
+      <footer className="landing-footer"><Link to="/" className="brand"><span className="brand-mark"><Check size={17} /></span><span className="brand-word">Trust<span>Grade</span></span></Link><span>Thoughtful grading. Clearer learning.</span><Button variant="secondary" size="sm" onClick={() => navigate("/register")}>Get started<ArrowRight size={13} /></Button></footer>
     </div>
   );
 }
 
 export function AuthPage({ mode, onAuthenticated }: { mode: "login" | "register"; onAuthenticated: (user: User) => void }) {
   const navigate = useNavigate();
+  const submissionInProgress = useRef(false);
   const [role, setRole] = useState<"teacher" | "student">("teacher");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const register = mode === "register";
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submissionInProgress.current) return;
     setError("");
+    setNotice("");
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
@@ -1143,16 +1161,30 @@ export function AuthPage({ mode, onAuthenticated }: { mode: "login" | "register"
     if (register && !name) { setError("Enter your name to create an account."); return; }
     if (!email.includes("@") || password.length < 6) { setError("Use a valid email and a password of at least 6 characters."); return; }
 
+    submissionInProgress.current = true;
     setLoading(true);
     try {
-      const user = register
-        ? await authService.register(name, email, password, role)
-        : await authService.login(email, password);
-      onAuthenticated(user);
+      if (register) {
+        const result = await authService.register(name, email, password, role);
+        if (result.status === "confirmation_required") {
+          setNotice(`Account created. Check ${result.email} for a confirmation link, then sign in.`);
+          return;
+        }
+        onAuthenticated(result.user);
+      } else {
+        onAuthenticated(await authService.login(email, password));
+      }
       navigate("/app");
     } catch (reason) {
-      setError(extractErrorMessage(reason, "Authentication failed. Check your credentials and server status."));
+      const message = extractErrorMessage(reason, "Authentication failed. Check your credentials and server status.");
+      const isEmailRateLimited =
+        /email rate limit exceeded/i.test(message) ||
+        (typeof reason === "object" && reason !== null && "code" in reason && reason.code === "over_email_send_rate_limit");
+      setError(isEmailRateLimited
+        ? "Confirmation emails are temporarily rate-limited. Please wait before trying again; you can manually resubmit once the limit clears."
+        : message);
     } finally {
+      submissionInProgress.current = false;
       setLoading(false);
     }
   };
@@ -1193,8 +1225,9 @@ export function AuthPage({ mode, onAuthenticated }: { mode: "login" | "register"
             </div>
           )}
           {error && <div role="alert" className="form-error"><AlertCircle size={14} />{error}</div>}
+          {notice && <div role="status" className="form-success">{notice}</div>}
           <Button className="full-button" disabled={loading}>
-            {loading ? <><span className="button-spinner" />Signing in…</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
+            {loading ? <><span className="button-spinner" />{register ? "Creating account…" : "Signing in…"}</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
           </Button>
         </form>
         <div className="auth-switch">
