@@ -20,6 +20,7 @@ from app.schemas.auth import ErrorResponse
 from app.schemas.user import ProfileUpdate, UserProfileResponse
 from app.services.auth_service import CurrentUser
 from app.services.user_service import (
+    DisabledAccountError,
     EmptyProfileUpdateError,
     InvalidRoleError,
     ProfileNotFoundError,
@@ -77,6 +78,6 @@ def update_my_profile(
         raise api_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "empty_update", "No updatable fields were provided."
         ) from None
-    except (ProfileNotFoundError, InvalidRoleError, ProfileRepositoryError) as exc:
+    except (ProfileNotFoundError, DisabledAccountError, InvalidRoleError, ProfileRepositoryError) as exc:
         raise profile_error_to_http(exc) from None
     return UserProfileResponse(id=profile.user_id, email=user.email, role=profile.role)
