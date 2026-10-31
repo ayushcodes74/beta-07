@@ -53,7 +53,7 @@ class ConfidenceEstimator:
     def calculate_confidence(
         self,
         question_grade: QuestionGrade,
-        rubric: Rubric,
+        rubric: Optional[Rubric],
         source_references: List[SourceReference],
         ocr_confidence: Optional[float] = None,
         has_sufficient_evidence: bool = True,
@@ -67,9 +67,14 @@ class ConfidenceEstimator:
                   + (w_ocr * OCRQuality)
                   + (w_complete * Completeness)
 
+        Safeguards:
+          - If OCR confidence is below 0.50, overall confidence is capped at 0.59.
+          - If OCR confidence is below 0.60, teacher review is required.
+          - Missing OCR metadata (None) is handled explicitly and does not trigger OCR failure.
+
         Args:
             question_grade: QuestionGrade produced by evaluator.
-            rubric: Target rubric.
+            rubric: Target rubric (optional).
             source_references: Supporting course references.
             ocr_confidence: Optional OCR extraction score from OCR teammate (0.0 to 1.0).
             has_sufficient_evidence: Flag from evidence retriever.
@@ -87,7 +92,8 @@ class ConfidenceEstimator:
         rubric_clarity = self._score_rubric_clarity(rubric)
 
         # 4. OCR Quality Factor [0.0 - 1.0]
-        ocr_score = 1.0 if ocr_confidence is None else max(0.0, min(1.0, float(ocr_confidence)))
+        has_ocr_metadata = ocr_confidence is not None
+        ocr_score = max(0.0, min(1.0, float(ocr_confidence))) if has_ocr_metadata else 1.0
 
         # 5. Completeness Factor [0.0 - 1.0]
         completeness = self._score_completeness(question_grade, rubric)
@@ -102,6 +108,11 @@ class ConfidenceEstimator:
         )
         overall = round(max(0.0, min(1.0, overall)), 2)
 
+        # Conservative OCR Safeguard:
+        # If OCR confidence is below 0.50, cap overall grading confidence at 0.59 (LOW category)
+        if has_ocr_metadata and ocr_score < 0.50:
+            overall = min(overall, 0.59)
+
         # Categorical rating
         if overall >= 0.80:
             level = ConfidenceLevel.HIGH
@@ -110,8 +121,9 @@ class ConfidenceEstimator:
         else:
             level = ConfidenceLevel.LOW
 
-        # Trigger review recommendation if below threshold or if evidence is critically low
-        review_rec = (overall < self.review_threshold) or (ev_quality < 0.3) or (ocr_score < 0.60)
+        # Trigger review recommendation if below threshold, or if evidence is critically low,
+        # or if OCR confidence is below 0.60
+        review_rec = (overall < self.review_threshold) or (ev_quality < 0.3) or (has_ocr_metadata and ocr_score < 0.60)
 
         explanation = self._build_explanation(
             overall=overall,
@@ -166,10 +178,10 @@ class ConfidenceEstimator:
         return criteria_with_evidence / len(criterion_evals)
 
     @staticmethod
-    def _score_rubric_clarity(rubric: Rubric) -> float:
+    def _score_rubric_clarity(rubric: Optional[Rubric]) -> float:
         """Assess whether rubric criteria are unambiguous and detailed."""
-        if not rubric.criteria:
-            return 0.2
+        if not rubric or not rubric.criteria:
+            return 0.5
 
         clarity_points = 0.0
         for c in rubric.criteria:
@@ -185,12 +197,12 @@ class ConfidenceEstimator:
         return max(0.3, min(1.0, clarity_points / len(rubric.criteria)))
 
     @staticmethod
-    def _score_completeness(question_grade: QuestionGrade, rubric: Rubric) -> float:
+    def _score_completeness(question_grade: QuestionGrade, rubric: Optional[Rubric]) -> float:
         """Verify all criteria were evaluated with valid explanations."""
         if not question_grade.criterion_evaluations:
             return 0.0
 
-        rubric_ids = {c.criterion_id for c in rubric.criteria}
+        rubric_ids = {c.criterion_id for c in rubric.criteria} if (rubric and rubric.criteria) else set()
         eval_ids = {c.criterion_id for c in question_grade.criterion_evaluations}
 
         # Did evaluator score every criterion?
@@ -214,23 +226,22 @@ class ConfidenceEstimator:
         completeness: float,
         review_rec: bool,
     ) -> str:
-        """Generate human-readable justification for calculated confidence."""
-        flags: List[str] = []
-        if ev_quality < 0.5:
-            flags.append("weak course evidence")
+        """Generate human-readable justification for the confidence rating."""
+        reasons = []
+        if ev_quality >= 0.8:
+            reasons.append("high-relevance course evidence")
+        elif ev_quality < 0.4:
+            reasons.append("weak course evidence support")
+
         if ev_coverage < 0.5:
-            flags.append("partial evidence coverage")
-        if rubric_clarity < 0.6:
-            flags.append("ambiguous rubric criteria")
-        if ocr_score < 0.7:
-            flags.append(f"low OCR extraction confidence ({ocr_score:.2f})")
-        if completeness < 0.7:
-            flags.append("incomplete criterion evaluations")
+            reasons.append("incomplete evidence coverage across criteria")
 
-        if not flags:
-            return f"High confidence ({overall:.2f}): strong evidence, clear rubric, and comprehensive evaluation."
+        if ocr_score < 0.6:
+            reasons.append(f"degraded OCR extraction fidelity ({ocr_score:.2f})")
 
-        flag_str = ", ".join(flags)
-        rec_str = " Human review recommended." if review_rec else ""
-        return f"Confidence {overall:.2f} affected by {flag_str}.{rec_str}"
+        if rubric_clarity < 0.5:
+            reasons.append("generic or ambiguous rubric criteria")
 
+        reason_str = ", ".join(reasons) if reasons else "well-aligned evidence and criteria"
+        rec_str = " Teacher review is recommended." if review_rec else " Scoring is confident."
+        return f"Confidence {overall:.2f} based on {reason_str}.{rec_str}"

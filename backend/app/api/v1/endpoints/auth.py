@@ -18,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 AUTH_ERROR_RESPONSES: dict[int | str, dict] = {
     401: {"model": ErrorResponse, "description": "Missing, malformed, expired or invalid access token."},
-    403: {"model": ErrorResponse, "description": "No profile, or the profile has an unrecognised role."},
+    403: {"model": ErrorResponse, "description": "No profile, disabled account, or the profile has an unrecognised role."},
     503: {"model": ErrorResponse, "description": "Token verification or profile lookup is unavailable."},
 }
 

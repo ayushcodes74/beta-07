@@ -53,8 +53,8 @@ class FakeProfileRepository:
         self.get_calls: list[tuple[UUID, str]] = []
         self.update_calls: list[tuple[UUID, dict[str, Any], str]] = []
 
-    def add(self, user_id: UUID, role: str) -> None:
-        self.records[user_id] = ProfileRecord(user_id=user_id, role=role)
+    def add(self, user_id: UUID, role: str, is_disabled: bool = False) -> None:
+        self.records[user_id] = ProfileRecord(user_id=user_id, role=role, is_disabled=is_disabled)
 
     def get_profile(self, user_id: UUID, *, access_token: str) -> ProfileRecord | None:
         self.get_calls.append((user_id, access_token))

@@ -6,10 +6,13 @@ import pytest
 
 from app.schemas.user import ProfileUpdate, Role
 from app.services.user_service import (
+    DisabledAccountError,
     EmptyProfileUpdateError,
+    InvalidRoleError,
     ProfileNotFoundError,
     ProfileRecord,
     ProfileRepositoryError,
+    SupabaseProfileRepository,
     UserService,
 )
 from conftest import FakeProfileRepository, bearer
@@ -48,6 +51,15 @@ class TestGetMyProfile:
     def test_missing_profile_returns_403(self, client, make_token):
         response = client.get(PROFILE, headers=bearer(make_token()))
         assert response.status_code == 403
+
+    def test_disabled_user_returns_403_account_disabled(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "student", is_disabled=True)
+        response = client.get(PROFILE, headers=bearer(make_token(user_id)))
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": {"code": "account_disabled", "message": "This account has been disabled."}
+        }
 
 
 class TestUpdateMyProfile:
@@ -91,6 +103,15 @@ class TestUpdateMyProfile:
     def test_unauthenticated_returns_401(self, client):
         assert client.patch(PROFILE, json={"role": "teacher"}).status_code == 401
 
+    def test_disabled_user_update_rejected(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "student", is_disabled=True)
+        response = client.patch(PROFILE, json={"role": "teacher"}, headers=bearer(make_token(user_id)))
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": {"code": "account_disabled", "message": "This account has been disabled."}
+        }
+
 
 # The editable profile fields are not confirmed yet, so ``ProfileUpdate`` has
 # none. This test-only subclass exercises the update path end to end; replace
@@ -133,6 +154,70 @@ class TestUserServiceUpdate:
     def test_record_for_other_user_rejected(self):
         repo = FakeProfileRepository()
         user_id = uuid4()
-        repo.records[user_id] = ProfileRecord(user_id=uuid4(), role="student")
+        repo.records[user_id] = ProfileRecord(user_id=uuid4(), role="student", is_disabled=False)
         with pytest.raises(ProfileRepositoryError):
             UserService(repo).update_profile(user_id, _UpdateWithTestField(display_label="x"), access_token="tok")
+
+    def test_disabled_user_update_raises_disabled_account_error(self):
+        repo = FakeProfileRepository()
+        user_id = uuid4()
+        repo.add(user_id, "student", is_disabled=True)
+        with pytest.raises(DisabledAccountError):
+            UserService(repo).update_profile(user_id, _UpdateWithTestField(display_label="x"), access_token="tok")
+
+
+class TestSupabaseProfileRepositoryParsing:
+    def test_missing_is_disabled_raises_repository_error(self):
+        raw = {"id": str(uuid4()), "role": "student"}
+        with pytest.raises(ProfileRepositoryError, match="Missing is_disabled field"):
+            SupabaseProfileRepository._to_record(raw)
+
+    @pytest.mark.parametrize("invalid_val", ["true", "false", 1, 0, None, [], {}])
+    def test_non_boolean_is_disabled_raises_repository_error(self, invalid_val):
+        raw = {"id": str(uuid4()), "role": "student", "is_disabled": invalid_val}
+        with pytest.raises(ProfileRepositoryError, match="is_disabled must be a boolean"):
+            SupabaseProfileRepository._to_record(raw)
+
+    def test_valid_is_disabled_false(self):
+        uid = uuid4()
+        raw = {"id": str(uid), "role": "student", "is_disabled": False}
+        record = SupabaseProfileRepository._to_record(raw)
+        assert record == ProfileRecord(user_id=uid, role="student", is_disabled=False)
+
+    def test_valid_is_disabled_true(self):
+        uid = uuid4()
+        raw = {"id": str(uid), "role": "teacher", "is_disabled": True}
+        record = SupabaseProfileRepository._to_record(raw)
+        assert record == ProfileRecord(user_id=uid, role="teacher", is_disabled=True)
+
+
+class TestUserServiceValidation:
+    def test_disabled_account_raises_disabled_account_error(self):
+        user_id = uuid4()
+        record = ProfileRecord(user_id=user_id, role="student", is_disabled=True)
+        with pytest.raises(DisabledAccountError):
+            UserService._validate(user_id, record)
+
+    def test_active_account_returns_user_profile(self):
+        user_id = uuid4()
+        record = ProfileRecord(user_id=user_id, role="student", is_disabled=False)
+        profile = UserService._validate(user_id, record)
+        assert profile.user_id == user_id
+        assert profile.role is Role.STUDENT
+
+    def test_missing_profile_raises_not_found(self):
+        user_id = uuid4()
+        with pytest.raises(ProfileNotFoundError):
+            UserService._validate(user_id, None)
+
+    def test_profile_mismatch_raises_repository_error(self):
+        user_id = uuid4()
+        record = ProfileRecord(user_id=uuid4(), role="student", is_disabled=False)
+        with pytest.raises(ProfileRepositoryError):
+            UserService._validate(user_id, record)
+
+    def test_invalid_role_raises_invalid_role_error(self):
+        user_id = uuid4()
+        record = ProfileRecord(user_id=user_id, role="admin", is_disabled=False)
+        with pytest.raises(InvalidRoleError):
+            UserService._validate(user_id, record)

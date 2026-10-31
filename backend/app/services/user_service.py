@@ -1,26 +1,23 @@
-"""User profile retrieval, updates and trusted role resolution (Module 1).
+"""User profile retrieval, updates, and trusted role resolution (Module 1).
 
-The role always comes from the trusted ``profiles`` record via a
-``ProfileRepository``. It is never taken from the request body, query string,
-the token's ``user_metadata`` or registration metadata.
+Profile operations use the authenticated user's Supabase access token so that
+Supabase Row-Level Security (RLS) policies apply to all normal user operations.
+The service-role key is never used for normal user profile operations.
 
-INTEGRATION PENDING: there is no concrete Supabase-backed repository yet. The
-database developer still has to confirm the profile table name, columns, the
-role values, the editable fields, and the RLS policies. Until then the app uses
-``UnconfiguredProfileRepository``, so profile-dependent routes return 503 and
-never serve fake data.
+The user's role comes exclusively from the trusted ``profiles`` table, never from
+the request body, query string, token ``user_metadata``, or client input.
 
-The intended implementation reads profiles with the caller's own access token
-so that Supabase RLS applies. It must not use the service-role key for normal
-user operations.
+Disabled accounts (``is_disabled=True``) are rejected immediately during profile
+validation before any valid ``UserProfile`` or authenticated identity is returned.
 """
 
-import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
+import logging
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.database.supabase import get_user_supabase
 from app.schemas.user import ProfileUpdate, Role
 
 logger = logging.getLogger(__name__)
@@ -32,6 +29,7 @@ class ProfileRecord:
 
     user_id: UUID
     role: str
+    is_disabled: bool
 
 
 @dataclass(frozen=True)
@@ -48,6 +46,22 @@ class ProfileRepositoryError(Exception):
 
 class ProfileIntegrationNotConfiguredError(ProfileRepositoryError):
     """No confirmed profile integration is available yet."""
+
+
+class ProfileNotFoundError(Exception):
+    """The authenticated user has no profile record."""
+
+
+class InvalidRoleError(Exception):
+    """The profile record holds a role TrustGrade does not recognise."""
+
+
+class DisabledAccountError(Exception):
+    """The authenticated user's account has been disabled."""
+
+
+class EmptyProfileUpdateError(Exception):
+    """The update request contained no fields to change."""
 
 
 class ProfileRepository(Protocol):
@@ -76,22 +90,90 @@ class UnconfiguredProfileRepository:
         raise ProfileIntegrationNotConfiguredError("profile repository is not configured")
 
 
+class SupabaseProfileRepository:
+    """Supabase implementation using the authenticated user's JWT."""
+
+    @staticmethod
+    def _to_record(data: Any) -> ProfileRecord | None:
+        if not data:
+            return None
+
+        if isinstance(data, list):
+            if not data:
+                return None
+            data = data[0]
+
+        if not isinstance(data, Mapping):
+            raise ProfileRepositoryError("Invalid profile response")
+
+        try:
+            if "is_disabled" not in data:
+                raise ProfileRepositoryError("Missing is_disabled field in profile")
+
+            is_disabled = data["is_disabled"]
+            if not isinstance(is_disabled, bool):
+                raise ProfileRepositoryError("is_disabled must be a boolean")
+
+            return ProfileRecord(
+                user_id=UUID(str(data["id"])),
+                role=str(data["role"]),
+                is_disabled=is_disabled,
+            )
+        except ProfileRepositoryError:
+            raise
+        except (KeyError, ValueError, TypeError):
+            raise ProfileRepositoryError("Invalid profile data") from None
+
+    def get_profile(
+        self, user_id: UUID, *, access_token: str
+    ) -> ProfileRecord | None:
+        try:
+            client = get_user_supabase(access_token)
+
+            response = (
+                client.table("profiles")
+                .select("id, role, is_disabled")
+                .eq("id", str(user_id))
+                .execute()
+            )
+
+            return self._to_record(response.data)
+
+        except ProfileRepositoryError:
+            raise
+        except Exception:
+            logger.exception("Supabase profile lookup failed")
+            raise ProfileRepositoryError("Profile lookup failed") from None
+
+    def update_profile(
+        self,
+        user_id: UUID,
+        changes: Mapping[str, Any],
+        *,
+        access_token: str,
+    ) -> ProfileRecord | None:
+        try:
+            client = get_user_supabase(access_token)
+
+            response = (
+                client.table("profiles")
+                .update(dict(changes))
+                .eq("id", str(user_id))
+                .select("id, role, is_disabled")
+                .execute()
+            )
+
+            return self._to_record(response.data)
+
+        except ProfileRepositoryError:
+            raise
+        except Exception:
+            logger.exception("Supabase profile update failed")
+            raise ProfileRepositoryError("Profile update failed") from None
+
+
 def get_profile_repository() -> ProfileRepository:
-    # TODO(db-contract): return the Supabase-backed repository once the
-    # profiles table, columns, role values and RLS policies are confirmed.
-    return UnconfiguredProfileRepository()
-
-
-class ProfileNotFoundError(Exception):
-    """The authenticated user has no profile record."""
-
-
-class InvalidRoleError(Exception):
-    """The profile record holds a role TrustGrade does not recognise."""
-
-
-class EmptyProfileUpdateError(Exception):
-    """The update request contained no fields to change."""
+    return SupabaseProfileRepository()
 
 
 class UserService:
@@ -119,6 +201,9 @@ class UserService:
             # Defence in depth: never hand back somebody else's profile.
             logger.error("Profile repository returned a record for a different user")
             raise ProfileRepositoryError("profile/user mismatch")
+        if record.is_disabled:
+            logger.warning("Rejected disabled user %s", user_id)
+            raise DisabledAccountError
         try:
             role = Role(record.role)
         except ValueError:

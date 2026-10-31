@@ -8,8 +8,8 @@ Usage in other modules::
     def view(user: CurrentUser = Depends(require_student)): ...
 
 Status codes: 401 for missing/invalid credentials, 403 for authenticated users
-without permission (or without a usable profile/role), 503 when the auth or
-profile integration is unavailable or not configured.
+without permission (or without a usable profile/role or disabled accounts), 503
+when the auth or profile integration is unavailable or not configured.
 """
 
 import logging
@@ -31,6 +31,7 @@ from app.core.security import (
 from app.schemas.user import Role
 from app.services.auth_service import AuthService, CurrentUser
 from app.services.user_service import (
+    DisabledAccountError,
     InvalidRoleError,
     ProfileIntegrationNotConfiguredError,
     ProfileNotFoundError,
@@ -73,6 +74,8 @@ def profile_error_to_http(exc: Exception) -> HTTPException:
     """Map user-service/profile errors to safe HTTP errors."""
     if isinstance(exc, ProfileNotFoundError):
         return api_error(status.HTTP_403_FORBIDDEN, "profile_not_found", "No user profile exists for this account.")
+    if isinstance(exc, DisabledAccountError):
+        return api_error(status.HTTP_403_FORBIDDEN, "account_disabled", "This account has been disabled.")
     if isinstance(exc, InvalidRoleError):
         return api_error(status.HTTP_403_FORBIDDEN, "invalid_role", "This account does not have a valid role.")
     if isinstance(exc, ProfileIntegrationNotConfiguredError):
@@ -136,7 +139,7 @@ def get_current_user(
     except SigningKeyUnavailableError:
         logger.error("Could not retrieve JWT signing keys")
         raise auth_unavailable() from None
-    except (ProfileNotFoundError, InvalidRoleError, ProfileRepositoryError) as exc:
+    except (ProfileNotFoundError, DisabledAccountError, InvalidRoleError, ProfileRepositoryError) as exc:
         raise profile_error_to_http(exc) from None
 
 

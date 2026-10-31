@@ -330,9 +330,41 @@ class TestAuthMe:
 
     def test_profile_for_other_user_is_never_returned(self, client, make_token, profiles):
         user_id, other_id = uuid4(), uuid4()
-        profiles.records[user_id] = ProfileRecord(user_id=other_id, role="teacher")
+        profiles.records[user_id] = ProfileRecord(user_id=other_id, role="teacher", is_disabled=False)
         response = client.get(ME, headers=bearer(make_token(user_id)))
         assert response.status_code == 503
+
+    def test_active_student_authenticates(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "student", is_disabled=False)
+        response = client.get(ME, headers=bearer(make_token(user_id, email="student@example.com")))
+        assert response.status_code == 200
+        assert response.json() == {"id": str(user_id), "email": "student@example.com", "role": "student"}
+
+    def test_active_teacher_authenticates(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "teacher", is_disabled=False)
+        response = client.get(ME, headers=bearer(make_token(user_id, email="teacher@example.com")))
+        assert response.status_code == 200
+        assert response.json() == {"id": str(user_id), "email": "teacher@example.com", "role": "teacher"}
+
+    def test_disabled_student_returns_403_account_disabled(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "student", is_disabled=True)
+        response = client.get(ME, headers=bearer(make_token(user_id)))
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": {"code": "account_disabled", "message": "This account has been disabled."}
+        }
+
+    def test_disabled_teacher_returns_403_account_disabled(self, client, make_token, profiles):
+        user_id = uuid4()
+        profiles.add(user_id, "teacher", is_disabled=True)
+        response = client.get(ME, headers=bearer(make_token(user_id)))
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": {"code": "account_disabled", "message": "This account has been disabled."}
+        }
 
     def test_unreachable_jwks_returns_503(self, client, key_source, make_token):
         key_source.unreachable = True
@@ -454,3 +486,12 @@ class TestRoleAuthorization:
     @pytest.mark.parametrize("path", ["/teacher-only", "/student-only", "/any-user"])
     def test_invalid_token_rejected(self, guarded_client, path):
         assert guarded_client.get(path, headers=bearer("garbage")).status_code == 401
+
+    @pytest.mark.parametrize("path", ["/teacher-only", "/student-only", "/any-user"])
+    def test_disabled_account_cannot_access_any_guarded_route(self, guarded_client, make_token, profiles, path):
+        user_id = uuid4()
+        profiles.add(user_id, "student", is_disabled=True)
+        token = make_token(user_id)
+        response = guarded_client.get(path, headers=bearer(token))
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "account_disabled"
