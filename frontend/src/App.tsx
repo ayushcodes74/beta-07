@@ -3,7 +3,7 @@ import {
   LayoutDashboard, LogOut, Menu, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
   Sparkles, Upload, X,
 } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { createContext, Suspense, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
@@ -15,8 +15,18 @@ import {
   AssignmentEditor, AssignmentsPage, AssessmentPage, AuthPage, CourseDetailPage, CoursesPage,
   GradingReviewPage, LandingPage, LateSubmissionsPage, LeaderboardPage, NotFoundPage, OCRReviewPage,
   OverviewPage, ResultsPage, ReviewQueuePage, SettingsPage, StudentAssignmentsPage, StudentSubmissionPage,
-  SubmissionsPage,
+  SubmissionsPage, prefetchAppPages,
 } from "./pages";
+
+/** Shown for the moment a page's code is downloading (first visit only). */
+function PageLoading() {
+  return (
+    <div className="page-loading" role="status" aria-live="polite">
+      <span className="page-loading-bar" />
+      <span className="sr-only">Loading page…</span>
+    </div>
+  );
+}
 
 interface AppState {
   user: User | null;
@@ -359,6 +369,7 @@ function ApplicationShell() {
           </div>
         </header>
         <div className="route-stage">
+          {user?.needsName && <NamePrompt suggestion={user.name} onSaved={refreshSession} />}
           {/* The new page renders immediately with a short CSS fade-in. (A framer-motion
               AnimatePresence in "wait" mode held every navigation until the old page had faded out.) */}
           <main key={location.pathname} className="page-content page-enter">
