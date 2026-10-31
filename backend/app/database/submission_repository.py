@@ -74,6 +74,13 @@ class OCRJobRecord(BaseModel):
 class SupabaseSubmissionRepository:
     """Supabase-backed submission repository operating under caller's JWT/RLS context."""
 
+    @staticmethod
+    def _client(access_token: str):
+        try:
+            return get_user_supabase(access_token)
+        except Exception as exc:
+            raise SubmissionIntegrationNotConfiguredError(str(exc)) from exc
+
     def create(
         self,
         submission_id: UUID,
@@ -86,7 +93,7 @@ class SupabaseSubmissionRepository:
         access_token: str,
     ) -> SubmissionRecord:
         """Create a submission record and associated initial OCR job."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
 
         try:
@@ -136,7 +143,7 @@ class SupabaseSubmissionRepository:
 
     def get(self, submission_id: UUID, *, access_token: str) -> Optional[SubmissionRecord]:
         """Fetch submission by ID along with its associated OCR job ID."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("submissions")
@@ -179,7 +186,7 @@ class SupabaseSubmissionRepository:
         self, assignment_id: UUID, *, access_token: str
     ) -> List[SubmissionRecord]:
         """List all submissions for a given assignment."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("submissions")
@@ -209,7 +216,7 @@ class SupabaseSubmissionRepository:
         self, student_id: UUID, *, access_token: str
     ) -> List[SubmissionRecord]:
         """List submissions belonging to a student (strictly self-scoped under RLS)."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("submissions")
@@ -244,7 +251,7 @@ class SupabaseSubmissionRepository:
         access_token: str,
     ) -> Optional[SubmissionRecord]:
         """Update submission lifecycle status and optional OCR job state."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
         try:
             update_payload: Dict[str, Any] = {
@@ -281,7 +288,7 @@ class SupabaseSubmissionRepository:
         self, submission_id: UUID, *, access_token: str
     ) -> List[SubmissionAnswerRecord]:
         """Retrieve question-level student answers from submission_answers."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("submission_answers")
@@ -310,7 +317,7 @@ class SupabaseSubmissionRepository:
         self, submission_id: UUID, answers: List[Dict[str, Any]], *, access_token: str
     ) -> int:
         """Upsert student answer records for this submission."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
         try:
             records = []
@@ -338,7 +345,7 @@ class SupabaseSubmissionRepository:
         self, submission_id: UUID, *, access_token: str
     ) -> Optional[OCRJobRecord]:
         """Retrieve the OCR processing job record for a submission."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("ocr_jobs")
@@ -367,7 +374,7 @@ class SupabaseSubmissionRepository:
         self, submission_id: UUID, assignment_id: UUID, *, access_token: str
     ) -> bool:
         """Verify that a submission belongs to the specified assignment."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("submissions")

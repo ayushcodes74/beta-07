@@ -34,6 +34,7 @@ from app.schemas.assignment import (
 )
 from app.services.assignment_service import (
     AssignmentInUseError,
+    AssignmentIntegrationNotConfiguredError,
     AssignmentRecord,
     AssignmentRepository,
     AssignmentRepositoryError,
@@ -82,11 +83,18 @@ class QuestionAnswerKeyRecord(BaseModel):
 class SupabaseAssignmentRepository:
     """Supabase-backed assignment repository operating under the caller's JWT/RLS context."""
 
+    @staticmethod
+    def _client(access_token: str):
+        try:
+            return get_user_supabase(access_token)
+        except Exception as exc:
+            raise AssignmentIntegrationNotConfiguredError(str(exc)) from exc
+
     def create(
         self, teacher_id: UUID, content: AssignmentContent, *, access_token: str
     ) -> AssignmentRecord:
         """Store a new assignment as a draft owned by teacher_id."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         assignment_id = uuid4()
         now_str = datetime.now(UTC).isoformat()
 
@@ -154,7 +162,7 @@ class SupabaseAssignmentRepository:
 
     def get(self, assignment_id: UUID, *, access_token: str) -> AssignmentRecord | None:
         """Fetch assignment by ID with full questions and teacher answer keys."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("assignments")
@@ -192,7 +200,7 @@ class SupabaseAssignmentRepository:
 
     def list_by_teacher(self, teacher_id: UUID, *, access_token: str) -> list[AssignmentRecord]:
         """List all assignments belonging to a teacher."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("assignments")
@@ -233,7 +241,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, student_id: UUID, *, access_token: str
     ) -> AssignmentRecord | None:
         """Fetch published assignment for a student. Answer keys are strictly omitted."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("assignments")
@@ -287,7 +295,7 @@ class SupabaseAssignmentRepository:
         self, student_id: UUID, *, access_token: str
     ) -> list[AssignmentRecord]:
         """List published assignments accessible to this student without answer keys."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("assignments")
@@ -341,7 +349,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, content: AssignmentContent, *, access_token: str
     ) -> AssignmentRecord | None:
         """Replace assignment content, questions, and answer keys."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
 
         try:
@@ -415,7 +423,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, status: AssignmentStatus, *, access_token: str
     ) -> AssignmentRecord | None:
         """Update assignment status (draft/published)."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         now_str = datetime.now(UTC).isoformat()
         try:
             resp = (
@@ -435,7 +443,7 @@ class SupabaseAssignmentRepository:
 
     def delete(self, assignment_id: UUID, *, access_token: str) -> bool:
         """Delete assignment. Refuses with AssignmentInUseError if submissions exist."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             # Check for existing submissions
             sub_resp = (
@@ -459,7 +467,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, *, access_token: str
     ) -> list[AssignmentQuestionRecord]:
         """Retrieve assignment questions ordered strictly by position asc."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             q_resp = (
                 client.table("assignment_questions")
@@ -490,7 +498,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, *, access_token: str
     ) -> dict[UUID, QuestionAnswerKeyRecord]:
         """Retrieve answer keys for assignment questions (authorized teacher logic only)."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             questions = self.get_questions(assignment_id, access_token=access_token)
             if not questions:
@@ -522,7 +530,7 @@ class SupabaseAssignmentRepository:
         self, assignment_id: UUID, teacher_id: UUID, *, access_token: str
     ) -> bool:
         """Verify that an assignment is owned by the specified teacher."""
-        client = get_user_supabase(access_token)
+        client = self._client(access_token)
         try:
             resp = (
                 client.table("assignments")
