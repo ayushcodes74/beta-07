@@ -150,8 +150,17 @@ class FakeCourseRepository:
         self.courses[course_id] = updated
         return self.get(course_id, access_token=access_token)
 
-    def get_student_profile(self, student_id: UUID, *, access_token: str) -> dict[str, Any] | None:
+    def get_student_profile(
+        self, course_id: UUID, student_id: UUID, *, access_token: str
+    ) -> dict[str, Any] | None:
         self.tokens.append(access_token)
+        # Check course exists
+        course = self.courses.get(course_id)
+        if not course:
+            return {
+                "_validation_error": "course_not_found",
+                "_validation_message": "Course not found or caller is not owner.",
+            }
         return self.student_profiles.get(student_id)
 
     def get_enrollment(
@@ -499,6 +508,90 @@ class TestEnrollments:
         assert resp.status_code == 422
         assert resp.json()["detail"]["code"] == "student_not_found"
 
+    def test_teacher_cannot_enroll_student_in_another_teachers_course(self, api, make_user):
+        _, t1_auth = make_user("teacher")
+        _, t2_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        created = api.post(BASE, json={"name": "Teacher 1 Course"}, headers=t1_auth).json()
+
+        # Teacher 2 tries to enroll student in Teacher 1's course
+        resp = api.post(
+            f"{BASE}/{created['id']}/enrollments",
+            json={"student_id": str(s_id)},
+            headers=t2_auth,
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "course_not_found"
+
+    def test_rpc_course_not_found_returns_404(self, api, repo, make_user):
+        _, teacher_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        created = api.post(BASE, json={"name": "Biology"}, headers=teacher_auth).json()
+
+        # Simulate RPC indicating caller does not own course or course not found
+        original_get_profile = repo.get_student_profile
+        repo.get_student_profile = lambda c_id, s_id, **kw: {
+            "id": s_id,
+            "_validation_error": "course_not_found",
+            "_validation_message": "Course not found or caller is not owner.",
+        }
+
+        resp = api.post(
+            f"{BASE}/{created['id']}/enrollments",
+            json={"student_id": str(s_id)},
+            headers=teacher_auth,
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "course_not_found"
+        repo.get_student_profile = original_get_profile
+
+    def test_rpc_unavailable_fails_closed_returns_503(self, api, repo, make_user):
+        from app.services.course_service import CourseRepositoryError
+
+        _, teacher_auth = make_user("teacher")
+        s_id, _ = make_user("student")
+        created = api.post(BASE, json={"name": "Biology"}, headers=teacher_auth).json()
+
+        original_get_profile = repo.get_student_profile
+        def _failing_get_profile(*args, **kwargs):
+            raise CourseRepositoryError("PostgREST RPC connection failure: 502 Bad Gateway")
+        repo.get_student_profile = _failing_get_profile
+
+        resp = api.post(
+            f"{BASE}/{created['id']}/enrollments",
+            json={"student_id": str(s_id)},
+            headers=teacher_auth,
+        )
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["code"] == "course_service_unavailable"
+        repo.get_student_profile = original_get_profile
+
+    @pytest.mark.parametrize("error_code,error_msg", [
+        ("invalid_role", "Only student accounts can be enrolled in courses."),
+        ("account_disabled", "Cannot enroll a disabled student account."),
+        ("student_not_found", "The specified student profile was not found."),
+    ])
+    def test_rpc_validation_errors_retain_codes(self, api, repo, make_user, error_code, error_msg):
+        _, teacher_auth = make_user("teacher")
+        target_id = uuid4()
+        created = api.post(BASE, json={"name": "Biology"}, headers=teacher_auth).json()
+
+        original_get_profile = repo.get_student_profile
+        repo.get_student_profile = lambda c_id, s_id, **kw: {
+            "id": target_id,
+            "_validation_error": error_code,
+            "_validation_message": error_msg,
+        }
+
+        resp = api.post(
+            f"{BASE}/{created['id']}/enrollments",
+            json={"student_id": str(target_id)},
+            headers=teacher_auth,
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["code"] == error_code
+        repo.get_student_profile = original_get_profile
+
     def test_database_unique_constraint_translates_to_409(self, api, repo, make_user):
         _, teacher_auth = make_user("teacher")
         s_id, _ = make_user("student")
@@ -520,24 +613,31 @@ class TestEnrollments:
         assert resp.json()["detail"]["code"] == "duplicate_enrollment"
         repo.enroll_student = original_enroll
 
-    def test_rpc_validation_error_handling(self, api, repo, make_user):
-        _, teacher_auth = make_user("teacher")
-        target_id = uuid4()
-        # Return RPC validation error payload
-        repo.student_profiles[target_id] = {
-            "id": target_id,
-            "_validation_error": "account_disabled",
-            "_validation_message": "Cannot enroll a disabled student account.",
-        }
-        created = api.post(BASE, json={"name": "Biology"}, headers=teacher_auth).json()
+    def test_supabase_course_repo_unique_violation_translation(self):
+        from unittest.mock import MagicMock
+        from app.database.course_repository import SupabaseCourseRepository
+        from app.services.course_service import DuplicateEnrollmentError
 
-        resp = api.post(
-            f"{BASE}/{created['id']}/enrollments",
-            json={"student_id": str(target_id)},
-            headers=teacher_auth,
+        repo = SupabaseCourseRepository()
+        mock_client = MagicMock()
+        mock_table = MagicMock()
+        mock_client.table.return_value = mock_table
+
+        # Simulate 23505 in insert
+        mock_table.insert.return_value.execute.side_effect = Exception(
+            "{'code': '23505', 'message': 'duplicate key value violates unique constraint'}"
         )
-        assert resp.status_code == 422
-        assert resp.json()["detail"]["code"] == "account_disabled"
+        repo._client = MagicMock(return_value=mock_client)
+
+        with pytest.raises(DuplicateEnrollmentError):
+            repo.enroll_student(uuid4(), uuid4(), access_token="fake")
+
+        # Simulate 23505 in update (reactivate)
+        mock_table.update.return_value.eq.return_value.execute.side_effect = Exception(
+            "unique_violation: code 23505"
+        )
+        with pytest.raises(DuplicateEnrollmentError):
+            repo.reactivate_enrollment(uuid4(), access_token="fake")
 
 
 # --------------------------------------------------------------------------
