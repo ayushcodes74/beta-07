@@ -29,7 +29,7 @@ from app.rag.embeddings import EmbeddingsUnavailableError
 from app.schemas.common import SourceReference
 from app.grading.feedback_generator import FeedbackGenerator
 from app.schemas.assignment import QuestionType, Rubric, RubricCriterion
-from app.schemas.grading import GradingRequest, GradingResult, GradingStatus
+from app.schemas.grading import GradingRequest, GradingResult, GradingStatus, ReferenceImage
 from app.llm.fallback_client import get_llm_client
 from app.llm.gemini_client import (
     LLMAPIError,
@@ -91,6 +91,16 @@ class GradeQuestionInput(BaseModel):
     options: List[dict] = Field(default_factory=list, max_length=20)
     correct_option_id: Optional[str] = Field(default=None, max_length=20)
     teacher_corrections: List[TeacherCorrectionInput] = Field(default_factory=list, max_length=10)
+    reference_material: Optional[str] = Field(
+        default=None,
+        max_length=30_000,
+        description="Text (OCR) of pictures/files the teacher attached to this question; part of the question",
+    )
+    reference_images: List[ReferenceImage] = Field(
+        default_factory=list,
+        max_length=4,
+        description="The pictures attached to this question (base64), shown to a multimodal grader",
+    )
 
 
 class GradeSubmissionRequest(BaseModel):
@@ -184,7 +194,7 @@ def _lenient_hint(partial_credit: float) -> str:
     )
 
 # "- Large hemispherical brick dome (1 mark)" / "* Bas-reliefs ... (2 marks)"
-_MARK_POINT = re.compile(r"^\s*(?:[-*â€¢]|\d+[.)])\s*(?P<text>.+?)\s*\(\s*(?P<marks>\d+(?:\.\d+)?)\s*marks?\s*\)\s*\.?\s*$", re.I)
+_MARK_POINT = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*(?P<text>.+?)\s*\(\s*(?P<marks>\d+(?:\.\d+)?)\s*marks?\s*\)\s*\.?\s*$", re.I)
 _MARK_SECTION = re.compile(r"^\s*(?P<name>key points|marking scheme|marking points|rubric)\s*:?\s*$", re.I)
 
 
@@ -345,6 +355,13 @@ def _to_grading_request(
         instructions += "\n" + _PER_POINT_HINT
     if question.instructions:
         instructions += f"\n{question.instructions}"
+    if question.reference_material:
+        # The diagram/source/passage the question refers to, as read by OCR from the teacher's attachment.
+        question_text += (
+            "\n\nQUESTION MATERIAL (text read by OCR from the file(s) the teacher attached to this question; "
+            "part of the question shown to the student, NOT an answer key; may contain OCR errors):\n"
+            + question.reference_material.strip()
+        )
     return GradingRequest(
         rubric=rubric,
         course_id=body.course_id or body.assignment_id,
@@ -360,6 +377,7 @@ def _to_grading_request(
         question_type=QuestionType.SUBJECTIVE,
         ocr_confidence=body.ocr_confidence,
         teacher_corrections=[_format_correction(c) for c in question.teacher_corrections],
+        reference_images=list(question.reference_images),
     )
 
 

@@ -9,11 +9,12 @@ Subclasses can override the small hook methods to talk to other chat APIs.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Tuple, Any, Dict, List, Optional, Type, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -217,6 +218,7 @@ class OpenAICompatibleClient:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_retries: Optional[int] = None,
+        images: Optional[List[Tuple[str, bytes]]] = None,
     ) -> T:
         if not prompt or not prompt.strip():
             raise ValueError("Prompt cannot be empty.")
@@ -229,7 +231,17 @@ class OpenAICompatibleClient:
             f"conforms to this JSON Schema:\n{json.dumps(schema)}"
         )
         system = f"{system_instruction}\n\n{json_instruction}" if system_instruction else json_instruction
-        messages = self._messages(prompt, system)
+        messages: List[Dict[str, Any]] = list(self._messages(prompt, system))
+        if images:
+            # Pictures the question refers to, as OpenAI-style image parts (data URLs).
+            messages[-1] = {
+                "role": "user",
+                "content": [{"type": "text", "text": prompt}]
+                + [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}}
+                    for mime, data in images
+                ],
+            }
         target_model = model or self.default_model
         temp = temperature if temperature is not None else self.settings.temperature
 

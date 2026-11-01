@@ -70,6 +70,21 @@ class GradingRequest(BaseSchema):
         default_factory=list,
         description="Teacher corrections of earlier AI grading of this question; the grader must follow them.",
     )
+    reference_images: List["ReferenceImage"] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Pictures the teacher attached to this question (graph, diagram, ...); shown to the grader.",
+    )
+
+
+class ReferenceImage(BaseSchema):
+    """A picture attached to a question, passed to a multimodal grader."""
+
+    mime_type: str = Field(pattern=r"^image/(png|jpeg|webp)$")
+    data_base64: str = Field(max_length=6_000_000, description="Base64 image bytes (about 4 MB max)")
+
+
+GradingRequest.model_rebuild()
 
 
 class CriterionEvaluation(BaseSchema):

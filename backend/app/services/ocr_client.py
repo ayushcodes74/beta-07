@@ -210,6 +210,22 @@ class OCRServiceClient:
             except httpx.HTTPStatusError as e:
                 raise OCRServiceUnavailableError(f"OCR service returned status {e.response.status_code}") from e
 
+    async def get_file_hash(self, job_id: str) -> Optional[str]:
+        """SHA-256 of the PDF uploaded for a job (exact-duplicate detection), or None if unknown/unavailable.
+
+        Best-effort: any failure returns None so integrity checks still run on OCR text alone.
+        """
+        try:
+            async with self._get_client() as client:
+                resp = await client.get(f"/api/v1/ocr/file-hash/{job_id}")
+                if resp.status_code != 200:
+                    return None
+                value = resp.json().get("sha256")
+                return value if isinstance(value, str) and len(value) == 64 else None
+        except Exception as exc:  # unreachable, older OCR engine without the endpoint, bad JSON
+            logger.warning("File hash unavailable: %s", type(exc).__name__)
+            return None
+
     async def get_job_result(self, job_id: str) -> Union[OCRDocumentResult, JobStatusResponse]:
         """Retrieve the completed OCR document result.
 

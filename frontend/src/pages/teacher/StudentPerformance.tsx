@@ -8,7 +8,7 @@ import { formatDate } from "../../lib/utils";
 
 /**
  * One assignment on the x-axis: the student's published score and the class average, stored as
- * 0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“100 so assignments with different totals share the chart, and shown in marks out of `outOf`.
+ * 0–100 so assignments with different totals share the chart, and shown in marks out of `outOf`.
  */
 export interface PerformancePoint {
   id: string;
@@ -71,7 +71,7 @@ const TICKS = [0, 25, 50, 75, 100]; // % of the scale; labelled in marks (0, 5, 
 export const STUDENT_COLOR = "#2E7D4F"; // validated series hue (shared with Class analytics)
 const AVERAGE_COLOR = "#A3AFA6"; // de-emphasised reference line
 
-const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, Math.max(1, max - 1))}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦` : text);
+const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, Math.max(1, max - 1))}…` : text);
 
 /** Line path through the points that have a value; a missing grade breaks the line instead of bridging it. */
 function linePath(values: (number | null)[], x: (i: number) => number, y: (v: number) => number) {
@@ -229,10 +229,10 @@ export function PerformanceLineChart({
   );
 }
 
-/** A difference between two 0ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“100 scores, in marks out of `outOf`: "+1.5 marks". */
+/** A difference between two 0–100 scores, in marks out of `outOf`: "+1.5 marks". */
 function signedMarks(percentDiff: number, outOf: number) {
   const value = Math.round(percentToMarks(percentDiff, outOf) * 10) / 10;
-  return `${value > 0 ? "+" : value < 0 ? "ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢" : "Ãƒâ€šÃ‚Â±"}${formatMarks(Math.abs(value))} mark${Math.abs(value) === 1 ? "" : "s"}`;
+  return `${value > 0 ? "+" : value < 0 ? "−" : "±"}${formatMarks(Math.abs(value))} mark${Math.abs(value) === 1 ? "" : "s"}`;
 }
 
 export function StudentPerformanceDialog({

@@ -9,6 +9,7 @@ supporting deterministic MCQ grading, and flagging uncertain submissions for rev
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
@@ -196,11 +197,25 @@ class AnswerEvaluator:
         if request.instructions:
             prompt += f"\n### TEACHER SPECIFIC INSTRUCTIONS:\n{request.instructions}\n"
 
+        # Pictures attached to the question (graph, diagram, map...): the model sees them directly, so it can
+        # judge answers about shapes, labels and layout that OCR text alone cannot convey.
+        images = [
+            (image.mime_type, base64.b64decode(image.data_base64))
+            for image in request.reference_images
+        ]
+        if images:
+            prompt += (
+                f"\n### QUESTION FIGURES:\n{len(images)} picture(s) the teacher attached to this question are "
+                "included with this message. They are part of the question shown to the student (NOT an answer "
+                "key). Use them to understand what the question asks and to check the student's answer.\n"
+            )
+
         # 8. Invoke Gemini for semantic grading
         llm_response = self.gemini_client.generate_structured(
             prompt=prompt,
             response_schema=_LLMQuestionGradeResponse,
             system_instruction=prompts.SYSTEM_ACADEMIC_EVALUATOR,
+            **({"images": images} if images else {}),
         )
 
         # 9. Reconcile criteria marks with rubric and clamp

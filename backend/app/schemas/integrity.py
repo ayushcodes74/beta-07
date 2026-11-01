@@ -97,9 +97,32 @@ class IntegrityEvidence(BaseModel):
     detected_at: datetime
 
 
+class SimilarSubmission(BaseModel):
+    """Whole-sheet comparison with one other submission to the same assignment (see copy_detection)."""
+
+    submission_id: UUID
+    student_id: UUID
+    overlap: float = Field(
+        ge=0.0, le=1.0,
+        description="Share of the shorter answer sheet's text (question text excluded) that also appears in the other.",
+    )
+    likely_copy: bool = Field(description="Overlap reached the copy-flag threshold; needs teacher review.")
+    identical_file: bool = Field(
+        default=False, description="Both students uploaded byte-for-byte the same PDF file (SHA-256 match)."
+    )
+    submitted_at: datetime | None = None
+
+
 class IntegrityReport(BaseModel):
     submission_id: UUID
     review_status: Literal["processing", "needs_teacher_review", "no_matches"]
+    copy_flag: bool = Field(
+        default=False,
+        description="This answer sheet is (nearly) the same as another student's. Evidence for review, not a finding.",
+    )
+    similar_submissions: list[SimilarSubmission] = Field(
+        default_factory=list, description="Most similar other submissions first (only meaningful overlaps)."
+    )
     comparison_scope: Literal["same_assignment"] = "same_assignment"
     comparisons_completed: int = Field(ge=0)
     comparisons_skipped: int = Field(ge=0)

@@ -47,7 +47,7 @@ function DecisionBadge({ submission }: { submission: Submission }) {
   return (
     <Badge tone="sage">
       <span className="badge-dot" />
-      {late.penaltyPercent ? `Accepted Ãƒâ€šÃ‚Â· ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢${late.penaltyPercent}%` : "Accepted Ãƒâ€šÃ‚Â· full marks"}
+      {late.penaltyPercent ? `Accepted · −${late.penaltyPercent}%` : "Accepted · full marks"}
     </Badge>
   );
 }
@@ -119,9 +119,9 @@ function LateSubmissionCard({
         <div className="late-card-main">
           <strong>{studentName}</strong>
           <small>
-            {courseCode ? `${courseCode} Ãƒâ€šÃ‚Â· ` : ""}
+            {courseCode ? `${courseCode} · ` : ""}
             {assignment?.title ?? "Assignment"}
-            {maxMarks ? ` Ãƒâ€šÃ‚Â· ${maxMarks} marks` : ""}
+            {maxMarks ? ` · ${maxMarks} marks` : ""}
           </small>
         </div>
         <div className="late-card-times">
@@ -139,7 +139,7 @@ function LateSubmissionCard({
       {published ? (
         <p className="late-card-locked">
           <Lock size={12} /> A grade has been published for this submission, so the decision is locked.
-          {late.note ? ` Note: ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ${late.note}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â` : ""}
+          {late.note ? ` Note: “${late.note}”` : ""}
         </p>
       ) : editing ? (
         <div className="late-card-decision">
@@ -178,8 +178,8 @@ function LateSubmissionCard({
               {penaltyValid
                 ? penalty === 0
                   ? "No deduction: graded like an on-time submission."
-                  : `ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢${penalty}% of the final score` +
-                    (maxMarks ? ` (e.g. full marks ${maxMarks} ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ ${lateAdjustedScore(maxMarks, penalty)}).` : ".")
+                  : `−${penalty}% of the final score` +
+                    (maxMarks ? ` (e.g. full marks ${maxMarks} → ${lateAdjustedScore(maxMarks, penalty)}).` : ".")
                 : "Enter a deduction between 0 and 100%."}
             </small>
           </div>
@@ -201,7 +201,7 @@ function LateSubmissionCard({
             </Button>
             <Button size="sm" disabled={busy || !penaltyValid} onClick={() => void decide("accepted")}>
               <Check size={13} />
-              {penalty ? `Accept with ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢${penaltyValid ? penalty : "?"}%` : "Accept for full marks"}
+              {penalty ? `Accept with −${penaltyValid ? penalty : "?"}%` : "Accept for full marks"}
             </Button>
             {late.status !== "pending" && (
               <Button variant="secondary" size="sm" disabled={busy} onClick={() => setEditing(false)}>
@@ -218,8 +218,8 @@ function LateSubmissionCard({
               : late.penaltyPercent
               ? `Accepted. ${late.penaltyPercent}% will be deducted from the final score when you publish the grade.`
               : "Accepted for full marks."}
-            {late.note ? ` Note to student: ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ${late.note}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â` : ""}
-            {late.decidedAt ? ` Ãƒâ€šÃ‚Â· Decided ${formatDate(late.decidedAt)}` : ""}
+            {late.note ? ` Note to student: “${late.note}”` : ""}
+            {late.decidedAt ? ` · Decided ${formatDate(late.decidedAt)}` : ""}
           </p>
           <div className="late-card-actions">
             <Button variant="secondary" size="sm" disabled={busy} onClick={() => void decide("pending")}>
@@ -305,7 +305,7 @@ export function LateSubmissionsPage() {
     <>
       <div className="page-heading">
         <div>
-          <div className="eyebrow">REVIEW Ãƒâ€šÃ‚Â· LATE SUBMISSIONS</div>
+          <div className="eyebrow">REVIEW · LATE SUBMISSIONS</div>
           <h1>Belated submissions</h1>
           <p className="page-subtitle">
             Work handed in after the due date waits here for your decision: accept it for full marks, accept it with

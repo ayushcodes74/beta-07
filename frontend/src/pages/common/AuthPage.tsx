@@ -70,7 +70,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             </div>
             {error && <div role="alert" className="form-error"><AlertCircle size={14} />{error}</div>}
             <Button className="full-button auth-submit" disabled={busy}>
-              {busy ? <><span className="button-spinner" />{register ? "Creating accountâ€¦" : "Signing inâ€¦"}</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
+              {busy ? <><span className="button-spinner" />{register ? "Creating account…" : "Signing in…"}</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
             </Button>
           </form>
           <div className="auth-switch">

@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 import logging
 import re
-from typing import Any, Optional
+from typing import Callable, Any, Optional
 from uuid import UUID
 
 import httpx
@@ -78,12 +78,18 @@ class GradingService:
         ai_base_url: Optional[str] = None,
         transport: Optional[httpx.AsyncBaseTransport] = None,
         method_search: Optional[MethodSearchClient] = None,
+        question_material: Optional[Callable[..., dict[int, str]]] = None,
+        question_images: Optional[Callable[..., dict[int, list[dict]]]] = None,
     ) -> None:
         self.submissions = submissions
         self.assignment_service = assignment_service
         self.ocr_client = ocr_client
         self.grading_repo = grading_repo
         self.method_search = method_search or MethodSearchClient()
+        # {question number: text of the files the teacher attached to it} (AttachmentService.question_material)
+        self.question_material = question_material
+        # {question number: [{mime_type, data_base64}]} pictures attached to it (AttachmentService.question_images)
+        self.question_images = question_images
         self.ai_base_url = (ai_base_url or settings.AI_SERVICE_URL).rstrip("/")
         self._transport = transport
         self._timeout = httpx.Timeout(settings.AI_READ_TIMEOUT_SECONDS, connect=settings.AI_CONNECT_TIMEOUT_SECONDS)
@@ -123,6 +129,12 @@ class GradingService:
         # Teacher corrections from earlier checks of this assignment: the AI must follow them.
         corrections = await asyncio.to_thread(self._corrections_by_question, assignment, access_token)
 
+        material: dict[int, str] = {}
+        if self.question_material is not None:
+            material = await asyncio.to_thread(self.question_material, assignment.id, access_token=access_token)
+        images: dict[int, list[dict]] = {}
+        if self.question_images is not None:
+            images = await asyncio.to_thread(self.question_images, assignment.id, access_token=access_token)
         payload = {
             "submission_id": str(submission.id),
             "assignment_id": str(assignment.id),
@@ -130,7 +142,8 @@ class GradingService:
             "student_text": student_text,
             "ocr_confidence": ocr_confidence,
             "questions": [
-                _question_payload(q, n, corrections.get(n, [])) for n, q in enumerate(questions, start=1)
+                _question_payload(q, n, corrections.get(n, []), material.get(n), images.get(n))
+                for n, q in enumerate(questions, start=1)
             ],
         }
         result = await self._call_ai_engine(payload)
@@ -937,7 +950,13 @@ def _suggestion_questions(evidence: Any) -> dict[int, dict]:
     return {q["number"]: q for q in questions if isinstance(q, dict) and isinstance(q.get("number"), int)}
 
 
-def _question_payload(question: Any, number: int, corrections: Optional[list[dict]] = None) -> dict:
+def _question_payload(
+    question: Any,
+    number: int,
+    corrections: Optional[list[dict]] = None,
+    material: Optional[str] = None,
+    images: Optional[list[dict]] = None,
+) -> dict:
     payload: dict = {
         "question_id": f"q{number}",
         "type": question.type,
@@ -946,6 +965,12 @@ def _question_payload(question: Any, number: int, corrections: Optional[list[dic
     }
     if corrections:
         payload["teacher_corrections"] = corrections
+    if material:
+        # Text of the pictures/PDFs the teacher attached to this question (part of the question).
+        payload["reference_material"] = material
+    if images:
+        # The attached pictures themselves, for a multimodal grader (graphs, diagrams).
+        payload["reference_images"] = images
     if question.type == "mcq":
         payload["options"] = [{"id": o.id, "text": o.text} for o in question.options]
         payload["correct_option_id"] = question.correct_option_id

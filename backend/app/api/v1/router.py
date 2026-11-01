@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     ai_generation,
     assignments,
+    attachments,
     auth,
     course_materials,
     courses,
@@ -24,6 +25,7 @@ api_router.include_router(course_materials.router)
 # Before `assignments` so the fixed /assignments/generate-ai path is matched ahead of /{assignment_id} routes.
 api_router.include_router(ai_generation.router)
 api_router.include_router(assignments.router)
+api_router.include_router(attachments.router)
 api_router.include_router(submissions.router)
 api_router.include_router(reviews.router)
 api_router.include_router(notifications.router)

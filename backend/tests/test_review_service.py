@@ -255,7 +255,10 @@ def test_ocr_queue_skips_published_and_processing_and_uses_stored_confidence():
 
     assert [i.submission_id for i in queue.ocr] == [graded.id]
     assert queue.ocr[0].ocr_confidence == 0.4
-    assert ocr.calls == ["proc"]  # published skipped; graded used its stored confidence
+    # OCR section: published skipped, graded used its stored confidence, so only "proc" was fetched for it.
+    # The copying check then reads the other sheets too, but nothing is fetched twice.
+    assert ocr.calls[0] == "proc"
+    assert len(ocr.calls) == len(set(ocr.calls))
 
 
 def test_unreachable_ocr_engine_is_reported_not_guessed():

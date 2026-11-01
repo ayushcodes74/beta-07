@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import List, Tuple, Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
 try:
@@ -252,6 +252,7 @@ class GeminiClient:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_retries: Optional[int] = None,
+        images: Optional[List[Tuple[str, bytes]]] = None,
     ) -> T:
         """Generate structured JSON and validate it against a Pydantic schema.
 
@@ -289,9 +290,13 @@ class GeminiClient:
 
             config = types.GenerateContentConfig(**config_kwargs) if types else None
 
+            contents: Any = prompt
+            if images and types:
+                # Pictures the question refers to (e.g. a graph or diagram), sent after the text.
+                contents = [prompt, *(types.Part.from_bytes(data=data, mime_type=mime) for mime, data in images)]
             return self.client.models.generate_content(
                 model=target_model,
-                contents=prompt,
+                contents=contents,
                 config=config,
             )
 

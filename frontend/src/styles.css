@@ -6646,8 +6646,8 @@ h1 {
 
 .tg-brand-name img {
   display: block;
-  width: 112px;
-  height: 68px;
+  width: auto;
+  height: 40px;
   object-fit: contain;
 }
 
@@ -6780,7 +6780,7 @@ h1 {
   border-top: 1px solid #f0ede6;
 }
 
-/* 2. CINEMATIC HERO SECTION (VISUAL REDESIGN V2 Ã¢â‚¬â€ EDITORIAL EDTECH) */
+/* 2. CINEMATIC HERO SECTION (VISUAL REDESIGN V2 — EDITORIAL EDTECH) */
 .tg-hero-wrapper {
   padding: 108px 0 24px;
   max-width: 1180px;
@@ -8537,6 +8537,14 @@ h1 {
   margin-bottom: 14px;
 }
 
+/* The logo's dark green disappears on the dark footer: give it a light tile there. */
+.tg-footer-brand-col .tg-brand-name img {
+  box-sizing: content-box;
+  padding: 6px 9px;
+  border-radius: 12px;
+  background: #F8F9F4;
+}
+
 .tg-footer-tagline {
   font-size: 13px;
   line-height: 1.65;
@@ -9266,7 +9274,7 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ---- Class analytics (teacher overview) -------------------------------------------------------
-   Plain HTML bars. Marks: one validated hue for single-series bars (#2E7D4F), a validated lightâ†’dark
+   Plain HTML bars. Marks: one validated hue for single-series bars (#2E7D4F), a validated light→dark
    ordinal ramp for the pipeline stages; thin bars with 4px rounded data-ends, hairline solid tracks;
    text always in ink tokens, never the series color. */
 .analytics-card { margin-bottom: 16px; padding: 18px 20px; }
@@ -9300,8 +9308,9 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* Grading progress: tall segmented bar (28px, 2px surface gaps, 4px corners, share printed inside). */
 .segmented-bar { display: flex; gap: 2px; height: 28px; }
-.segment { display: flex; align-items: center; min-width: 4px; padding: 0 8px; border-radius: 4px; flex-basis: 0; }
-.segment b { font-size: 11px; font-weight: 650; }
+/* Own class name: the generic `.segment` is the filter-tab button (Submissions, Leaderboard). */
+.progress-segment { display: flex; align-items: center; min-width: 4px; padding: 0 8px; border-radius: 4px; flex-basis: 0; }
+.progress-segment b { font-size: 11px; font-weight: 650; }
 .segment-awaiting { background: #86B06A; color: #102A20; }
 .segment-approval { background: #47805F; color: #FFFFFF; }
 .segment-published { background: #173D2B; color: #FFFFFF; }
@@ -9323,7 +9332,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .column-bar { width: min(24px, 60%); min-height: 2px; background: #2E7D4F; border-radius: 4px 4px 0 0; transition: height .3s ease-out, opacity .15s; }
 .column-label { font-size: 11.5px; font-weight: 650; color: var(--muted); padding-top: 6px; }
 
-/* Average by assignment: horizontal bars on a 0â€“100% track, value at the tip. */
+/* Average by assignment: horizontal bars on a 0–100% track, value at the tip. */
 .bar-list { display: flex; flex-direction: column; gap: 10px; }
 .bar-row { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr); align-items: center; gap: 12px; border-radius: 6px; outline-offset: 2px; }
 .bar-row-label { display: flex; flex-direction: column; min-width: 0; }
@@ -9603,7 +9612,14 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* ---- Student submit page: the assignment's questions ---- */
 .submit-questions {
-  margin-top: 14px;
+  /* Same inner spacing as the instructions panel above; without it the questions ran into the box edges. */
+  padding: 16px 18px 6px;
+  margin-bottom: 18px;
+}
+
+.submit-question-text,
+.submit-question-note {
+  overflow-wrap: anywhere; /* long URLs/formulas wrap instead of spilling out of the box */
 }
 
 .submit-questions-head {
@@ -9685,3 +9701,64 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 11px;
   font-style: italic;
 }
+
+/* ---- Possible copying (grading page integrity panel) ---- */
+.copy-flag {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #E8B4B4;
+  border-left: 4px solid #9B2C2C;
+  border-radius: 10px;
+  background: #FDF3F2;
+  color: #5A1E1E;
+  font-size: 12px;
+}
+.copy-flag strong { display: block; margin-bottom: 4px; color: #9B2C2C; font-size: 12.5px; }
+.copy-flag p { margin: 2px 0; }
+.copy-flag small { display: block; margin-top: 6px; color: #7A4A4A; }
+
+/* ---- Files attached to assignment questions ---- */
+.qfile-gallery { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.qfile-image {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-decoration: none;
+}
+.qfile-image img {
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 360px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.qfile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+}
+.qfile-chip small { color: var(--muted); font-size: 10.5px; }
+.qfile-chip[aria-disabled="true"] { opacity: .6; pointer-events: none; }
+.qfile-field { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line-strong); }
+.qfile-field-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.qfile-field-head .text-button { display: inline-flex; align-items: center; gap: 5px; }
+.qfile-field-head small { color: var(--muted); font-size: 10.5px; }
+.qfile-list { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.qfile-list li { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.qfile-list li > a, .qfile-list li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.qfile-list small { color: var(--muted); font-size: 10.5px; }
+.qfile-list .icon-button { width: 24px; height: 24px; margin-left: auto; }
+.qfile-staged { opacity: .85; }
+.qfile-error { margin: 6px 0 0; color: #9B2C2C; font-size: 11px; font-weight: 600; }

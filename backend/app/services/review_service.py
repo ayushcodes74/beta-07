@@ -35,6 +35,7 @@ from app.schemas.review import (
 )
 from app.schemas.user import Role
 from app.services.auth_service import CurrentUser
+from app.services.copy_detection import COPY_FLAG_OVERLAP, find_copies, identical_files
 from app.services.ocr_client import (
     OCRJobCancelledError,
     OCRJobFailedError,
@@ -42,6 +43,7 @@ from app.services.ocr_client import (
     OCRServiceClient,
 )
 from app.services.submission_service import (
+    _ocr_text,
     SubmissionNotFoundError,
     SubmissionPermissionError,
     SubmissionRecord,
@@ -89,8 +91,11 @@ class ReviewService:
         if teacher.role is not Role.TEACHER:
             raise SubmissionPermissionError("Only teachers have a review queue")
         response = ReviewQueueResponse(
-            thresholds=ReviewQueueThresholds(ocr_confidence=self.ocr_threshold, trust_score=self.trust_threshold)
+            thresholds=ReviewQueueThresholds(
+                ocr_confidence=self.ocr_threshold, trust_score=self.trust_threshold, copy_overlap=COPY_FLAG_OVERLAP
+            )
         )
+        self._ocr_results: dict[str, Any] = {}
         records = await asyncio.to_thread(self.submissions.list_submissions, teacher, access_token=access_token)
         if not records:
             return response
@@ -186,7 +191,121 @@ class ReviewService:
             )
         student_items.sort(key=lambda i: i.review_request.created_at if i.review_request else i.submitted_at)
         response.student_requests = student_items
+
+        # ---- Possible copying --------------------------------------------------
+        copying, uncompared = await self._copy_pairs(teacher, records, grades, access_token=access_token)
+        response.copying = copying
+        if uncompared:
+            response.notes.append(
+                f"{uncompared} submission(s) could not be checked for copying because their OCR text was unavailable."
+            )
         return response
+
+    async def _job_result(self, job_id: str) -> Any:
+        """OCR result for a job, fetched at most once per queue build (the OCR and copying sections share it)."""
+        cache: dict[str, Any] = self.__dict__.setdefault("_ocr_results", {})
+        if job_id not in cache:
+            try:
+                cache[job_id] = await self.ocr_client.get_job_result(job_id)
+            except Exception as exc:
+                cache[job_id] = exc
+        result = cache[job_id]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    async def _copy_pairs(
+        self,
+        teacher: CurrentUser,
+        records: list[SubmissionRecord],
+        grades: dict[UUID, GradingResultRecord],
+        *,
+        access_token: str,
+    ) -> tuple[list[ReviewQueueItem], int]:
+        """Both submissions of every pair (same assignment) whose answers are (nearly) the same."""
+        groups: dict[UUID, list[SubmissionRecord]] = {}
+        for record in records:
+            if record.ocr_job_id:
+                groups.setdefault(record.assignment_id, []).append(record)
+        groups = {assignment_id: group for assignment_id, group in groups.items() if len(group) >= 2}
+        if not groups:
+            return [], 0
+
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_OCR_FETCHES)
+
+        async def text_of(record: SubmissionRecord) -> tuple[UUID, Optional[str]]:
+            async with semaphore:
+                try:
+                    result = await self._job_result(record.ocr_job_id or "")
+                except Exception:  # failed / missing / unreachable: just not comparable
+                    return record.id, None
+            if not isinstance(result, OCRDocumentResult):
+                return record.id, ""  # still processing: nothing to compare yet (not an error)
+            return record.id, _ocr_text(result)
+
+        get_hash = getattr(self.ocr_client, "get_file_hash", None)
+
+        async def hash_of(record: SubmissionRecord) -> tuple[UUID, Optional[str]]:
+            if get_hash is None:
+                return record.id, None
+            async with semaphore:
+                return record.id, await get_hash(record.ocr_job_id or "")
+
+        def add_pair(this: SubmissionRecord, other: SubmissionRecord, overlap: float, identical: bool) -> None:
+            earlier = (this.submitted_at or this.created_at) <= (other.submitted_at or other.created_at)
+            first_reason = (
+                "Uploaded byte-for-byte the same PDF file as another student for this assignment."
+                if identical
+                else f"{round(overlap * 100)}% of the answers match another student's submission to this "
+                "assignment (question text excluded)."
+            )
+            item = _item(
+                "copying", this, grades.get(this.id),
+                reasons=[
+                    first_reason,
+                    f"This student handed in {'first' if earlier else 'after the other student'}. "
+                    "Both are flagged: the system cannot tell who copied from whom.",
+                ],
+            )
+            item.matched_submission_id = other.id
+            item.matched_student_id = other.student_id
+            item.match_overlap = overlap
+            item.identical_file = identical
+            # Identical files sort above every text match.
+            items.append((overlap + (1.0 if identical else 0.0), item))
+
+        items: list[tuple[float, ReviewQueueItem]] = []
+        uncompared = 0
+        for assignment_id, group in groups.items():
+            by_id = {record.id: record for record in group}
+            loaded, hashes = await asyncio.gather(
+                asyncio.gather(*(text_of(record) for record in group)),
+                asyncio.gather(*(hash_of(record) for record in group)),
+            )
+            # 1. Exact same file (works even when OCR read nothing).
+            reported: set[frozenset] = set()
+            for a, b in identical_files(dict(hashes), {r.id: r.student_id for r in group}):
+                reported.add(frozenset((a, b)))
+                add_pair(by_id[a], by_id[b], 1.0, True)
+                add_pair(by_id[b], by_id[a], 1.0, True)
+            # 2. (Nearly) the same answers in different files.
+            texts = {submission_id: text for submission_id, text in loaded if text and text.strip()}
+            uncompared += sum(1 for _, text in loaded if text is None)
+            if len(texts) < 2:
+                continue
+            questions = await asyncio.to_thread(
+                self.submissions._question_texts, teacher, assignment_id, access_token
+            )
+            for match in find_copies(texts, questions):
+                if frozenset((match.first, match.second)) in reported:
+                    continue
+                if by_id[match.first].student_id == by_id[match.second].student_id:
+                    continue
+                add_pair(by_id[match.first], by_id[match.second], match.overlap, False)
+                add_pair(by_id[match.second], by_id[match.first], match.overlap, False)
+        # Highest overlap first; the two halves of a pair stay next to each other.
+        items.sort(key=lambda pair: pair[0], reverse=True)
+        return [item for _, item in items], uncompared
 
     async def _ocr_findings(
         self, record: SubmissionRecord, grade: Optional[GradingResultRecord], *, access_token: str
@@ -205,7 +324,7 @@ class ReviewService:
 
         if stored_confidence is None:
             try:
-                result = await self.ocr_client.get_job_result(record.ocr_job_id)
+                result = await self._job_result(record.ocr_job_id)
             except OCRJobFailedError as exc:
                 detail = getattr(exc, "error_detail", None)
                 return "ocr_failed", None, [f"OCR failed: {detail}" if detail else "OCR failed to read this submission."]

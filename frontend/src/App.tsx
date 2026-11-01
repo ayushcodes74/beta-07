@@ -1,7 +1,7 @@
 import {
-  Award, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, FileText, GraduationCap,
+  Award, BookOpen, Check, ChevronDown, ClipboardCheck, Clock, Copy, FileText, GraduationCap,
   LayoutDashboard, LogOut, Menu, MessageCircle, MessageSquareWarning, ScanText, Search, Settings, ShieldAlert, ShieldCheck,
-  Sparkles, Upload,
+  Upload,
 } from "lucide-react";
 import { createContext, Suspense, useContext, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
@@ -29,7 +29,7 @@ function PageLoading() {
   return (
     <div className="page-loading" role="status" aria-live="polite">
       <span className="page-loading-bar" />
-      <span className="sr-only">Loading pageâ€¦</span>
+      <span className="sr-only">Loading page…</span>
     </div>
   );
 }
@@ -151,7 +151,6 @@ const teacherNavigation = [
       { label: "Courses", to: "/app/courses", icon: BookOpen },
       { label: "Assignments", to: "/app/assignments", icon: FileText },
       { label: "Submissions", to: "/app/submissions", icon: Upload },
-      { label: "AI Grading", to: "/app/grading/review", icon: Sparkles },
       { label: "Messages", to: "/app/messages", icon: MessageCircle },
     ],
   },
@@ -162,6 +161,7 @@ const teacherNavigation = [
       { label: "OCR review", to: "/app/reviews?tab=ocr", icon: ScanText },
       { label: "Low trust score", to: "/app/reviews?tab=trust", icon: ShieldAlert },
       { label: "Student requests", to: "/app/reviews?tab=requests", icon: MessageSquareWarning },
+      { label: "Possible copying", to: "/app/reviews?tab=copying", icon: Copy },
       { label: "Late submissions", to: "/app/late-submissions", icon: Clock },
     ],
   },
@@ -203,7 +203,7 @@ function WorkspaceLoading() {
   return (
     <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "1rem" }}>
       <span className="button-spinner" style={{ width: 24, height: 24 }} />
-      <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspaceâ€¦</span>
+      <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspace…</span>
     </div>
   );
 }

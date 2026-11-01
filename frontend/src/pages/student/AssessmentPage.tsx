@@ -2,6 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppState } from "../../App";
+import { QuestionFileGallery, useAssignmentFiles } from "../../components/assignments/QuestionFiles";
 import { Button, Panel, useToast } from "../../components/ui";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
 import type { Submission } from "../../types/models";
@@ -17,6 +18,7 @@ export function AssessmentPage({
   const toast = useToast();
   const { assignmentId } = useParams();
   const assignment = assignmentList.find((item) => item.id === assignmentId);
+  const filesByQuestion = useAssignmentFiles(assignmentId);
   const existing = studentRows.find((item) => item.studentId === user?.id && item.assignmentId === assignmentId);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
@@ -76,6 +78,7 @@ export function AssessmentPage({
                   QUESTION {index + 1} · {current.marks} MARKS
                 </span>
                 <h2 style={{ fontSize: "16px", marginTop: "6px" }}>{current.prompt}</h2>
+                <QuestionFileGallery files={filesByQuestion[index + 1] ?? []} />
               </div>
               <div className="mcq-options" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 {(current.options ?? ["Option A", "Option B", "Option C", "Option D"]).map((opt, optIdx) => (

@@ -59,7 +59,7 @@ function ReviewSummary() {
             <span className="review-summary-icon"><Icon size={16} /></span>
             <span className="review-summary-copy">
               <small>{label}</small>
-              <strong>{count ?? (failed ? "—" : "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦")}</strong>
+              <strong>{count ?? (failed ? "—" : "…")}</strong>
               <small style={{ fontWeight: 400 }}>{hint}</small>
             </span>
           </button>
@@ -356,7 +356,7 @@ export function TeacherOverview() {
                 <div className="timeline-item" key={item.id}>
                   <strong>{item.title}</strong>
                   <div>
-                    <span>{item.totalMarks} marks Ãƒâ€šÃ‚Â· {item.submissionType}</span>
+                    <span>{item.totalMarks} marks · {item.submissionType}</span>
                     <b>Due {formatDate(item.dueAt)}</b>
                   </div>
                 </div>

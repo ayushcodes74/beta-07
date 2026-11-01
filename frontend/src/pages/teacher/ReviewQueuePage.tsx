@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, MessageSquareWarning, RefreshCw, ScanText, ShieldAlert } from "lucide-react";
+import { ChevronRight, Copy, MessageSquareWarning, RefreshCw, ScanText, ShieldAlert } from "lucide-react";
 import { useAppState } from "../../App";
 import { Badge, Button, Panel, StatusBadge, useToast } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
@@ -12,7 +12,7 @@ import {
   type ReviewQueueItem,
 } from "../../services/api";
 
-type TabKey = "ocr" | "trust" | "requests";
+type TabKey = "ocr" | "trust" | "requests" | "copying";
 
 const TABS: { key: TabKey; label: string; icon: typeof ScanText; description: string }[] = [
   {
@@ -33,10 +33,17 @@ const TABS: { key: TabKey; label: string; icon: typeof ScanText; description: st
     icon: MessageSquareWarning,
     description: "Students who are not satisfied with a published grade and asked you to review it.",
   },
+  {
+    key: "copying",
+    label: "Possible copying",
+    icon: Copy,
+    description:
+      "Two students handed in (nearly) the same answers for an assignment. Both are listed because the system cannot tell who copied from whom; compare the two submissions before deciding.",
+  },
 ];
 
 function isTab(value: string | null): value is TabKey {
-  return value === "ocr" || value === "trust" || value === "requests";
+  return value === "ocr" || value === "trust" || value === "requests" || value === "copying";
 }
 
 const pct = (value: number | null) => (value === null ? "—" : `${Math.round(value * 100)}%`);
@@ -83,8 +90,17 @@ export function ReviewQueuePage() {
     ocr: queue?.ocr.length ?? 0,
     trust: queue?.low_trust.length ?? 0,
     requests: queue?.student_requests.length ?? 0,
+    copying: queue?.copying?.length ?? 0,
   };
-  const rows = queue ? (tab === "ocr" ? queue.ocr : tab === "trust" ? queue.low_trust : queue.student_requests) : [];
+  const rows = queue
+    ? tab === "ocr"
+      ? queue.ocr
+      : tab === "trust"
+        ? queue.low_trust
+        : tab === "copying"
+          ? queue.copying ?? []
+          : queue.student_requests
+    : [];
   const activeTab = TABS.find((item) => item.key === tab)!;
   const assignmentById = useMemo(() => new Map(assignments.map((a) => [a.id, a])), [assignments]);
 
@@ -102,13 +118,13 @@ export function ReviewQueuePage() {
           <div className="eyebrow">MANUAL REVIEW</div>
           <h1>Review queue</h1>
           <p className="page-subtitle">
-            Everything that needs your judgement in one place: OCR problems, low-trust AI grades, and student review requests.
+            Everything that needs your judgement in one place: OCR problems, low-trust AI grades, student review requests, and possible copying.
           </p>
         </div>
         <div className="heading-actions">
           <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             <RefreshCw size={14} className={loading ? "spin" : undefined} />
-            {loading ? "CheckingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Refresh"}
+            {loading ? "Checking…" : "Refresh"}
           </Button>
         </div>
       </div>
@@ -125,7 +141,7 @@ export function ReviewQueuePage() {
             <span className="review-summary-icon"><Icon size={16} /></span>
             <span className="review-summary-copy">
               <small>{label}</small>
-              <strong>{loading && !queue ? "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : counts[key]}</strong>
+              <strong>{loading && !queue ? "…" : counts[key]}</strong>
             </span>
           </button>
         ))}
@@ -144,12 +160,13 @@ export function ReviewQueuePage() {
               {activeTab.description}
               {queue && tab === "ocr" && ` Threshold: ${pct(queue.thresholds.ocr_confidence)} OCR confidence.`}
               {queue && tab === "trust" && ` Threshold: ${pct(queue.thresholds.trust_score)} AI confidence.`}
+              {queue && tab === "copying" && ` Flagged at ${pct(queue.thresholds.copy_overlap ?? 0.6)} matching answers.`}
             </p>
           </div>
         </div>
 
         {loading && !queue ? (
-          <p className="table-empty review-empty" role="status">Checking submissionsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</p>
+          <p className="table-empty review-empty" role="status">Checking submissions…</p>
         ) : rows.length === 0 ? (
           <p className="table-empty review-empty">
             {error ? "The queue could not be loaded." : "Nothing needs review here right now."}
@@ -163,6 +180,7 @@ export function ReviewQueuePage() {
                   key={`${item.category}-${item.submission_id}`}
                   item={item}
                   studentName={names[item.student_id]?.name ?? "Student"}
+                  matchedName={item.matched_student_id ? names[item.matched_student_id]?.name ?? "another student" : undefined}
                   assignmentTitle={assignment?.title ?? "Assignment"}
                   totalMarks={item.max_score ?? assignment?.totalMarks ?? null}
                   onOpen={(path) => navigate(path)}
@@ -183,6 +201,7 @@ export function ReviewQueuePage() {
 function ReviewRow({
   item,
   studentName,
+  matchedName,
   assignmentTitle,
   totalMarks,
   onOpen,
@@ -190,6 +209,7 @@ function ReviewRow({
 }: {
   item: ReviewQueueItem;
   studentName: string;
+  matchedName?: string;
   assignmentTitle: string;
   totalMarks: number | null;
   onOpen: (path: string) => void;
@@ -236,6 +256,12 @@ function ReviewRow({
               {score !== null && <Badge tone="neutral">AI score {score}{totalMarks !== null ? ` / ${totalMarks}` : ""}</Badge>}
             </>
           )}
+          {item.category === "copying" && (
+            <>
+              <Badge tone="rose">{item.identical_file ? "Same PDF file" : `${pct(item.match_overlap ?? null)} match`}</Badge>
+              <span className="review-row-date">Same answers as {matchedName ?? "another student"}</span>
+            </>
+          )}
           {item.category === "student_request" && (
             <>
               {score !== null && <Badge tone="sage">Published {score}{totalMarks !== null ? ` / ${totalMarks}` : ""}</Badge>}
@@ -268,10 +294,10 @@ function ReviewRow({
             />
             <div className="review-reply-actions">
               <Button size="sm" disabled={busy !== null} onClick={() => void close("resolved")}>
-                {busy === "resolved" ? "SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Mark resolved"}
+                {busy === "resolved" ? "Saving…" : "Mark resolved"}
               </Button>
               <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void close("dismissed")}>
-                {busy === "dismissed" ? "SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Dismiss"}
+                {busy === "dismissed" ? "Saving…" : "Dismiss"}
               </Button>
               <Button size="sm" variant="quiet" disabled={busy !== null} onClick={() => setReplying(false)}>
                 Cancel
@@ -297,6 +323,18 @@ function ReviewRow({
           <Button size="sm" onClick={() => onOpen(`/app/grading/${item.submission_id}`)}>
             Review grade <ChevronRight size={13} />
           </Button>
+        )}
+        {item.category === "copying" && (
+          <>
+            <Button size="sm" onClick={() => onOpen(`/app/grading/${item.submission_id}`)}>
+              Open submission <ChevronRight size={13} />
+            </Button>
+            {item.matched_submission_id && (
+              <button className="text-button" onClick={() => onOpen(`/app/grading/${item.matched_submission_id}`)}>
+                Compare with {matchedName ?? "the other student"}
+              </button>
+            )}
+          </>
         )}
         {item.category === "student_request" && (
           <>

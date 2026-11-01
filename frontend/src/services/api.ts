@@ -330,6 +330,19 @@ export interface BackendHandwritingFlag {
 export interface BackendIntegrityReport {
   submission_id: string;
   review_status: "processing" | "needs_teacher_review" | "no_matches";
+  /** This answer sheet is (nearly) the same as another student's. Evidence for review, not a finding. */
+  copy_flag?: boolean;
+  /** Most similar other submissions to the same assignment, highest overlap first. */
+  similar_submissions?: {
+    submission_id: string;
+    student_id: string;
+    /** Share (0-1) of the shorter answer sheet found in the other one; question text excluded. */
+    overlap: number;
+    likely_copy: boolean;
+    /** Both students uploaded byte-for-byte the same PDF file. */
+    identical_file?: boolean;
+    submitted_at: string | null;
+  }[];
   comparison_scope: "same_assignment";
   comparisons_completed: number;
   comparisons_skipped: number;
@@ -914,7 +927,7 @@ export interface ReviewRequest {
   updated_at: string;
 }
 
-export type ReviewCategory = "ocr" | "low_trust" | "student_request";
+export type ReviewCategory = "ocr" | "low_trust" | "student_request" | "copying";
 
 export interface ReviewQueueItem {
   category: ReviewCategory;
@@ -933,13 +946,21 @@ export interface ReviewQueueItem {
   max_score: number | null;
   grading_status: string | null;
   review_request: ReviewRequest | null;
+  /** category "copying": the other submission this answer sheet matches. */
+  matched_submission_id?: string | null;
+  matched_student_id?: string | null;
+  match_overlap?: number | null;
+  /** The two students uploaded the exact same PDF file. */
+  identical_file?: boolean;
 }
 
 export interface ReviewQueue {
   ocr: ReviewQueueItem[];
   low_trust: ReviewQueueItem[];
   student_requests: ReviewQueueItem[];
-  thresholds: { ocr_confidence: number; trust_score: number };
+  /** Both submissions of each pair with (nearly) the same answers (older backends omit it). */
+  copying?: ReviewQueueItem[];
+  thresholds: { ocr_confidence: number; trust_score: number; copy_overlap?: number };
   /** Parts of the queue that could not be checked (e.g. OCR engine offline). */
   notes: string[];
 }

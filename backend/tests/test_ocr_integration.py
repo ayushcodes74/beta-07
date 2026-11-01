@@ -722,6 +722,10 @@ def test_integrity_comparison_is_teacher_only_and_scoped_to_same_assignment(
             # Within-submission handwriting check (only for the submission under review).
             assert job_id == "current-job"
             return httpx.Response(404, json={"detail": "not found"})
+        if "/file-hash/" in request.url.path:
+            # Exact-duplicate check: also limited to the same assignment.
+            assert job_id in ("current-job", "source-job")
+            return httpx.Response(200, json={"job_id": job_id, "sha256": f"{job_id:0>64}"[-64:]})
         requested_jobs.append(job_id)
         payload = deepcopy(sample_ocr_result_dict)
         payload["job_id"] = job_id

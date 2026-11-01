@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Protocol, Union
 from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas.integrity import HandwritingAnalysisStatus, IntegrityReport, OCRQualitySummary
+from app.schemas.integrity import HandwritingAnalysisStatus, IntegrityReport, OCRQualitySummary, SimilarSubmission
 from app.schemas.ocr import (
     JobStatusResponse,
     OCRDocumentResult,
@@ -44,8 +44,18 @@ from app.services.ocr_client import (
     get_ocr_client,
 )
 from app.services.plagiarism import compare_ocr_documents, summarize_ocr
+from app.services.copy_detection import COPY_FLAG_OVERLAP, similarity_to_others
 
 logger = logging.getLogger(__name__)
+
+# Whole-sheet overlaps below this are not worth showing a teacher.
+_SIMILARITY_REPORT_MIN = 0.3
+
+
+def _ocr_text(document: OCRDocumentResult) -> str:
+    pages = sorted(document.pages, key=lambda page: page.page_number)
+    return "\n".join(page.full_text for page in pages if page.full_text)
+
 
 # Security & size limits
 MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB limit
@@ -462,6 +472,55 @@ class SubmissionService:
             evidence.extend(matches)
 
         evidence.sort(key=lambda item: (-item.exact_match_score, item.source_submission_id.hex))
+
+        # Whole-sheet comparison: is this (nearly) the same answer sheet as another student's?
+        question_texts = await asyncio.to_thread(
+            self._question_texts, user, submission.assignment_id, access_token
+        )
+        texts = {submission.id: _ocr_text(current_result)}
+        compared: dict[UUID, SubmissionRecord] = {}
+        for source_record, source_result in loaded_sources:
+            if source_result is not None:
+                texts[source_record.id] = _ocr_text(source_result)
+                compared[source_record.id] = source_record
+        # Exact same uploaded file (SHA-256), even when OCR could read no text from it.
+        get_hash = getattr(self.ocr_client, "get_file_hash", None)
+        identical: set[UUID] = set()
+        if get_hash is not None:
+            my_hash = await get_hash(submission.ocr_job_id)
+            if my_hash:
+                other_hashes = await asyncio.gather(*(get_hash(record.ocr_job_id or "") for record in sources))
+                identical = {
+                    record.id
+                    for record, value in zip(sources, other_hashes)
+                    if value == my_hash and record.student_id != submission.student_id
+                }
+        by_record = {record.id: record for record in sources}
+        overlaps = {
+            other_id: value
+            for other_id, value in similarity_to_others(submission.id, texts, question_texts).items()
+            if compared[other_id].student_id != submission.student_id
+        }
+        for other_id in identical:
+            overlaps[other_id] = 1.0
+        similar = sorted(
+            (
+                SimilarSubmission(
+                    submission_id=other_id,
+                    student_id=by_record[other_id].student_id,
+                    overlap=value,
+                    likely_copy=other_id in identical or value >= COPY_FLAG_OVERLAP,
+                    identical_file=other_id in identical,
+                    submitted_at=by_record[other_id].submitted_at or by_record[other_id].created_at,
+                )
+                for other_id, value in overlaps.items()
+                if other_id in identical or value >= _SIMILARITY_REPORT_MIN
+            ),
+            key=lambda item: (item.identical_file, item.overlap),
+            reverse=True,
+        )[:5]
+        copy_flag = any(item.likely_copy for item in similar)
+
         handwriting = await self._handwriting_analysis(submission.ocr_job_id)
         quality = summarize_ocr(current_result)
         notes = [
@@ -474,6 +533,18 @@ class SubmissionService:
             notes.append(f"{skipped} same-assignment submission(s) could not be compared because OCR was unavailable or incomplete.")
         if quality.low_confidence_regions or quality.unreadable_pages or quality.missing_pages:
             notes.append("OCR uncertainty or page gaps may affect these comparisons; verify the original scan.")
+        if copy_flag:
+            notes.insert(
+                0,
+                (
+                    "Possible copying: another student uploaded byte-for-byte the same PDF file for this assignment."
+                    if similar[0].identical_file
+                    else f"Possible copying: {round(similar[0].overlap * 100)}% of the answers match another "
+                    "student's submission (question text excluded)."
+                )
+                + " Both students are flagged; the system cannot tell who copied from whom. "
+                "Compare the two scans before deciding anything.",
+            )
         if handwriting.status == "possible_different_handwriting":
             notes.append(
                 "Possible different handwriting within this submission (unvalidated heuristic; teacher-only). "
@@ -484,9 +555,11 @@ class SubmissionService:
             submission_id=submission.id,
             review_status=(
                 "needs_teacher_review"
-                if evidence or handwriting.status == "possible_different_handwriting"
+                if evidence or copy_flag or handwriting.status == "possible_different_handwriting"
                 else "no_matches"
             ),
+            copy_flag=copy_flag,
+            similar_submissions=similar,
             comparisons_completed=comparisons_completed,
             comparisons_skipped=skipped,
             comparison_complete=skipped == 0,
@@ -495,6 +568,16 @@ class SubmissionService:
             evidence=evidence,
             notes=notes,
         )
+
+    def _question_texts(self, user: CurrentUser, assignment_id: UUID, access_token: str) -> list[str]:
+        """The assignment's question texts, so answers that copy the question aren't counted as copying.
+        Best-effort: without them the comparison still runs (slightly more prone to over-matching)."""
+        try:
+            assignment = self.assignment_service.get_for(user, assignment_id, access_token=access_token)
+            return [q.text for q in assignment.content.questions]
+        except Exception as exc:
+            logger.warning("Copy check: question texts unavailable: %s", type(exc).__name__)
+            return []
 
     async def _handwriting_analysis(self, ocr_job_id: str) -> HandwritingAnalysisStatus:
         """Within-submission handwriting consistency from the OCR service. Never fails the report."""

@@ -47,9 +47,9 @@ function QuestionResultRow({
       ) : (
         result.explanation && <p>{result.explanation}</p>
       )}
-      {result.strengths.length > 0 && <p className="result-question-good">âœ“ {result.strengths.join(" Â· ")}</p>}
+      {result.strengths.length > 0 && <p className="result-question-good">✓ {result.strengths.join(" · ")}</p>}
       {result.areasForImprovement.length > 0 && (
-        <p className="result-question-improve">To improve: {result.areasForImprovement.join(" Â· ")}</p>
+        <p className="result-question-improve">To improve: {result.areasForImprovement.join(" · ")}</p>
       )}
       {result.expectedSolution && (
         <details className="result-question-solution">
@@ -112,7 +112,7 @@ function ReviewRequestBox({
       {latest?.status === "open" ? (
         <div className="result-review-status">
           <Badge tone="gold"><MessageSquareWarning size={13} />Recheck requested</Badge>
-          <span>Sent {formatDate(latest.created_at)} Â· waiting for your teacher.</span>
+          <span>Sent {formatDate(latest.created_at)} · waiting for your teacher.</span>
         </div>
       ) : (
         <>
@@ -141,7 +141,7 @@ function ReviewRequestBox({
               />
               <div className="result-review-actions">
                 <Button size="sm" disabled={saving || reason.trim().length < MIN_REASON} onClick={() => void submit()}>
-                  {saving ? "Sendingâ€¦" : "Submit recheck request"}
+                  {saving ? "Sending…" : "Submit recheck request"}
                 </Button>
                 <Button size="sm" variant="quiet" disabled={saving} onClick={() => setOpen(false)}>
                   Cancel
@@ -226,8 +226,8 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                       <>
                         <h2>{owner?.name ?? "Student"}</h2>
                         <p>
-                          {owner?.email ? `${owner.email} Â· ` : ""}
-                          {assignment?.title ?? "Course Assignment"} Â· Submitted {formatDate(item.submittedAt)}
+                          {owner?.email ? `${owner.email} · ` : ""}
+                          {assignment?.title ?? "Course Assignment"} · Submitted {formatDate(item.submittedAt)}
                         </p>
                       </>
                     )}
@@ -274,7 +274,7 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                 {item.late?.status === "accepted" && item.late.penaltyPercent ? (
                   <p style={{ margin: "-6px 0 12px", fontSize: "10px", color: "#b5524b" }}>
                     Handed in late: this score includes a {item.late.penaltyPercent}% late deduction.
-                    {item.late.note ? ` Teacher's note: â€œ${item.late.note}â€` : ""}
+                    {item.late.note ? ` Teacher's note: “${item.late.note}”` : ""}
                   </p>
                 ) : null}
 

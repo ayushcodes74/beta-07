@@ -9,3 +9,4 @@ python-multipart
 httpx
 PyJWT
 pypdf>=5.0
+Pillow>=10.0

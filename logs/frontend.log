@@ -1,0 +1,25 @@
+
+--- Starting frontend at 2026-11-01 10:28:30 ---
+
+  [32m[1mVITE[22m v7.3.7[39m  [2mready in [0m[1m455[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.48.5.55:[1m5173[22m/[39m
+[2m10:30:43 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/teacher/AssignmentEditor.tsx[22m
+[2m10:30:55 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m10:31:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m10:31:16 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m10:31:37 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/styles.css[22m
+[2m10:31:37 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/styles.css[22m
+[2m10:31:38 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/App.tsx[22m Could not Fast Refresh ("useAppState" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m10:31:38 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/App.tsx[22m
+[2m10:32:46 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m10:32:46 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/teacher/ClassAnalytics.tsx[22m
+[2m10:55:18 AM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
+[2m10:55:19 AM[22m [36m[1m[vite][22m[39m server restarted.
+[2m10:55:20 AM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
+[2m10:55:20 AM[22m [36m[1m[vite][22m[39m server restarted.
+[2m10:55:21 AM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
+[2m10:55:21 AM[22m [36m[1m[vite][22m[39m server restarted.
+[2m10:56:00 AM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
+[2m10:56:00 AM[22m [36m[1m[vite][22m[39m server restarted.

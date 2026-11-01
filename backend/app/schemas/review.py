@@ -56,7 +56,7 @@ class ReviewRequestResponse(BaseModel):
     updated_at: datetime
 
 
-ReviewCategory = Literal["ocr", "low_trust", "student_request"]
+ReviewCategory = Literal["ocr", "low_trust", "student_request", "copying"]
 
 
 class ReviewQueueItem(BaseModel):
@@ -74,17 +74,29 @@ class ReviewQueueItem(BaseModel):
     max_score: Optional[float] = None
     grading_status: Optional[str] = None
     review_request: Optional[ReviewRequestResponse] = None
+    # category "copying": the other submission this answer sheet matches
+    matched_submission_id: Optional[UUID] = None
+    matched_student_id: Optional[UUID] = None
+    match_overlap: Optional[float] = Field(
+        default=None, description="Share (0-1) of the shorter answer sheet found in the other one"
+    )
+    identical_file: bool = Field(default=False, description="The two students uploaded the exact same PDF file")
 
 
 class ReviewQueueThresholds(BaseModel):
     ocr_confidence: float
     trust_score: float
+    copy_overlap: float = Field(default=0.6, description="Answer overlap at which two submissions are flagged")
 
 
 class ReviewQueueResponse(BaseModel):
     ocr: List[ReviewQueueItem] = Field(default_factory=list)
     low_trust: List[ReviewQueueItem] = Field(default_factory=list)
     student_requests: List[ReviewQueueItem] = Field(default_factory=list)
+    copying: List[ReviewQueueItem] = Field(
+        default_factory=list,
+        description="Pairs of submissions to the same assignment with (nearly) the same answers; both are listed.",
+    )
     thresholds: ReviewQueueThresholds
     notes: List[str] = Field(
         default_factory=list,

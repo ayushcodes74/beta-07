@@ -58,16 +58,16 @@ Given `submission_id="submission-123"` and `output_dir="processed"`:
 
 ```text
 processed/
-â””â”€â”€ submission-123/
-    â”œâ”€â”€ pages/                      # Input from Module 1 (untouched)
-    â”‚   â”œâ”€â”€ page_001.png
-    â”‚   â””â”€â”€ page_002.png
-    â”œâ”€â”€ enhanced/                   # Default high-quality enhanced images for Module 3
-    â”‚   â”œâ”€â”€ page_001.png
-    â”‚   â””â”€â”€ page_002.png
-    â””â”€â”€ variants/                   # Optional specialized variants
-        â”œâ”€â”€ page_001_gray.png       # 8-bit grayscale variant
-        â””â”€â”€ page_001_threshold.png  # Adaptive binary thresholded variant
+└── submission-123/
+    ├── pages/                      # Input from Module 1 (untouched)
+    │   ├── page_001.png
+    │   └── page_002.png
+    ├── enhanced/                   # Default high-quality enhanced images for Module 3
+    │   ├── page_001.png
+    │   └── page_002.png
+    └── variants/                   # Optional specialized variants
+        ├── page_001_gray.png       # 8-bit grayscale variant
+        └── page_001_threshold.png  # Adaptive binary thresholded variant
 ```
 
 ---
@@ -213,16 +213,16 @@ Module 3 processes enhanced page images from Module 2, identifies text regions, 
 #### Engines:
 - **Vision page reader (Gemini; tried first whenever a key is configured, under every backend except `degraded`):**
   - One `generateContent` call per page with a JSON response schema reads the page as ordered, typed blocks:
-    - `text` â€“ prose in **any language/script**, transcribed in the original script (never translated); inline math as `$...$`.
-    - `math` â€“ standalone expressions/derivation lines as **LaTeX** (fractions, roots, integrals, matrices, chemical equations).
-    - `table` â€“ cell grid (`metadata.table_rows`) plus a Markdown rendering (`text`).
-    - `diagram` / `graph` â€“ an objective description (components, labels, arrows; chart type, axes, units, scales, plotted values) plus all text inside the figure, prefixed `[Diagram]` / `[Graph]`.
-  - Student mistakes are transcribed as written (never corrected); text such as "ignore previous instructions" is transcribed as data. Unreadable words become `[illegible]` and the block is flagged `uncertain` (warning â†’ teacher review).
+    - `text` – prose in **any language/script**, transcribed in the original script (never translated); inline math as `$...$`.
+    - `math` – standalone expressions/derivation lines as **LaTeX** (fractions, roots, integrals, matrices, chemical equations).
+    - `table` – cell grid (`metadata.table_rows`) plus a Markdown rendering (`text`).
+    - `diagram` / `graph` – an objective description (components, labels, arrows; chart type, axes, units, scales, plotted values) plus all text inside the figure, prefixed `[Diagram]` / `[Graph]`.
+  - Student mistakes are transcribed as written (never corrected); text such as "ignore previous instructions" is transcribed as data. Unreadable words become `[illegible]` and the block is flagged `uncertain` (warning → teacher review).
   - Block metadata: `content_type`, `language` (BCP-47), `uncertain`, `latex` (math), `table_rows` / `table_markdown` (tables), `figure_description` (figures). Page metadata: `languages`, `content_types`. `type` stays `printed` / `handwritten`. Confidence is `null` (no calibrated score).
   - `full_text` (what grading reads) contains everything in reading order: prose, `$$LaTeX$$`, Markdown tables and figure descriptions.
   - Module 4 takes the LaTeX of `math` blocks verbatim (`engine_used: "gemini-vision"`) instead of re-running pix2tex, and no longer harvests prose blocks just because they contain `-` or `/`.
   - Configure in `ocr-engine/.env`: `OCR_VISION_API_KEY=<Gemini key>` (or `GEMINI_API_KEY`); optional `OCR_VISION_MODEL` (default `gemini-2.5-flash`), `OCR_VISION_FALLBACK_MODELS` (comma-separated, e.g. `gemini-3.5-flash-lite,gemini-3.5-flash`; defaults to `GEMINI_FALLBACK_MODELS`), `OCR_VISION_TIMEOUT_SECONDS` (default 120), `OCR_VISION_ENABLED=false` to turn it off. Student pages leave this machine when it is enabled.
-  - **Fallback:** a model that is rate-limited/over quota/unavailable (HTTP 429/404/503) is skipped for 10 minutes and the next fallback model is tried. If every model fails (or the key is invalid) the page goes to OCR.space â†’ PaddleOCR with a `"Vision reader unavailable (...)"` warning; key/quota errors pause the vision reader for 5 minutes. `/health` reports `vision_page_reader` as `loaded` or `disabled`.
+  - **Fallback:** a model that is rate-limited/over quota/unavailable (HTTP 429/404/503) is skipped for 10 minutes and the next fallback model is tried. If every model fails (or the key is invalid) the page goes to OCR.space → PaddleOCR with a `"Vision reader unavailable (...)"` warning; key/quota errors pause the vision reader for 5 minutes. `/health` reports `vision_page_reader` as `loaded` or `disabled`.
 0. **OCR.space Engine 3 (default, `backend="ocrspace"`):**
    - Cloud OCR with strong handwriting recognition ([OCR.space API](https://ocr.space/ocrapi), `OCREngine=3`). Each page image is JPEG-compressed under 1 MB and sent separately; word boxes are mapped back to page coordinates. Student pages leave this machine when it is enabled.
    - Configure in `ocr-engine/.env` (gitignored): `OCR_SPACE_API_KEY=<your key>`; optional `OCR_SPACE_ENGINE` (default 3), `OCR_SPACE_ENDPOINT` (PRO plans use another host), `OCR_SPACE_MAX_UPLOAD_BYTES` (default 1000000), `OCR_SPACE_LANGUAGE` (default `auto`: Engine 3 auto-detects 200+ languages, including mixed-language pages). Restart the service after changing it.

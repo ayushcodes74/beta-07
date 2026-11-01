@@ -30,7 +30,7 @@ function HandwritingSamples({ title, samples }: { title: string; samples: Backen
         <figure key={`${sample.page_number}-${index}`}>
           {sample.image && <img src={sample.image} alt={`Handwritten line on page ${sample.page_number}`} />}
           <figcaption>
-            Page {sample.page_number}: ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ{sample.text}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+            Page {sample.page_number}: “{sample.text}”
           </figcaption>
         </figure>
       ))}
@@ -48,7 +48,7 @@ function HandwritingCheck({ analysis }: { analysis: BackendIntegrityReport["hand
           <div key={`${flag.label}-${index}`} className="handwriting-flag">
             <p>
               <strong>{flag.label}</strong>
-              {!flag.label.includes("different hands") && <> looks different from {flag.compared_with}</>} Ãƒâ€šÃ‚Â· difference{" "}
+              {!flag.label.includes("different hands") && <> looks different from {flag.compared_with}</>} · difference{" "}
               {flag.difference_score.toFixed(2)} (flag threshold {analysis.threshold?.toFixed(2) ?? "—"})
             </p>
             <div className="handwriting-compare">
@@ -394,7 +394,7 @@ export function GradingReviewPage({
           <div className="eyebrow">EVALUATION CONSOLE</div>
           <h1>Grading & Assessment Review</h1>
           <p className="page-subtitle">
-            {assignment?.title ?? "Assignment"} Ãƒâ€šÃ‚Â· Student: {student?.name ?? "Student"}
+            {assignment?.title ?? "Assignment"} · Student: {student?.name ?? "Student"}
           </p>
         </div>
         <div className="heading-actions">
@@ -411,7 +411,7 @@ export function GradingReviewPage({
           <div className="section-heading">
             <div>
               <h2>Extracted Student Work</h2>
-              <p>Submitted {formatDate(submission.submittedAt)} Ãƒâ€šÃ‚Â· OCR processed text</p>
+              <p>Submitted {formatDate(submission.submittedAt)} · OCR processed text</p>
             </div>
             <StatusBadge status={submission.ocr.state} />
           </div>
@@ -465,15 +465,36 @@ export function GradingReviewPage({
           {/* Integrity evidence */}
             <div style={{ marginTop: "18px" }}>
               <h3 style={{ fontSize: "13px" }}>Integrity review</h3>
-              {integrityLoading && <p role="status">Loading authorized comparison evidenceÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</p>}
+              {integrityLoading && <p role="status">Loading authorized comparison evidence…</p>}
               {integrityError && <p role="alert">{integrityError}</p>}
               {integrityReport && (
                 <>
                   <p>
-                    Status: {integrityReport.review_status.replaceAll("_", " ")} Ãƒâ€šÃ‚Â· compared{" "}
+                    Status: {integrityReport.review_status.replaceAll("_", " ")} · compared{" "}
                     {integrityReport.comparisons_completed} of{" "}
                     {integrityReport.comparisons_completed + integrityReport.comparisons_skipped} submissions
                   </p>
+                  {integrityReport.copy_flag && (
+                    <div className="copy-flag" role="alert">
+                      <strong>Possible copying</strong>
+                      {(integrityReport.similar_submissions ?? [])
+                        .filter((match) => match.likely_copy)
+                        .map((match) => (
+                          <p key={match.submission_id}>
+                            {match.identical_file ? "Exactly the same PDF file as " : `${Math.round(match.overlap * 100)}% of the answers match `}
+                            <b>{names[match.student_id]?.name ?? "another student"}</b>'s submission
+                            {match.submitted_at ? ` (handed in ${formatDate(match.submitted_at)})` : ""}.{" "}
+                            <button className="text-button" onClick={() => navigate(`/app/grading/${match.submission_id}`)}>
+                              Compare
+                            </button>
+                          </p>
+                        ))}
+                      <small>
+                        Question text is excluded. Both students are flagged because the system cannot tell who copied
+                        from whom; compare the two scans before deciding anything.
+                      </small>
+                    </div>
+                  )}
                   <p>
                     Exact matching compares OCR text within this assignment. Semantic similarity is unavailable;
                     matches are review signals, not findings of misconduct.
@@ -483,7 +504,7 @@ export function GradingReviewPage({
                   {integrityReport.evidence.map((evidence, index) => (
                     <div className="integration-notice-card" key={`${evidence.source_submission_id}-${index}`}>
                       <div className="integration-notice-content">
-                        <h4>Potential text overlap Ãƒâ€šÃ‚Â· {Math.round(evidence.exact_match_score * 100)}% token match</h4>
+                        <h4>Potential text overlap · {Math.round(evidence.exact_match_score * 100)}% token match</h4>
                         <p>Source reference: {evidence.source_reference}</p>
                         <div style={{ display: "grid", gap: "8px", marginTop: "8px" }}>
                           <div><strong>Current passage</strong><p>{evidence.current_passage}</p></div>
@@ -524,7 +545,7 @@ export function GradingReviewPage({
                 <p>Compares the OCR text with each question's answer key. Suggestions only; you decide the grade.</p>
               </div>
               <Button size="sm" disabled={checkingAnswers} onClick={() => void runAnswerCheck()}>
-                {checkingAnswers ? "CheckingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ (up to a minute)" : answerCheck ? "Re-check answers" : "Check answers"}
+                {checkingAnswers ? "Checking… (up to a minute)" : answerCheck ? "Re-check answers" : "Check answers"}
               </Button>
             </div>
 
@@ -557,7 +578,7 @@ export function GradingReviewPage({
                     <div key={q.number} className={`answer-check-question answer-check-${verdict}`}>
                       <div className="answer-check-question-top">
                         <strong>
-                          Q{q.number} Ãƒâ€šÃ‚Â· {verdict === "correct" ? "Correct" : verdict === "partial" ? "Partly correct" : "Incorrect / not found"}
+                          Q{q.number} · {verdict === "correct" ? "Correct" : verdict === "partial" ? "Partly correct" : "Incorrect / not found"}
                         </strong>
                         <span>
                           {q.awarded_marks} / {q.max_marks}
@@ -565,9 +586,9 @@ export function GradingReviewPage({
                       </div>
                       <p className="answer-check-question-text">{q.question_text}</p>
                       <p>{q.explanation}</p>
-                      {q.matched_concepts.length > 0 && <p>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ {q.matched_concepts.join(" Ãƒâ€šÃ‚Â· ")}</p>}
-                      {q.missing_concepts.length > 0 && <p>ÃƒÂ¢Ã…â€œ— Missing: {q.missing_concepts.join(" Ãƒâ€šÃ‚Â· ")}</p>}
-                      {q.review_reasons.length > 0 && <p className="answer-check-review">ÃƒÂ¢Ã…Â¡Ã¢â‚¬Ëœ {q.review_reasons.join(" ")}</p>}
+                      {q.matched_concepts.length > 0 && <p>✓ {q.matched_concepts.join(" · ")}</p>}
+                      {q.missing_concepts.length > 0 && <p>✗ Missing: {q.missing_concepts.join(" · ")}</p>}
+                      {q.review_reasons.length > 0 && <p className="answer-check-review">⚑ {q.review_reasons.join(" ")}</p>}
                       {(q.teacher_corrections_used ?? 0) > 0 && (
                         <p className="answer-check-meta">
                           Graded using {q.teacher_corrections_used} earlier teacher correction
@@ -616,7 +637,7 @@ export function GradingReviewPage({
                               }
                               onClick={() => saveCorrection(q.number)}
                             >
-                              {savingCorrections ? "SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Save correction"}
+                              {savingCorrections ? "Saving…" : "Save correction"}
                             </Button>
                             <Button size="sm" variant="secondary" onClick={() => setEditingQuestion(null)}>
                               Cancel
@@ -663,7 +684,7 @@ export function GradingReviewPage({
                 })}
                 <p className="answer-check-meta">
                   Checked {formatDate(answerCheck.graded_at)}
-                  {answerCheck.saved ? " Ãƒâ€šÃ‚Â· saved for review" : " Ãƒâ€šÃ‚Â· not saved"}
+                  {answerCheck.saved ? " · saved for review" : " · not saved"}
                 </p>
               </>
             )}
@@ -721,7 +742,7 @@ export function GradingReviewPage({
                   <strong>Total Score Awarded</strong>
                   <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#5C6E61" }}>
                     Maximum marks: {maxMarks || "—"}
-                    {answerCheck && ` Ãƒâ€šÃ‚Â· AI suggested ${answerCheck.total_awarded_marks}`}
+                    {answerCheck && ` · AI suggested ${answerCheck.total_awarded_marks}`}
                   </p>
                   {bonusTotal > 0 && !scoreInvalid && !bonusInvalid && (
                     <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#2E7D4F" }}>
@@ -732,7 +753,7 @@ export function GradingReviewPage({
                   )}
                   {latePenalty > 0 && !scoreInvalid && (
                     <p style={{ margin: "2px 0 0", fontSize: "9px", color: "#b5524b" }}>
-                      Late deduction ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢{latePenalty}%{bonusTotal > 0 ? " (applied to the total with bonus)" : ""}: the
+                      Late deduction −{latePenalty}%{bonusTotal > 0 ? " (applied to the total with bonus)" : ""}: the
                       student will receive {formatMarks(publishedScorePreview)} / {maxMarks || "—"}
                     </p>
                   )}
@@ -779,7 +800,7 @@ export function GradingReviewPage({
               onClick={() => void approveGrade()}
             >
               <Check size={14} />
-              {approving ? "PublishingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : alreadyPublished ? "Update Published Grade" : "Approve & Publish Grade"}
+              {approving ? "Publishing…" : alreadyPublished ? "Update Published Grade" : "Approve & Publish Grade"}
             </Button>
           </div>
           {scoreInvalid && <p className="answer-check-error">Score must be between 0 and {maxMarks}.</p>}

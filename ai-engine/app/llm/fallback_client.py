@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Tuple, Any, Callable, Dict, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -166,12 +166,14 @@ class FallbackLLMClient:
         model: Optional[str] = None,  # ignored: each provider uses its own configured model
         temperature: Optional[float] = None,
         max_retries: Optional[int] = None,
+        images: Optional[List[Tuple[str, bytes]]] = None,
     ) -> T:
         return self._run(
             f"generate_structured[{getattr(response_schema, '__name__', 'schema')}]",
             lambda e, r: e.client.generate_structured(
                 prompt=prompt, response_schema=response_schema, system_instruction=system_instruction,
                 model=e.model, temperature=temperature, max_retries=r,
+                **({"images": images} if images else {}),
             ),
             max_retries,
         )

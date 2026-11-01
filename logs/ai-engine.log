@@ -1,0 +1,16 @@
+
+--- Starting ai-engine at 2026-11-01 10:28:30 ---
+INFO:     Started server process [31772]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57587 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59103 - "GET /health HTTP/1.1" 200 OK
+
+--- Starting ai-engine at 2026-11-01 10:41:47 ---
+INFO:     Started server process [6204]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52062 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59329 - "GET /health HTTP/1.1" 200 OK

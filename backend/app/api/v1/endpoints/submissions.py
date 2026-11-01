@@ -379,9 +379,16 @@ def get_grading_service(
     assignment_service: Annotated[AssignmentService, Depends(get_assignment_service)],
     ocr_client=Depends(get_ocr_client),
 ) -> GradingService:
+    from app.database.attachment_repository import SupabaseAttachmentRepository
     from app.database.grading_repository import SupabaseGradingRepository
+    from app.services.attachment_service import AttachmentService
 
-    return GradingService(repo, assignment_service, ocr_client, SupabaseGradingRepository())
+    attachments = AttachmentService(SupabaseAttachmentRepository(), assignment_service, ocr_client)
+    return GradingService(
+        repo, assignment_service, ocr_client, SupabaseGradingRepository(),
+        question_material=attachments.question_material,
+        question_images=attachments.question_images,
+    )
 
 
 Grading = Annotated[GradingService, Depends(get_grading_service)]

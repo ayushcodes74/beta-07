@@ -2,6 +2,7 @@ import { useState, type Dispatch, type DragEvent, type SetStateAction } from "re
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarDays, Check, CloudUpload, FileCheck2, ShieldCheck, Upload } from "lucide-react";
 import { useAppState } from "../../App";
+import { QuestionFileGallery, useAssignmentFiles } from "../../components/assignments/QuestionFiles";
 import { Button, ConfirmDialog, GlassPanel, Panel, StatusBadge, useToast } from "../../components/ui";
 import { extractErrorMessage, submissionService } from "../../services/api";
 import { formatDate } from "../../lib/utils";
@@ -25,6 +26,8 @@ export function StudentSubmissionPage({
   const { user, courses: courseList, assignments: assignmentList } = useAppState();
   const { assignmentId } = useParams();
   const assignment = assignmentList.find((item) => item.id === assignmentId);
+  // Pictures/PDFs the teacher attached to each question.
+  const filesByQuestion = useAssignmentFiles(assignmentId);
   const course = assignment ? courseList.find((item) => item.id === assignment.courseId) : undefined;
   const existing = studentRows.find((item) => item.studentId === user?.id && item.assignmentId === assignmentId);
   // Replacing is allowed until grading starts; the backend enforces the same rule.
@@ -161,6 +164,7 @@ export function StudentSubmissionPage({
                         </span>
                       </div>
                       <p className="submit-question-text">{question.prompt}</p>
+                      <QuestionFileGallery files={filesByQuestion[index + 1] ?? []} />
                       {question.type === "MCQ" && question.options && question.options.length > 0 && (
                         <ul className="submit-question-options">
                           {question.options.map((option, optionIndex) => (

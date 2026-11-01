@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChevronLeft, FileText, Paperclip, Plus, Save, Sparkles, Upload, X } from "lucide-react";
 import { useAppState } from "../../App";
 import { IntegrationNotice } from "../../components/common/IntegrationNotice";
+import { QuestionFilesField, useQuestionFiles } from "../../components/assignments/QuestionFiles";
 import {
   MAX_COURSE_MATERIAL_CHARS,
   MAX_SYLLABUS_CHARS,
@@ -20,12 +21,15 @@ function QuestionEditor({
   onChange,
   onDelete,
   onMove,
+  files,
 }: {
   question: Question;
   index: number;
   onChange: (patch: Partial<Question>) => void;
   onDelete: () => void;
   onMove: () => void;
+  /** "Attach picture or PDF" field for this question. */
+  files?: ReactNode;
 }) {
   return (
     <article className="question-card">
@@ -55,7 +59,7 @@ function QuestionEditor({
           />
         </div>
         <div className="field-block">
-          <label>Type Ãƒâ€šÃ‚Â· marks</label>
+          <label>Type · marks</label>
           <select
             className="field-select"
             value={question.type}
@@ -110,6 +114,7 @@ function QuestionEditor({
           ))}
         </div>
       )}
+      {files}
     </article>
   );
 }
@@ -230,7 +235,7 @@ function AttachmentField({
           <Paperclip size={13} />
           {buttonLabel}
         </Button>
-        <small>PDF, DOCX, PPTX or TXT Ãƒâ€šÃ‚Â· up to 25 MB each Ãƒâ€šÃ‚Â· or drop files here</small>
+        <small>PDF, DOCX, PPTX or TXT · up to 25 MB each · or drop files here</small>
       </div>
 
       {(materials.length > 0 || extracting > 0) && (
@@ -244,8 +249,8 @@ function AttachmentField({
                 <strong title={material.filename}>{material.filename}</strong>
                 <small>
                   {material.characters.toLocaleString()} characters
-                  {material.pages ? ` Ãƒâ€šÃ‚Â· ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
-                  {material.truncated ? " Ãƒâ€šÃ‚Â· truncated" : ""}
+                  {material.pages ? ` · ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
+                  {material.truncated ? " · truncated" : ""}
                 </small>
               </span>
               <button
@@ -261,7 +266,7 @@ function AttachmentField({
           {extracting > 0 && (
             <li className="material-item material-loading">
               <span className="button-spinner" />
-              Reading {extracting} file{extracting === 1 ? "" : "s"}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
+              Reading {extracting} file{extracting === 1 ? "" : "s"}…
             </li>
           )}
         </ul>
@@ -328,6 +333,8 @@ export function AssignmentEditor({
   const syllabus = useAttachments(MAX_SYLLABUS_CHARS, "Syllabus / rules (pasted)");
   const extractingCount = courseMaterial.extracting + syllabus.extracting;
   const total = questions.reduce((sum, item) => sum + item.marks, 0);
+  // Pictures/PDFs per question: picked here, uploaded/moved/removed when the assignment is saved.
+  const questionFiles = useQuestionFiles(assignmentId, questions.map((q) => q.id), !loadingExisting);
   const submissionCount = editing ? submissions.filter((s) => s.assignmentId === editing.id).length : 0;
 
   useEffect(() => {
@@ -464,6 +471,8 @@ export function AssignmentEditor({
         if (state === "Published" && saved.state !== "Published") {
           saved = await assignmentService.publishAssignment(saved.id);
         }
+        const fileFailures = await questionFiles.sync(saved.id, questions.map((q) => q.id));
+        if (fileFailures) toast(`${fileFailures} attached file(s) could not be saved. Open the assignment to retry.`, "info");
         setAssignments((current) => current.map((item) => (item.id === saved.id ? saved : item)));
         toast(
           editing.state === "Published"
@@ -493,6 +502,8 @@ export function AssignmentEditor({
       if (state === "Published") {
         created = await assignmentService.publishAssignment(created.id);
       }
+      const fileFailures = await questionFiles.sync(created.id, questions.map((q) => q.id));
+      if (fileFailures) toast(`${fileFailures} attached file(s) could not be saved. Open the assignment to retry.`, "info");
       setAssignments((current) => [created, ...current]);
       toast(
         state === "Published"
@@ -510,7 +521,7 @@ export function AssignmentEditor({
   if (loadingExisting) {
     return (
       <Panel className="empty-state" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#5C6E61" }}>
-        <span className="button-spinner" /> Loading assignmentÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
+        <span className="button-spinner" /> Loading assignment…
       </Panel>
     );
   }
@@ -606,7 +617,7 @@ export function AssignmentEditor({
             <div className="section-heading">
               <div>
                 <h2>Questions</h2>
-                <p>{`${questions.length} questions Ãƒâ€šÃ‚Â· ${total} marks total`}</p>
+                <p>{`${questions.length} questions · ${total} marks total`}</p>
               </div>
             </div>
             <div className="question-list">
@@ -617,6 +628,7 @@ export function AssignmentEditor({
                   index={index}
                   onChange={(patch) => updateQuestion(question.id, patch)}
                   onDelete={() => setQuestions((current) => current.filter((item) => item.id !== question.id))}
+                  files={<QuestionFilesField questionKey={question.id} files={questionFiles} />}
                   onMove={() =>
                     setQuestions((current) => {
                       if (!index) return current;
@@ -667,7 +679,7 @@ export function AssignmentEditor({
               id="ai-material"
               label="Course material"
               buttonLabel="Attach notes, slides or readings"
-              notesPlaceholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦or paste course notes / key points here (optional)"
+              notesPlaceholder="…or paste course notes / key points here (optional)"
               attachments={courseMaterial}
               disabled={generating}
             />
@@ -677,7 +689,7 @@ export function AssignmentEditor({
               label="Syllabus or rulebook"
               hint="Questions stay within this syllabus and follow its rules (allowed methods, answer length, marking conventions)."
               buttonLabel="Attach syllabus or rulebook"
-              notesPlaceholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦or paste the syllabus topics / assessment rules here (optional)"
+              notesPlaceholder="…or paste the syllabus topics / assessment rules here (optional)"
               attachments={syllabus}
               disabled={generating}
             />
@@ -758,7 +770,7 @@ export function AssignmentEditor({
               {generating ? (
                 <>
                   <span className="button-spinner" />
-                  GeneratingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ (up to a minute)
+                  Generating… (up to a minute)
                 </>
               ) : (
                 "Generate question prompts"
@@ -784,7 +796,7 @@ export function AssignmentEditor({
               >
                 {courseList.map((course) => (
                   <option value={course.id} key={course.id}>
-                    {course.name} Ãƒâ€šÃ‚Â· {course.code}
+                    {course.name} · {course.code}
                   </option>
                 ))}
                 {!courseList.length && <option value="">No courses created yet</option>}
