@@ -1,4 +1,4 @@
-export const GRADEX_LOGO_SRC = "/logo.png";
+export const GRADEX_LOGO_SRC = "/gradex-logo.png";
 
 type BrandWordmarkProps = {
   className?: string;
