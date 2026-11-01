@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: course leaderboard (public.course_leaderboard RPC)
+-- GradeX: course leaderboard (public.course_leaderboard RPC)
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --
@@ -90,7 +90,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.course_leaderboard(UUID) IS
-  'TrustGrade: course standings by total published marks; owning teacher or enrolled students only.';
+  'GradeX: course standings by total published marks; owning teacher or enrolled students only.';
 
 REVOKE ALL ON FUNCTION public.course_leaderboard(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.course_leaderboard(UUID) TO authenticated;

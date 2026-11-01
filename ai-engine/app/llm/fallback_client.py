@@ -210,7 +210,7 @@ def build_providers(settings: Settings) -> List[ProviderEntry]:
             client = OpenAICompatibleClient(
                 "openrouter", settings.openrouter_api_key, settings.openrouter_base_url,
                 settings.openrouter_model, settings=settings,
-                extra_headers={"X-Title": "TrustGrade AI Engine"},
+                extra_headers={"X-Title": "GradeX AI Engine"},
                 extra_body=_openrouter_reasoning(settings.openrouter_reasoning),
             )
             models = [settings.openrouter_model] + [

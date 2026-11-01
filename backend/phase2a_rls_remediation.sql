@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade — Phase 2A.6: Supabase RLS Remediation Migration (Hardened)
+-- GradeX — Phase 2A.6: Supabase RLS Remediation Migration (Hardened)
 -- ============================================================================
 -- Notice: REVIEWED MIGRATION PROPOSAL — NOT EXECUTED AGAINST PRODUCTION.
 --
@@ -146,7 +146,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION private.is_course_owner(UUID) IS
-  'TrustGrade Phase 2A: Non-recursive security-definer check for course ownership (isolated in private schema).';
+  'GradeX Phase 2A: Non-recursive security-definer check for course ownership (isolated in private schema).';
 
 REVOKE ALL ON FUNCTION private.is_course_owner(UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION private.is_course_owner(UUID) FROM anon;
@@ -172,7 +172,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION private.is_enrolled_student(UUID) IS
-  'TrustGrade Phase 2A: Non-recursive security-definer check for active student course enrollment (isolated in private schema).';
+  'GradeX Phase 2A: Non-recursive security-definer check for active student course enrollment (isolated in private schema).';
 
 REVOKE ALL ON FUNCTION private.is_enrolled_student(UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION private.is_enrolled_student(UUID) FROM anon;
@@ -400,7 +400,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.validate_student_enrollment_target(UUID, UUID) IS
-  'TrustGrade Phase 2A: Secure, course-scoped RPC for teachers to validate prospective student enrollments.';
+  'GradeX Phase 2A: Secure, course-scoped RPC for teachers to validate prospective student enrollments.';
 
 REVOKE ALL ON FUNCTION public.validate_student_enrollment_target(UUID, UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.validate_student_enrollment_target(UUID, UUID) FROM anon;
@@ -411,7 +411,7 @@ GRANT EXECUTE ON FUNCTION public.validate_student_enrollment_target(UUID, UUID) 
 -- STEP 5: Constraint-Aware Enrollment Concurrency Protection
 -- ----------------------------------------------------------------------------
 -- Data Model & Constraint Note:
--- The TrustGrade enrollment model maintains at most ONE row per student per course
+-- The GradeX enrollment model maintains at most ONE row per student per course
 -- (soft deactivation updates status = 'inactive', and re-enrollment reactivates
 -- status = 'active' in-place).
 --

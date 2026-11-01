@@ -58,7 +58,7 @@ class ProfileNotFoundError(Exception):
 
 
 class InvalidRoleError(Exception):
-    """The profile record holds a role TrustGrade does not recognise."""
+    """The profile record holds a role GradeX does not recognise."""
 
 
 class DisabledAccountError(Exception):

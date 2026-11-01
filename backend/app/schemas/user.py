@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class Role(StrEnum):
-    """TrustGrade application roles.
+    """GradeX application roles.
 
     The role is only ever read from the trusted profile record, never from the
     request, the token's ``user_metadata`` or registration metadata.

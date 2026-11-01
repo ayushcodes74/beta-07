@@ -147,6 +147,18 @@ a {
   color: var(--forest);
 }
 
+.brand:has(.brand-word img) .brand-mark,
+.tg-nav-brand:has(.tg-brand-name img) .tg-brand-symbol {
+  display: none;
+}
+
+.brand-word img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .workspace-switch {
   display: flex;
   align-items: center;
@@ -5921,7 +5933,7 @@ h1 {
 }
 
 /* ========================================================
-   TRUSTGRADE INTERNAL DASHBOARD EXTENSIONS & COMPONENTS
+   GradeX INTERNAL DASHBOARD EXTENSIONS & COMPONENTS
    ======================================================== */
 .integration-notice-card {
   display: flex;
@@ -6552,7 +6564,7 @@ h1 {
 }
 
 /* ========================================================
-   TRUSTGRADE LUXURY EDUCATIONAL LANDING PAGE (LAWNBUSTER-INSPIRED)
+   GradeX LUXURY EDUCATIONAL LANDING PAGE (LAWNBUSTER-INSPIRED)
    COLOR PALETTE:
    - PRIMARY: #173D2B (Dark Forest Green)
    - SECONDARY: #A8C98A (Sage)
@@ -6629,6 +6641,13 @@ h1 {
 
 .tg-brand-name span {
   color: #5B7B61;
+}
+
+.tg-brand-name img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
 }
 
 .tg-nav-links {
@@ -6760,7 +6779,7 @@ h1 {
   border-top: 1px solid #f0ede6;
 }
 
-/* 2. CINEMATIC HERO SECTION (VISUAL REDESIGN V2 â€” EDITORIAL EDTECH) */
+/* 2. CINEMATIC HERO SECTION (VISUAL REDESIGN V2 Ã¢â‚¬â€ EDITORIAL EDTECH) */
 .tg-hero-wrapper {
   padding: 88px 0 16px;
   max-width: 1180px;
@@ -9248,7 +9267,7 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ---- Class analytics (teacher overview) -------------------------------------------------------
-   Plain HTML bars. Marks: one validated hue for single-series bars (#2E7D4F), a validated light→dark
+   Plain HTML bars. Marks: one validated hue for single-series bars (#2E7D4F), a validated lightâ†’dark
    ordinal ramp for the pipeline stages; thin bars with 4px rounded data-ends, hairline solid tracks;
    text always in ink tokens, never the series color. */
 .analytics-card { margin-bottom: 16px; padding: 18px 20px; }
@@ -9305,7 +9324,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .column-bar { width: min(24px, 60%); min-height: 2px; background: #2E7D4F; border-radius: 4px 4px 0 0; transition: height .3s ease-out, opacity .15s; }
 .column-label { font-size: 11.5px; font-weight: 650; color: var(--muted); padding-top: 6px; }
 
-/* Average by assignment: horizontal bars on a 0–100% track, value at the tip. */
+/* Average by assignment: horizontal bars on a 0â€“100% track, value at the tip. */
 .bar-list { display: flex; flex-direction: column; gap: 10px; }
 .bar-row { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr); align-items: center; gap: 12px; border-radius: 6px; outline-offset: 2px; }
 .bar-row-label { display: flex; flex-direction: column; min-width: 0; }

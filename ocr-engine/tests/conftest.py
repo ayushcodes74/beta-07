@@ -1,4 +1,4 @@
-"""Shared test fixtures for TrustGrade OCR Ingestion Module tests."""
+"""Shared test fixtures for GradeX OCR Ingestion Module tests."""
 
 import os
 import tempfile
@@ -14,7 +14,7 @@ os.environ["OCR_SPACE_API_KEY"] = ""
 os.environ["OCR_VISION_API_KEY"] = ""
 os.environ["GEMINI_API_KEY"] = ""
 # Keep test jobs out of the real ocr-engine/storage folder (must be set before app.api.config is imported).
-os.environ.setdefault("OCR_STORAGE_ROOT", tempfile.mkdtemp(prefix="trustgrade-ocr-tests-"))
+os.environ.setdefault("OCR_STORAGE_ROOT", tempfile.mkdtemp(prefix="GradeX-ocr-tests-"))
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def sample_single_page_pdf(tmp_path: Path) -> Path:
     pdf_path = tmp_path / "single_page.pdf"
     doc = pymupdf.open()
     page = doc.new_page(width=595, height=842)  # Standard A4
-    page.insert_text((50, 100), "TrustGrade Student Submission Page 1")
+    page.insert_text((50, 100), "GradeX Student Submission Page 1")
     doc.set_metadata({
         "title": "Assignment 1",
         "author": "Student 101",
@@ -147,7 +147,7 @@ def valid_png_page(tmp_path: Path) -> Path:
     """Creates a valid high-resolution PNG page image with text and math."""
     img_path = tmp_path / "page_001.png"
     img = np.full((1200, 900, 3), 255, dtype=np.uint8)
-    cv2.putText(img, "TrustGrade Student Answer", (80, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (20, 20, 20), 2)
+    cv2.putText(img, "GradeX Student Answer", (80, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (20, 20, 20), 2)
     cv2.putText(img, "Question 1: Solve x^2 - 4x + 4 = 0", (80, 250), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (30, 30, 30), 2)
     cv2.putText(img, "Solution: (x - 2)^2 = 0 => x = 2.0", (80, 350), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (25, 25, 25), 2)
     cv2.imwrite(str(img_path), img)
@@ -292,7 +292,7 @@ def printed_doc_page(tmp_path: Path) -> Path:
     """Creates a page containing printed typography."""
     path = tmp_path / "printed_page.png"
     img = np.full((800, 1000, 3), 255, dtype=np.uint8)
-    cv2.putText(img, "TRUSTGRADE UNIVERSITY MIDTERM EXAM", (80, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (15, 15, 15), 2)
+    cv2.putText(img, "GradeX UNIVERSITY MIDTERM EXAM", (80, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.0, (15, 15, 15), 2)
     cv2.putText(img, "Question 1: Explain the law of thermodynamics.", (80, 200), cv2.FONT_HERSHEY_TRIPLEX, 0.8, (25, 25, 25), 2)
     cv2.putText(img, "Question 2: State Newton's third law of motion.", (80, 300), cv2.FONT_HERSHEY_TRIPLEX, 0.8, (25, 25, 25), 2)
     cv2.imwrite(str(path), img)

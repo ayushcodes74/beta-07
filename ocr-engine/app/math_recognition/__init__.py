@@ -1,4 +1,4 @@
-"""Module 4: Mathematical Recognition & Quality Analysis for TrustGrade OCR Engine."""
+"""Module 4: Mathematical Recognition & Quality Analysis for GradeX OCR Engine."""
 
 from app.math_recognition.config import (
     DEFAULT_MATH_CONFIG,

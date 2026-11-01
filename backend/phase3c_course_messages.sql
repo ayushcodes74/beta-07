@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: student <-> teacher chat  (course_messages + RLS + thread-list RPC)
+-- GradeX: student <-> teacher chat  (course_messages + RLS + thread-list RPC)
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 -- Requires phase2a_rls_recursion_fix.sql (private.is_active_* helpers).
@@ -185,7 +185,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.course_message_threads() IS
-  'TrustGrade: the caller''s student-teacher conversations with names, last message and unread count.';
+  'GradeX: the caller''s student-teacher conversations with names, last message and unread count.';
 
 REVOKE ALL ON FUNCTION public.course_message_threads() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.course_message_threads() TO authenticated;

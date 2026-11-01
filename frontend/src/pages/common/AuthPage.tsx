@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, GraduationCap, ShieldCheck } from "lucide-react";
 import { signIn, signUp } from "../../services/auth";
 import { Button, Panel } from "../../components/ui";
+import { BrandWordmark } from "../../components/common/BrandWordmark";
 import { useAppState } from "../../App";
 
 export function AuthPage({ register = false }: { register?: boolean }) {
@@ -36,7 +37,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   return (
     <main className="auth-page">
       <div className="auth-backdrop" />
-      <Link to="/" className="tg-nav-brand auth-brand"><span className="tg-brand-symbol"><GraduationCap size={18} /></span><span className="tg-brand-name">Trust<span>Grade</span></span></Link>
+      <Link to="/" className="tg-nav-brand auth-brand"><span className="tg-brand-symbol"><GraduationCap size={18} /></span><BrandWordmark className="tg-brand-name" /></Link>
       <div className="auth-layout">
         <section className="auth-story">
           <span className="eyebrow">A MORE THOUGHTFUL ACADEMIC PLATFORM</span>
@@ -56,7 +57,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
         </section>
         <Panel className="auth-card">
           <span className="eyebrow">{register ? "JOIN YOUR CLASSROOM" : "WELCOME BACK"}</span>
-          <h2>{register ? "Create your account" : "Sign in to TrustGrade"}</h2>
+          <h2>{register ? "Create your account" : "Sign in to GradeX"}</h2>
           <p>{register ? "Register for a faculty or student account." : "Use the account credentials provided by your institution."}</p>
           <form onSubmit={submit}>
             <div className="field-block">
@@ -69,11 +70,11 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             </div>
             {error && <div role="alert" className="form-error"><AlertCircle size={14} />{error}</div>}
             <Button className="full-button auth-submit" disabled={busy}>
-              {busy ? <><span className="button-spinner" />{register ? "Creating account…" : "Signing in…"}</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
+              {busy ? <><span className="button-spinner" />{register ? "Creating accountâ€¦" : "Signing inâ€¦"}</> : <>{register ? "Create account" : "Sign in"}<ArrowRight size={14} /></>}
             </Button>
           </form>
           <div className="auth-switch">
-            {register ? "Already have an account?" : "New to TrustGrade?"}{" "}
+            {register ? "Already have an account?" : "New to GradeX?"}{" "}
             <Link to={register ? "/login" : "/register"}>{register ? "Sign in" : "Create account"}</Link>
           </div>
         </Panel>

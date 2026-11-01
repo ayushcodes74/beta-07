@@ -4,6 +4,7 @@ import {
   ArrowUpRight, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronRight,
   FileCheck2, FileText, GraduationCap, Menu, ShieldCheck, Sparkles, X,
 } from "lucide-react";
+import { BrandWordmark } from "../../components/common/BrandWordmark";
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -78,9 +79,7 @@ export function LandingPage() {
             <span className="tg-brand-symbol">
               <GraduationCap size={18} />
             </span>
-            <span className="tg-brand-name">
-              Trust<span>Grade</span>
-            </span>
+            <BrandWordmark className="tg-brand-name" />
           </Link>
 
           <nav className="tg-nav-links">
@@ -187,7 +186,7 @@ export function LandingPage() {
                       <span className="tg-board-badge">CS 302</span>
                       <div>
                         <strong>Algorithms & Data Structures</strong>
-                        <small>Midterm Exam · Student: Julian Vance (ID: #2481)</small>
+                        <small>Midterm Exam ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Student: Julian Vance (ID: #2481)</small>
                       </div>
                     </div>
                     <span className="tg-board-status">
@@ -196,14 +195,14 @@ export function LandingPage() {
                   </div>
 
                   <div className="tg-board-section">
-                    <div className="tg-section-label">STUDENT ANSWER SHEET EXTRACT · Q3</div>
+                    <div className="tg-section-label">STUDENT ANSWER SHEET EXTRACT ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Q3</div>
                     <div className="tg-answer-preview">
                       <div className="tg-answer-q">Q3: Quicksort Worst-Case Degradation & Mitigations</div>
                       <p className="tg-answer-text">
-                        "Quicksort exhibits O(n²) worst-case when partition pivots are unbalanced. Adopting a <mark>randomized pivot selection</mark> guarantees expected <mark>O(n log n)</mark> runtime by eliminating deterministic worst-case inputs."
+                        "Quicksort exhibits O(nÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²) worst-case when partition pivots are unbalanced. Adopting a <mark>randomized pivot selection</mark> guarantees expected <mark>O(n log n)</mark> runtime by eliminating deterministic worst-case inputs."
                       </p>
                       <div className="tg-answer-citation">
-                        <span>✓ Grounded in Lecture 6 & CLRS Sec 7.3</span>
+                        <span>ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Grounded in Lecture 6 & CLRS Sec 7.3</span>
                       </div>
                     </div>
                   </div>
@@ -280,13 +279,13 @@ export function LandingPage() {
         <div className="tg-container">
           <div className="tg-partner-strip">
             <span className="tg-partner-item"><strong>STANFORD</strong> APPLIED AI</span>
-            <span className="tg-partner-sep">•</span>
+            <span className="tg-partner-sep">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢</span>
             <span className="tg-partner-item"><strong>OXFORD</strong> CURRICULUM</span>
-            <span className="tg-partner-sep">•</span>
+            <span className="tg-partner-sep">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢</span>
             <span className="tg-partner-item"><strong>CAMBRIDGE</strong> DIGITAL ED</span>
-            <span className="tg-partner-sep">•</span>
+            <span className="tg-partner-sep">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢</span>
             <span className="tg-partner-item"><strong>BERKELEY</strong> COMPUTING</span>
-            <span className="tg-partner-sep">•</span>
+            <span className="tg-partner-sep">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢</span>
             <span className="tg-partner-item"><strong>MIT</strong> INTEGRITY LAB</span>
           </div>
         </div>
@@ -310,23 +309,23 @@ export function LandingPage() {
               </div>
               <div className="tg-about-img-footer">
                 <span>Verified Source Citations</span>
-                <span className="tg-bullet">•</span>
+                <span className="tg-bullet">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢</span>
                 <span>100% Audit Trail</span>
               </div>
             </div>
 
             <div className="tg-about-content">
               <span className="tg-section-eyebrow">
-                <span className="tg-eyebrow-dot" /> ABOUT TRUSTGRADE
+                <span className="tg-eyebrow-dot" /> ABOUT GradeX
               </span>
               <h2 className="tg-about-headline">
                 Assessment should be more than assigning marks. It should <em>elevate learning</em>.
               </h2>
               <p className="tg-about-p">
-                TrustGrade started with a clear observation: professors spend countless hours reading repetitive exams, leaving minimal energy for personalized guidance. Standard AI tools fail because they lack institutional course grounding and hallucinate criteria.
+                GradeX started with a clear observation: professors spend countless hours reading repetitive exams, leaving minimal energy for personalized guidance. Standard AI tools fail because they lack institutional course grounding and hallucinate criteria.
               </p>
               <p className="tg-about-p">
-                We engineered TrustGrade to fuse custom course syllabi, lecture slides, and faculty-crafted rubrics into an evidence-driven evaluation engine. Every grade suggestion references specific passages—reducing grading fatigue by up to 70% while keeping teachers completely in control.
+                We engineered GradeX to fuse custom course syllabi, lecture slides, and faculty-crafted rubrics into an evidence-driven evaluation engine. Every grade suggestion references specific passages—reducing grading fatigue by up to 70% while keeping teachers completely in control.
               </p>
               <div className="tg-about-actions">
                 <button className="tg-btn-primary" onClick={() => navigate("/register")}>
@@ -357,7 +356,7 @@ export function LandingPage() {
             </div>
             <div className="tg-services-header-right">
               <p>
-                From raw student PDF ingestion to final published marks—rigorous, evidence-backed evaluation at institutional scale.
+                From raw student PDF ingestion to final published marksÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Ârigorous, evidence-backed evaluation at institutional scale.
               </p>
               <div className="tg-carousel-controls">
                 <button
@@ -465,14 +464,14 @@ export function LandingPage() {
                 <div className="tg-conf-val">98.4%</div>
                 <div>
                   <strong>Confidence Index</strong>
-                  <small>High Accuracy · Grounded</small>
+                  <small>High Accuracy ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Grounded</small>
                 </div>
               </div>
             </div>
 
             <div className="tg-step-card tg-step-4-wide">
               <div className="tg-step-4-content">
-                <span className="tg-step-num">Step 04 · Faculty Review</span>
+                <span className="tg-step-num">Step 04 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Faculty Review</span>
                 <h3 className="tg-step-title">Teacher Approval & Publication</h3>
                 <p className="tg-step-desc">
                   Every evaluation is provisional until reviewed by the professor. Verify marks with single clicks, adjust rubric scores, and publish constructive feedback directly to student dashboards.
@@ -489,7 +488,7 @@ export function LandingPage() {
                     <span className="tg-stamp-mark"><CheckCircle2 size={16} /></span>
                     <div>
                       <strong>Evaluation Verified</strong>
-                      <small>Prof. Alex Morgan · CS 301</small>
+                      <small>Prof. Alex Morgan ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· CS 301</small>
                     </div>
                   </div>
                   <div className="tg-verif-criteria">
@@ -514,7 +513,7 @@ export function LandingPage() {
               Academic rigor in <em>every single detail</em>
             </h2>
             <p className="tg-showcase-sub">
-              Inspect how TrustGrade anchors criteria evaluation in verified lecture citations and provides full faculty oversight before publishing.
+              Inspect how GradeX anchors criteria evaluation in verified lecture citations and provides full faculty oversight before publishing.
             </p>
           </div>
 
@@ -526,7 +525,7 @@ export function LandingPage() {
                 <span className="tg-dot" />
               </div>
               <div className="tg-window-title">
-                <span>CS 401: Advanced Algorithms — Midterm Assessment</span>
+                <span>CS 401: Advanced Algorithms ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Midterm Assessment</span>
                 <span className="tg-status-pill">Ready for Faculty Approval</span>
               </div>
               <div className="tg-window-user">
@@ -539,13 +538,13 @@ export function LandingPage() {
               <div className="tg-showcase-left">
                 <div className="tg-pane-header">
                   <span className="tg-pane-tag">STUDENT SUBMISSION</span>
-                  <span className="tg-submission-id">ID: #4092 · Julian Vance</span>
+                  <span className="tg-submission-id">ID: #4092 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Julian Vance</span>
                 </div>
                 <div className="tg-student-snippet">
                   <h4>Question 2: Quicksort Worst-Case Degradation & Mitigation</h4>
                   <div className="tg-snippet-box">
                     <p>
-                      "In worst-case scenarios, Quicksort degrades to <mark className="tg-highlight">O(n²)</mark> when the chosen pivot is consistently the minimum or maximum element in an already sorted or reverse-sorted array. This yields maximally unbalanced partitions containing 0 and n-1 elements respectively."
+                      "In worst-case scenarios, Quicksort degrades to <mark className="tg-highlight">O(nÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²)</mark> when the chosen pivot is consistently the minimum or maximum element in an already sorted or reverse-sorted array. This yields maximally unbalanced partitions containing 0 and n-1 elements respectively."
                     </p>
                     <p>
                       "To mitigate this degradation, we can adopt a <mark className="tg-highlight">randomized pivot selection strategy</mark> or the Median-of-Three heuristic. Randomization guarantees an expected runtime of O(n log n) regardless of the input distribution, effectively eliminating adversarial permutations."
@@ -559,9 +558,9 @@ export function LandingPage() {
                     <span>Retrieved Course Evidence</span>
                   </div>
                   <p>
-                    <strong>Lecture 6, Slide 18:</strong> "Quicksort worst-case recurrence T(n) = T(n-1) + O(n) resolves to O(n²). Mitigated via randomized pivot choosing with uniform probability over [p..r]."
+                    <strong>Lecture 6, Slide 18:</strong> "Quicksort worst-case recurrence T(n) = T(n-1) + O(n) resolves to O(nÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²). Mitigated via randomized pivot choosing with uniform probability over [p..r]."
                   </p>
-                  <span className="tg-citation-match">● 98.7% Semantic Material Match</span>
+                  <span className="tg-citation-match">ÃƒÆ’Ã‚Â¢—Ãƒâ€šÃ‚Â 98.7% Semantic Material Match</span>
                 </div>
               </div>
 
@@ -577,7 +576,7 @@ export function LandingPage() {
                       <strong>1. Worst-Case Recurrence Analysis</strong>
                       <span className="tg-crit-score">5.0 / 5.0</span>
                     </div>
-                    <p>Correctly identified O(n²) degradation and unbalanced partition depth.</p>
+                    <p>Correctly identified O(nÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²) degradation and unbalanced partition depth.</p>
                     <small>Evidence Grounded: Lecture 6 (Slide 18)</small>
                   </div>
 
@@ -595,7 +594,7 @@ export function LandingPage() {
                   <div className="tg-conf-row">
                     <div>
                       <small>EVALUATION CONFIDENCE</small>
-                      <strong>99.2% — High Confidence</strong>
+                      <strong>99.2% ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â High Confidence</strong>
                     </div>
                     <span className="tg-conf-tag">Audit Clean</span>
                   </div>
@@ -632,7 +631,7 @@ export function LandingPage() {
                 Make every evaluation <em>meaningful</em>.
               </h2>
               <p className="tg-cta-sub">
-                Join forward-thinking faculty and university departments using TrustGrade to streamline grading while delivering transparent, evidence-based feedback.
+                Join forward-thinking faculty and university departments using GradeX to streamline grading while delivering transparent, evidence-based feedback.
               </p>
               <div className="tg-cta-buttons">
                 <button className="tg-btn-primary-lg" onClick={handleGetStarted}>
@@ -661,9 +660,7 @@ export function LandingPage() {
                 <span className="tg-brand-symbol">
                   <GraduationCap size={18} />
                 </span>
-                <span className="tg-brand-name">
-                  Trust<span>Grade</span>
-                </span>
+                <BrandWordmark className="tg-brand-name" />
               </Link>
               <p className="tg-footer-tagline">
                 The intelligent academic assessment platform grounded in course materials, rigorous rubrics, and faculty authority.
@@ -701,14 +698,14 @@ export function LandingPage() {
               <ul className="tg-footer-links">
                 <li><span>Institutional Inquiries</span></li>
                 <li><strong className="tg-support-phone">+1 (800) 459-7812</strong></li>
-                <li><span>support@trustgrade.edu</span></li>
+                <li>                <span>support@gradex.edu</span></li>
                 <li><span>Available Mon - Fri, 8am - 6pm EST</span></li>
               </ul>
             </div>
           </div>
 
           <div className="tg-footer-bottom">
-            <span>© 2026 TrustGrade AI Inc. All rights reserved.</span>
+            <span>© 2026 GradeX AI Inc. All rights reserved.</span>
             <div className="tg-bottom-links">
               <a href="#">Privacy Policy</a>
               <a href="#">Terms of Service</a>

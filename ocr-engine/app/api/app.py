@@ -1,4 +1,4 @@
-"""FastAPI application factory and middleware configuration for TrustGrade OCR Engine."""
+"""FastAPI application factory and middleware configuration for GradeX OCR Engine."""
 
 import logging
 import os
@@ -29,21 +29,21 @@ def _preload_models() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle management for background worker pool and clean shutdown."""
-    logger.info("Starting TrustGrade OCR Engine API service...")
+    logger.info("Starting GradeX OCR Engine API service...")
     if os.getenv("OCR_PRELOAD_MODELS", "true").lower() not in ("0", "false", "no"):
         # Warm up PaddleOCR in the background so the first submission doesn't pay the model-load cost
         # and /health reports real engine status. Startup is not blocked; jobs wait on the init lock.
         threading.Thread(target=_preload_models, name="ocr-model-preload", daemon=True).start()
     yield
-    logger.info("Shutting down TrustGrade OCR Engine API service...")
+    logger.info("Shutting down GradeX OCR Engine API service...")
     # Keep job workspaces on disk: finished results are restored after restart (see JobManager).
     JobManager.shutdown()
 
 
 def create_app(config: APIConfig = DEFAULT_API_CONFIG) -> FastAPI:
-    """Build and configure the TrustGrade OCR Service FastAPI application."""
+    """Build and configure the GradeX OCR Service FastAPI application."""
     app = FastAPI(
-        title="TrustGrade OCR Engine API",
+        title="GradeX OCR Engine API",
         description="Unified OCR and mathematical recognition service for AI-assisted grading",
         version="1.0.0",
         lifespan=lifespan,

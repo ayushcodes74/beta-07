@@ -26,7 +26,7 @@ def create_benchmark_pdf(path: Path, pages: int = 2) -> Path:
     doc = pymupdf.open()
     for p_idx in range(1, pages + 1):
         page = doc.new_page(width=595, height=842)
-        page.insert_text((50, 100), f"TrustGrade Academic Examination - Page {p_idx}", fontsize=14)
+        page.insert_text((50, 100), f"GradeX Academic Examination - Page {p_idx}", fontsize=14)
         page.insert_text((50, 180), f"Question {p_idx}: Derive the equation of motion.", fontsize=11)
         page.insert_text((50, 260), "Student Answer: v^2 = u^2 + 2 * a * s", fontsize=11)
         page.insert_text((50, 340), "Integral Expression: int x^2 dx = x^3 / 3 + C", fontsize=11)
@@ -38,7 +38,7 @@ def create_benchmark_pdf(path: Path, pages: int = 2) -> Path:
 def run_api_pipeline_evaluation() -> None:
     """Run comprehensive API and orchestration pipeline benchmarks."""
     print("=" * 95)
-    print("TrustGrade OCR Module 5 — API & Orchestration Pipeline Evaluation")
+    print("GradeX OCR Module 5 — API & Orchestration Pipeline Evaluation")
     print("=" * 95)
 
     app = create_app()

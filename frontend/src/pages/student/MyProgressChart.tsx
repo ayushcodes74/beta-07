@@ -58,7 +58,7 @@ export function MyProgressChart({ submissions }: { submissions: Submission[] }) 
   const change = latest && previous ? percentToMarks((latest.student as number) - (previous.student as number), scale) : null;
   const signed = (value: number) => {
     const rounded = Math.round(value * 10) / 10;
-    return `${rounded > 0 ? "+" : rounded < 0 ? "−" : "±"}${formatMarks(Math.abs(rounded))} mark${Math.abs(rounded) === 1 ? "" : "s"}`;
+    return `${rounded > 0 ? "+" : rounded < 0 ? "ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢" : "Ãƒâ€šÃ‚Â±"}${formatMarks(Math.abs(rounded))} mark${Math.abs(rounded) === 1 ? "" : "s"}`;
   };
 
   return (

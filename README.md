@@ -1,6 +1,6 @@
-# TrustGrade
+# GradeX
 
-TrustGrade is a teacher-led academic grading workspace for assignments, course materials, student submissions, OCR verification, AI-assisted grading, and teacher-approved feedback.
+GradeX is a teacher-led academic grading workspace for assignments, course materials, student submissions, OCR verification, AI-assisted grading, and teacher-approved feedback.
 
 ## Frontend
 

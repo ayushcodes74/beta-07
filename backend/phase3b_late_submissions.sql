@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: belated (late) submissions - teacher accept / reject / reduced marks
+-- GradeX: belated (late) submissions - teacher accept / reject / reduced marks
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --

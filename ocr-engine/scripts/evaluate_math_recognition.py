@@ -167,7 +167,7 @@ def run_math_benchmark() -> None:
     samples = generate_verified_math_samples(work_dir)
 
     print("=" * 95)
-    print("TrustGrade OCR Module 4 — Mathematical Recognition & Quality Analysis Benchmark")
+    print("GradeX OCR Module 4 — Mathematical Recognition & Quality Analysis Benchmark")
     print("=" * 95)
 
     mgr = MathModelManager.get_instance()

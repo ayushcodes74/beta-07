@@ -55,7 +55,7 @@ function QuestionEditor({
           />
         </div>
         <div className="field-block">
-          <label>Type · marks</label>
+          <label>Type Ãƒâ€šÃ‚Â· marks</label>
           <select
             className="field-select"
             value={question.type}
@@ -230,7 +230,7 @@ function AttachmentField({
           <Paperclip size={13} />
           {buttonLabel}
         </Button>
-        <small>PDF, DOCX, PPTX or TXT · up to 25 MB each · or drop files here</small>
+        <small>PDF, DOCX, PPTX or TXT Ãƒâ€šÃ‚Â· up to 25 MB each Ãƒâ€šÃ‚Â· or drop files here</small>
       </div>
 
       {(materials.length > 0 || extracting > 0) && (
@@ -244,8 +244,8 @@ function AttachmentField({
                 <strong title={material.filename}>{material.filename}</strong>
                 <small>
                   {material.characters.toLocaleString()} characters
-                  {material.pages ? ` · ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
-                  {material.truncated ? " · truncated" : ""}
+                  {material.pages ? ` Ãƒâ€šÃ‚Â· ${material.pages} page${material.pages === 1 ? "" : "s"}` : ""}
+                  {material.truncated ? " Ãƒâ€šÃ‚Â· truncated" : ""}
                 </small>
               </span>
               <button
@@ -261,7 +261,7 @@ function AttachmentField({
           {extracting > 0 && (
             <li className="material-item material-loading">
               <span className="button-spinner" />
-              Reading {extracting} file{extracting === 1 ? "" : "s"}…
+              Reading {extracting} file{extracting === 1 ? "" : "s"}ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
             </li>
           )}
         </ul>
@@ -510,7 +510,7 @@ export function AssignmentEditor({
   if (loadingExisting) {
     return (
       <Panel className="empty-state" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#5C6E61" }}>
-        <span className="button-spinner" /> Loading assignment…
+        <span className="button-spinner" /> Loading assignmentÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
       </Panel>
     );
   }
@@ -606,7 +606,7 @@ export function AssignmentEditor({
             <div className="section-heading">
               <div>
                 <h2>Questions</h2>
-                <p>{`${questions.length} questions · ${total} marks total`}</p>
+                <p>{`${questions.length} questions Ãƒâ€šÃ‚Â· ${total} marks total`}</p>
               </div>
             </div>
             <div className="question-list">
@@ -667,7 +667,7 @@ export function AssignmentEditor({
               id="ai-material"
               label="Course material"
               buttonLabel="Attach notes, slides or readings"
-              notesPlaceholder="…or paste course notes / key points here (optional)"
+              notesPlaceholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦or paste course notes / key points here (optional)"
               attachments={courseMaterial}
               disabled={generating}
             />
@@ -677,7 +677,7 @@ export function AssignmentEditor({
               label="Syllabus or rulebook"
               hint="Questions stay within this syllabus and follow its rules (allowed methods, answer length, marking conventions)."
               buttonLabel="Attach syllabus or rulebook"
-              notesPlaceholder="…or paste the syllabus topics / assessment rules here (optional)"
+              notesPlaceholder="ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦or paste the syllabus topics / assessment rules here (optional)"
               attachments={syllabus}
               disabled={generating}
             />
@@ -758,7 +758,7 @@ export function AssignmentEditor({
               {generating ? (
                 <>
                   <span className="button-spinner" />
-                  Generating… (up to a minute)
+                  GeneratingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ (up to a minute)
                 </>
               ) : (
                 "Generate question prompts"
@@ -784,7 +784,7 @@ export function AssignmentEditor({
               >
                 {courseList.map((course) => (
                   <option value={course.id} key={course.id}>
-                    {course.name} · {course.code}
+                    {course.name} Ãƒâ€šÃ‚Â· {course.code}
                   </option>
                 ))}
                 {!courseList.length && <option value="">No courses created yet</option>}

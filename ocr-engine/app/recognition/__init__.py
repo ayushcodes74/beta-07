@@ -1,4 +1,4 @@
-"""Module 3: Text & Handwriting Recognition for TrustGrade OCR Engine."""
+"""Module 3: Text & Handwriting Recognition for GradeX OCR Engine."""
 
 from app.recognition.config import (
     DEFAULT_RECOGNITION_CONFIG,

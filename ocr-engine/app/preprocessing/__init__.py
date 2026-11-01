@@ -1,4 +1,4 @@
-"""Module 2: Image Preprocessing & Enhancement for TrustGrade OCR Engine."""
+"""Module 2: Image Preprocessing & Enhancement for GradeX OCR Engine."""
 
 from app.preprocessing.config import (
     DEFAULT_PREPROCESSING_CONFIG,

@@ -7,6 +7,7 @@ import { createContext, Suspense, useContext, useEffect, useMemo, useState, type
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "./lib/utils";
 import { Avatar, ToastProvider, useToast } from "./components/ui";
+import { BrandWordmark } from "./components/common/BrandWordmark";
 import type { Assignment, Course, Submission, User } from "./types/models";
 import { assignmentService, courseService, extractErrorMessage, submissionService } from "./services/api";
 import { getProfile, signOut } from "./services/auth";
@@ -28,7 +29,7 @@ function PageLoading() {
   return (
     <div className="page-loading" role="status" aria-live="polite">
       <span className="page-loading-bar" />
-      <span className="sr-only">Loading page…</span>
+      <span className="sr-only">Loading pageâ€¦</span>
     </div>
   );
 }
@@ -202,7 +203,7 @@ function WorkspaceLoading() {
   return (
     <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "1rem" }}>
       <span className="button-spinner" style={{ width: 24, height: 24 }} />
-      <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspace…</span>
+      <span style={{ fontSize: "0.9rem", color: "var(--color-text-muted, #71717a)" }}>Loading workspaceâ€¦</span>
     </div>
   );
 }
@@ -286,7 +287,7 @@ function ApplicationShell() {
       <aside className={cn("sidebar", mobileOpen && "sidebar-open")}>
         <Link to="/app" className="brand">
           <span className="brand-mark"><Check size={19} strokeWidth={2.2} /></span>
-          <span className="brand-word">Trust<span>Grade</span></span>
+          <BrandWordmark className="brand-word" />
         </Link>
         <button
           className="workspace-switch"
@@ -346,7 +347,7 @@ function ApplicationShell() {
             <button className="icon-button mobile-menu-button" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <Menu size={18} />
             </button>
-            <span>TrustGrade</span><span className="crumb-separator">/</span><strong>{title}</strong>
+            <span>GradeX</span><span className="crumb-separator">/</span><strong>{title}</strong>
           </div>
           <div className="topbar-actions">
             {searchOpen ? (

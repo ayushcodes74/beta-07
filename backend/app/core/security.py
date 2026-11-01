@@ -30,7 +30,7 @@ REQUIRED_CLAIMS = ("sub", "exp", "iat", "iss", "aud", "role")
 
 # Supabase puts the Postgres role in the ``role`` claim. Signed-in end users
 # carry "authenticated"; anon/service-role keys carry "anon"/"service_role".
-# This is NOT the TrustGrade teacher/student role.
+# This is NOT the GradeX teacher/student role.
 END_USER_POSTGRES_ROLE = "authenticated"
 
 ASYMMETRIC_ALGORITHMS = frozenset(
@@ -89,7 +89,7 @@ def _decode_options() -> Options:
 def _claims_to_identity(claims: dict[str, Any]) -> VerifiedClaims:
     if claims.get("role") != END_USER_POSTGRES_ROLE:
         raise TokenVerificationError("token is not an end-user access token")
-    # Anonymous sign-ins are not part of TrustGrade's flow.
+    # Anonymous sign-ins are not part of GradeX's flow.
     if claims.get("is_anonymous") is True:
         raise TokenVerificationError("anonymous sessions are not accepted")
 

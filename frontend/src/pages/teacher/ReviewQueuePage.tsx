@@ -108,7 +108,7 @@ export function ReviewQueuePage() {
         <div className="heading-actions">
           <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             <RefreshCw size={14} className={loading ? "spin" : undefined} />
-            {loading ? "Checking…" : "Refresh"}
+            {loading ? "CheckingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Refresh"}
           </Button>
         </div>
       </div>
@@ -125,7 +125,7 @@ export function ReviewQueuePage() {
             <span className="review-summary-icon"><Icon size={16} /></span>
             <span className="review-summary-copy">
               <small>{label}</small>
-              <strong>{loading && !queue ? "…" : counts[key]}</strong>
+              <strong>{loading && !queue ? "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : counts[key]}</strong>
             </span>
           </button>
         ))}
@@ -149,7 +149,7 @@ export function ReviewQueuePage() {
         </div>
 
         {loading && !queue ? (
-          <p className="table-empty review-empty" role="status">Checking submissions…</p>
+          <p className="table-empty review-empty" role="status">Checking submissionsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</p>
         ) : rows.length === 0 ? (
           <p className="table-empty review-empty">
             {error ? "The queue could not be loaded." : "Nothing needs review here right now."}
@@ -268,10 +268,10 @@ function ReviewRow({
             />
             <div className="review-reply-actions">
               <Button size="sm" disabled={busy !== null} onClick={() => void close("resolved")}>
-                {busy === "resolved" ? "Saving…" : "Mark resolved"}
+                {busy === "resolved" ? "SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Mark resolved"}
               </Button>
               <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void close("dismissed")}>
-                {busy === "dismissed" ? "Saving…" : "Dismiss"}
+                {busy === "dismissed" ? "SavingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦" : "Dismiss"}
               </Button>
               <Button size="sm" variant="quiet" disabled={busy !== null} onClick={() => setReplying(false)}>
                 Cancel

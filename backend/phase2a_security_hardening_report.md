@@ -1,4 +1,4 @@
-# TrustGrade — Phase 2A.6: SQL Security Hardening Report
+# GradeX — Phase 2A.6: SQL Security Hardening Report
 
 **File Reviewed & Remediated:** [`backend/phase2a_rls_remediation.sql`](file:///C:/beta-07/backend/phase2a_rls_remediation.sql)  
 **Date:** October 31, 2026  
@@ -151,7 +151,7 @@ ORDER BY tablename, policyname;
 2. **Table Ownership Assumption:**  
    Functions and tables are assumed to be owned by `postgres` or `supabase_admin`. In Supabase, end users connect as `authenticated` or `anon`, meaning `ENABLE ROW LEVEL SECURITY` fully applies to all user queries.
 3. **FORCE ROW LEVEL SECURITY Note:**  
-   `FORCE ROW LEVEL SECURITY` was evaluated. It is not enabled by default because it forces RLS policies onto table owners (e.g. `postgres`), which can inadvertently break administrative backup tools or maintenance scripts. Since all TrustGrade application queries run under role `authenticated` (which is never the table owner), standard `ENABLE ROW LEVEL SECURITY` guarantees 100% policy enforcement.
+   `FORCE ROW LEVEL SECURITY` was evaluated. It is not enabled by default because it forces RLS policies onto table owners (e.g. `postgres`), which can inadvertently break administrative backup tools or maintenance scripts. Since all GradeX application queries run under role `authenticated` (which is never the table owner), standard `ENABLE ROW LEVEL SECURITY` guarantees 100% policy enforcement.
 4. **Data Model Integrity:**  
    The single-row mutable lifecycle (`status = 'active'` / `'inactive'`) is strictly preserved. No tables, columns, or foreign keys have been modified.
 

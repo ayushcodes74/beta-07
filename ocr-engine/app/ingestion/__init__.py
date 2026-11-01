@@ -1,4 +1,4 @@
-"""Module 1: PDF Ingestion & Processing for TrustGrade OCR Engine."""
+"""Module 1: PDF Ingestion & Processing for GradeX OCR Engine."""
 
 from app.ingestion.config import IngestionConfig, DEFAULT_CONFIG
 from app.ingestion.exceptions import (

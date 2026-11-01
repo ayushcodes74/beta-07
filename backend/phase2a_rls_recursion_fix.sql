@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: fix RLS infinite recursion (42P17) between courses <-> course_enrollments
+-- GradeX: fix RLS infinite recursion (42P17) between courses <-> course_enrollments
 -- ============================================================================
 -- Supersedes the policy portion of phase2a_rls_remediation.sql, which targeted
 -- policy names that do not exist in the live database.

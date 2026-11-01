@@ -83,14 +83,14 @@ def generate_verified_test_pages(work_dir: Path) -> List[Dict[str, Any]]:
     # 1. Printed Typography Sample
     p1 = work_dir / "eval_printed_typography.png"
     img1 = np.full((600, 900, 3), 255, dtype=np.uint8)
-    cv2.putText(img1, "TRUSTGRADE UNIVERSITY MIDTERM EXAM", (50, 100), cv2.FONT_HERSHEY_TRIPLEX, 0.9, (20, 20, 20), 2)
+    cv2.putText(img1, "GradeX UNIVERSITY MIDTERM EXAM", (50, 100), cv2.FONT_HERSHEY_TRIPLEX, 0.9, (20, 20, 20), 2)
     cv2.putText(img1, "Question 1: Explain the law of thermodynamics.", (50, 200), cv2.FONT_HERSHEY_TRIPLEX, 0.8, (25, 25, 25), 2)
     cv2.imwrite(str(p1), img1)
     samples.append({
         "path": p1,
         "name": "Printed Midterm Exam",
         "style": "Printed Typography",
-        "reference": "TRUSTGRADE UNIVERSITY MIDTERM EXAM\nQuestion 1: Explain the law of thermodynamics.",
+        "reference": "GradeX UNIVERSITY MIDTERM EXAM\nQuestion 1: Explain the law of thermodynamics.",
         "category": "printed",
     })
 
@@ -144,7 +144,7 @@ def run_benchmark() -> None:
     samples = generate_verified_test_pages(work_dir)
 
     print("=" * 90)
-    print("TrustGrade OCR Module 3 — Rigorous Non-Circular Benchmark & Engine Audit")
+    print("GradeX OCR Module 3 — Rigorous Non-Circular Benchmark & Engine Audit")
     print("=" * 90)
 
     mgr = ModelManager.get_instance()

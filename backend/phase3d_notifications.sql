@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: in-app dashboard notifications  (notifications + RLS)
+-- GradeX: in-app dashboard notifications  (notifications + RLS)
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --

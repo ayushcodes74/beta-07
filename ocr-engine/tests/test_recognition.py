@@ -341,7 +341,7 @@ def test_genuine_paddleocr_inference_mocked():
     # PaddleOCR 3.x predict() return format
     mock_paddle.predict.return_value = _paddle_v3_result(
         [
-            ("TRUSTGRADE UNIVERSITY", 0.985, (10, 10, 100, 30)),
+            ("GradeX UNIVERSITY", 0.985, (10, 10, 100, 30)),
             ("MIDTERM EXAMINATION", 0.971, (10, 40, 150, 60)),
         ]
     )
@@ -353,7 +353,7 @@ def test_genuine_paddleocr_inference_mocked():
     crop = np.full((100, 400, 3), 255, dtype=np.uint8)
     text, conf, quality, meta = mgr.recognize_printed_crop(crop)
 
-    assert text == "TRUSTGRADE UNIVERSITY MIDTERM EXAMINATION"
+    assert text == "GradeX UNIVERSITY MIDTERM EXAMINATION"
     assert conf == pytest.approx(0.978, abs=0.002)
     assert meta["engine_used"] == "paddleocr"
     assert meta["is_fallback"] is False
@@ -371,7 +371,7 @@ def test_legacy_paddleocr_v2_api_mocked():
     mock_paddle = MagicMock()
     mock_paddle.ocr.return_value = [
         [
-            [[[10, 10], [100, 10], [100, 30], [10, 30]], ("TRUSTGRADE UNIVERSITY", 0.985)],
+            [[[10, 10], [100, 10], [100, 30], [10, 30]], ("GradeX UNIVERSITY", 0.985)],
             [[[10, 40], [150, 40], [150, 60], [10, 60]], ("MIDTERM EXAMINATION", 0.971)],
         ]
     ]
@@ -379,7 +379,7 @@ def test_legacy_paddleocr_v2_api_mocked():
     mgr._paddle_api = "v2"
 
     text, conf, _, meta = mgr.recognize_printed_crop(np.full((100, 400, 3), 255, dtype=np.uint8))
-    assert text == "TRUSTGRADE UNIVERSITY MIDTERM EXAMINATION"
+    assert text == "GradeX UNIVERSITY MIDTERM EXAMINATION"
     assert conf == pytest.approx(0.978, abs=0.002)
     assert meta["engine_used"] == "paddleocr"
 
@@ -482,7 +482,7 @@ def test_real_paddleocr_on_printed_benchmark():
     mgr = ModelManager.get_instance()
     assert mgr.printed_engine_status == "loaded", mgr.printed_error_msg
     assert result.status == "completed"
-    assert "TRUSTGRADE UNIVERSITY" in result.full_text
+    assert "GradeX UNIVERSITY" in result.full_text
     assert "Question 1" in result.full_text
 
 

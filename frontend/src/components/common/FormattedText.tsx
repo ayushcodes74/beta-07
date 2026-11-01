@@ -36,7 +36,7 @@ export function FormattedText({ text, className }: { text: string; className?: s
 
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    const bullet = line.match(/^[-*•]\s+(.*)$/);
+    const bullet = line.match(/^[-*ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢]\s+(.*)$/);
     if (bullet) {
       list.push(bullet[1]);
       continue;

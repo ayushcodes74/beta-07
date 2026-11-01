@@ -1,4 +1,4 @@
-"""Integration contract defining the HTTP payload interfaces between TrustGrade Backend and OCR Engine."""
+"""Integration contract defining the HTTP payload interfaces between GradeX Backend and OCR Engine."""
 
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field

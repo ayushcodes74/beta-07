@@ -1,4 +1,4 @@
-"""HTTP wrapper exposing AI Engine services to the TrustGrade backend.
+"""HTTP wrapper exposing AI Engine services to the GradeX backend.
 
 The backend cannot import this package directly (both projects use the top-level
 package name ``app``), so the AI Engine runs as a small internal service, the same
@@ -44,8 +44,8 @@ from app.schemas.assignment import AssignmentDraft, AssignmentGenerationRequest
 logger = logging.getLogger("ai_engine.server")
 
 app = FastAPI(
-    title="TrustGrade AI Engine",
-    description="Internal service: assignment generation and answer grading for the TrustGrade backend.",
+    title="GradeX AI Engine",
+    description="Internal service: assignment generation and answer grading for the GradeX backend.",
     version="1.0.0",
 )
 
@@ -184,7 +184,7 @@ def _lenient_hint(partial_credit: float) -> str:
     )
 
 # "- Large hemispherical brick dome (1 mark)" / "* Bas-reliefs ... (2 marks)"
-_MARK_POINT = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*(?P<text>.+?)\s*\(\s*(?P<marks>\d+(?:\.\d+)?)\s*marks?\s*\)\s*\.?\s*$", re.I)
+_MARK_POINT = re.compile(r"^\s*(?:[-*â€¢]|\d+[.)])\s*(?P<text>.+?)\s*\(\s*(?P<marks>\d+(?:\.\d+)?)\s*marks?\s*\)\s*\.?\s*$", re.I)
 _MARK_SECTION = re.compile(r"^\s*(?P<name>key points|marking scheme|marking points|rubric)\s*:?\s*$", re.I)
 
 

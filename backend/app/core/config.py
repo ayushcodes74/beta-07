@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "TrustGrade API"
+    APP_NAME: str = "GradeX API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
         # Supabase connection

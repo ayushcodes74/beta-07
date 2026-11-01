@@ -1,4 +1,4 @@
-"""Reference client demonstrating how TrustGrade Backend communicates with the OCR Service."""
+"""Reference client demonstrating how GradeX Backend communicates with the OCR Service."""
 
 import logging
 import time
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrustGradeOCRClient:
-    """Client for TrustGrade backend services to interact with the OCR Engine API."""
+    """Client for GradeX backend services to interact with the OCR Engine API."""
 
     def __init__(self, base_url: str = "http://127.0.0.1:8001", timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")

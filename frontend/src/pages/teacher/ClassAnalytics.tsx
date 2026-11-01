@@ -25,7 +25,7 @@ const BANDS = [
 ] as const;
 const PASS_PERCENT = 60;
 
-/** Grading pipeline, in order. Colors are a validated light→dark ordinal ramp (see styles.css). */
+/** Grading pipeline, in order. Colors are a validated lightÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢dark ordinal ramp (see styles.css). */
 const STAGES = [
   { key: "awaiting", label: "Awaiting grading", hint: "Submitted, reading the answer sheet or in review" },
   { key: "approval", label: "AI graded, needs approval", hint: "Waiting for you to approve and publish" },
@@ -117,7 +117,7 @@ export function ClassAnalytics({ submissions, assignments }: { submissions: Subm
   };
   const bandKey = BANDS.map((band, index) =>
     band.min === -Infinity ? `${band.grade} under ${threshold(BANDS[index - 1].min)}` : `${band.grade} ${threshold(band.min)}+`,
-  ).join(" · ");
+  ).join(" Ãƒâ€šÃ‚Â· ");
 
   return (
     <Panel className="analytics-card">
@@ -225,7 +225,7 @@ export function ClassAnalytics({ submissions, assignments }: { submissions: Subm
                     </div>
                   ))}
                 </div>
-                <small className="analytics-note">Out of {total} · {bandKey}</small>
+                <small className="analytics-note">Out of {total} Ãƒâ€šÃ‚Â· {bandKey}</small>
               </div>
 
               <div className="analytics-block">

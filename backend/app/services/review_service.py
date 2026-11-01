@@ -103,7 +103,7 @@ class ReviewService:
         grade_rows, request_rows = await asyncio.gather(grade_task, request_task, return_exceptions=True)
         if isinstance(grade_rows, BaseException):
             logger.warning("Review queue: grading results unavailable: %s", type(grade_rows).__name__)
-            response.notes.append("Grading results could not be loaded, so low-trust grades may be missing.")
+            response.notes.append("Grading results could not be loaded, so low-GradeXs may be missing.")
         else:
             grades = {g.submission_id: g for g in grade_rows}
         if isinstance(request_rows, BaseException):

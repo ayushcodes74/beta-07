@@ -1,4 +1,4 @@
-"""Module 5 Integration package connecting TrustGrade Backend and grading pipelines to OCR Engine."""
+"""Module 5 Integration package connecting GradeX Backend and grading pipelines to OCR Engine."""
 
 from app.integration.backend_client import TrustGradeOCRClient
 from app.integration.contract import (

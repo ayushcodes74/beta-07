@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: student review (re-evaluation) requests  (review_requests + RLS)
+-- GradeX: student review (re-evaluation) requests  (review_requests + RLS)
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --

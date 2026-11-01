@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: let the backend record OCR progress for submissions (ocr_jobs RLS)
+-- GradeX: let the backend record OCR progress for submissions (ocr_jobs RLS)
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --

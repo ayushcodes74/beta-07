@@ -1,5 +1,5 @@
 -- ============================================================================
--- TrustGrade: enroll students by email + course roster with names/emails
+-- GradeX: enroll students by email + course roster with names/emails
 -- ============================================================================
 -- Run once in the Supabase SQL Editor (one transaction; nothing changes on error).
 --
@@ -51,7 +51,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.find_student_for_enrollment(UUID, TEXT) IS
-  'TrustGrade: course-owning teacher resolves a student email to a student id for enrollment.';
+  'GradeX: course-owning teacher resolves a student email to a student id for enrollment.';
 
 REVOKE ALL ON FUNCTION public.find_student_for_enrollment(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.find_student_for_enrollment(UUID, TEXT) TO authenticated;
@@ -91,7 +91,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.course_roster(UUID) IS
-  'TrustGrade: active course roster with student names/emails, visible only to the owning teacher.';
+  'GradeX: active course roster with student names/emails, visible only to the owning teacher.';
 
 REVOKE ALL ON FUNCTION public.course_roster(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.course_roster(UUID) TO authenticated;

@@ -1,4 +1,4 @@
-"""Asynchronous HTTPX client for TrustGrade OCR Microservice."""
+"""Asynchronous HTTPX client for GradeX OCR Microservice."""
 
 import asyncio
 from contextlib import asynccontextmanager

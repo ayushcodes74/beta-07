@@ -101,7 +101,7 @@ export function LeaderboardPage() {
           )}
 
           {error && <p role="alert" className="form-error">{error}</p>}
-          {loading && !board && <p role="status" className="leaderboard-loading">Loading standings…</p>}
+          {loading && !board && <p role="status" className="leaderboard-loading">Loading standingsÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</p>}
 
           {board && !hasResults && (
             <Panel className="leaderboard-empty">
@@ -143,8 +143,8 @@ export function LeaderboardPage() {
                   <div>
                     <h2>{board.course_name}</h2>
                     <p>
-                      {board.entries.length} student{board.entries.length === 1 ? "" : "s"} · {board.assignments_counted}{" "}
-                      graded assignment{board.assignments_counted === 1 ? "" : "s"} · {marks(board.total_possible)} marks available
+                      {board.entries.length} student{board.entries.length === 1 ? "" : "s"} Ãƒâ€šÃ‚Â· {board.assignments_counted}{" "}
+                      graded assignment{board.assignments_counted === 1 ? "" : "s"} Ãƒâ€šÃ‚Â· {marks(board.total_possible)} marks available
                     </p>
                   </div>
                 </div>
