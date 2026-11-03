@@ -506,6 +506,51 @@ def test_student_sees_why_each_question_got_its_mark():
     assert "missing_concepts" not in str(dumped) and "matched_concepts" not in str(dumped)
 
 
+def _release_missing_points(repo):
+    flags = dict(repo.row.flags)
+    flags["missing_points_visible_from"] = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    repo.row = repo.row.model_copy(update={"flags": flags})
+
+
+def test_student_sees_what_was_missing_where_marks_were_deducted_after_the_due_date():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    # Withholding the full solutions does not hide why marks were lost.
+    run(service.publish_grade(TEACHER, submission.id, 4, "", access_token="t", show_solutions=False))
+
+    # Before the due date: marks and explanations, but not the answer-key-derived missing points.
+    early = run(service.get_published_grade(student, submission.id, access_token="t"))
+    assert [q.missing_points for q in early.questions] == [[], []]
+    assert early.missing_points_available_at is not None and early.missing_points_available_at > datetime.now(UTC)
+    assert early.questions[1].explanation == "Answer not found."
+    # The teacher always sees what the student will be shown.
+    teacher_view = run(service.get_published_grade(TEACHER, submission.id, access_token="t"))
+    assert teacher_view.questions[1].missing_points == ["NAND"]
+
+    _release_missing_points(repo)
+    later = run(service.get_published_grade(student, submission.id, access_token="t"))
+    q1, q2 = later.questions
+    assert q1.missing_points == []  # full marks: nothing was deducted
+    assert (q2.awarded_marks, q2.max_marks, q2.missing_points) == (0.0, 1.0, ["NAND"])
+    assert later.missing_points_available_at is None
+    assert [q.expected_solution for q in later.questions] == [None, None]  # solutions still withheld
+
+
+def test_teacher_corrected_question_explains_with_the_teachers_note_not_ai_missing_points():
+    repo = BreakdownRepo()
+    service, submission, _ = _publish_service(repo)
+    student = CurrentUser(id=submission.student_id, email=None, role=Role.STUDENT)
+    run(service.grade_submission(TEACHER, submission.id, access_token="t"))
+    run(service.save_corrections(TEACHER, submission.id, [_correction()], access_token="t"))
+    run(service.publish_grade(TEACHER, submission.id, 5, "", access_token="t"))
+    _release_missing_points(repo)
+
+    q2 = run(service.get_published_grade(student, submission.id, access_token="t")).questions[1]
+    assert q2.teacher_comment and q2.missing_points == []
+
+
 def test_teacher_only_grade_lists_solutions_without_marks():
     repo = BreakdownRepo()
     service, submission, _ = _publish_service(repo)

@@ -420,6 +420,10 @@ class GradingService:
                 bonus_list,
                 assignment.content.questions,
             )
+            # The exact points a student missed come from the answer key: like solutions, students see them
+            # only after the due date (classmates may not have submitted yet), but always, even when the
+            # teacher keeps the full solutions to themselves.
+            flags[_DEDUCTIONS_FROM_KEY] = assignment.content.due_at.isoformat()
             if show_solutions:
                 # Students see solutions only after the due date (classmates may not have submitted yet).
                 flags[_SOLUTIONS_FROM_KEY] = assignment.content.due_at.isoformat()
@@ -709,8 +713,14 @@ def _published_response(
     if for_student and solutions_at is not None and (now or datetime.now(UTC)) < solutions_at:
         withheld_until = solutions_at if any(q.expected_solution for q in questions) else None
         questions = [q.model_copy(update={"expected_solution": None}) for q in questions]
+    deductions_at = _release_time(flags, _DEDUCTIONS_FROM_KEY)
+    details_until = None
+    if for_student and deductions_at is not None and (now or datetime.now(UTC)) < deductions_at:
+        details_until = deductions_at if any(q.missing_points for q in questions) else None
+        questions = [q.model_copy(update={"missing_points": []}) for q in questions]
     return PublishedGradeResponse(
         solutions_available_at=withheld_until,
+        missing_points_available_at=details_until,
         submission_id=record.submission_id,
         final_score=float(record.final_score),
         max_score=float(max_score) if isinstance(max_score, (int, float)) else None,
@@ -727,6 +737,7 @@ def _published_response(
 
 _BREAKDOWN_KEY = "student_breakdown"
 _SOLUTIONS_FROM_KEY = "solutions_visible_from"
+_DEDUCTIONS_FROM_KEY = "missing_points_visible_from"
 _BONUS_TOTAL_KEY = "bonus_marks"
 _BONUSES_KEY = "question_bonuses"
 
@@ -772,7 +783,11 @@ def _with_bonuses(
 
 
 def _solutions_release(flags: dict) -> Optional[datetime]:
-    raw = flags.get(_SOLUTIONS_FROM_KEY)
+    return _release_time(flags, _SOLUTIONS_FROM_KEY)
+
+
+def _release_time(flags: dict, key: str) -> Optional[datetime]:
+    raw = flags.get(key)
     if not isinstance(raw, str):
         return None
     try:
@@ -820,14 +835,22 @@ def _student_breakdown(
                     expected_solution=solution,
                 )
             elif q:
+                awarded = float(q.get("awarded_marks") or 0.0)
+                max_marks = float(question.marks)
                 result = PublishedQuestionResult(
                     number=number,
                     question_text=question.text,
-                    awarded_marks=float(q.get("awarded_marks") or 0.0),
-                    max_marks=float(question.marks),
+                    awarded_marks=awarded,
+                    max_marks=max_marks,
                     explanation=str(q.get("explanation") or ""),
                     strengths=[str(s) for s in q.get("strengths") or []],
                     areas_for_improvement=[str(s) for s in q.get("areas_for_improvement") or []],
+                    # Why marks were deducted: only on questions that actually lost marks.
+                    missing_points=(
+                        [str(s) for s in q.get("missing_concepts") or [] if str(s).strip()]
+                        if awarded < max_marks - 1e-9
+                        else []
+                    ),
                     expected_solution=solution,
                 )
             else:

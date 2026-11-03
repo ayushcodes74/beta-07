@@ -5,6 +5,7 @@ import { useAppState } from "../../App";
 import { Button } from "../../components/ui";
 import { commonTotal, formatMarks, marksAvailable, percentToMarks, scorePercent } from "../../lib/grades";
 import { formatDate } from "../../lib/utils";
+import { StudentGapsForTeacher } from "../../components/gaps/LearningGaps";
 
 /**
  * One assignment on the x-axis: the student's published score and the class average, stored as
@@ -258,6 +259,7 @@ export function StudentPerformanceDialog({
 
 function PerformanceBody({ courseId, student }: { courseId: string; student: { id: string; name: string } }) {
   const points = usePerformance(courseId, student.id);
+  const { assignments, submissions } = useAppState();
   const graded = points.filter((point) => point.student !== null) as (PerformancePoint & { student: number })[];
   const average = graded.length ? graded.reduce((sum, point) => sum + point.student, 0) / graded.length : null;
   const latest = graded.at(-1) ?? null;
@@ -334,6 +336,11 @@ function PerformanceBody({ courseId, student }: { courseId: string; student: { i
               </tbody>
             </table>
           </details>
+
+          <section className="perf-gaps">
+            <h3>Weak points</h3>
+            <StudentGapsForTeacher studentId={student.id} courseId={courseId} submissions={submissions} assignments={assignments} />
+          </section>
         </>
       )}
     </>

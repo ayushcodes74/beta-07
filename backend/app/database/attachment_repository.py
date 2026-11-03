@@ -56,11 +56,13 @@ class SupabaseAttachmentRepository:
 
     def _storage(self, access_token: str) -> httpx.Client:
         base = (settings.SUPABASE_URL or "").rstrip("/")
-        if not base or not settings.SUPABASE_KEY:
+        # SUPABASE_KEY is a SecretStr: unwrap it, httpx only accepts str/bytes header values.
+        key = settings.SUPABASE_KEY.get_secret_value().strip() if settings.SUPABASE_KEY else ""
+        if not base or not key:
             raise AttachmentRepositoryError("Supabase is not configured")
         return httpx.Client(
             base_url=f"{base}/storage/v1",
-            headers={"apikey": settings.SUPABASE_KEY, "Authorization": f"Bearer {access_token}"},
+            headers={"apikey": key, "Authorization": f"Bearer {access_token}"},
             timeout=60.0,
             transport=self._transport,
         )

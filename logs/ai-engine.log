@@ -14,3 +14,70 @@ INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
 INFO:     127.0.0.1:52062 - "GET /health HTTP/1.1" 200 OK
 INFO:     127.0.0.1:59329 - "GET /health HTTP/1.1" 200 OK
+
+--- Starting ai-engine at 2026-11-01 12:27:59 ---
+INFO:     Started server process [24796]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60514 - "GET /health HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:62037 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62037 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62985 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57792 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+No course materials provided or retrieved for topic 'Newton's laws'; using topic-only mode
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:63653 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54219 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:57257 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_LLMQuestionGradeResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:57507 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51745 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_LLMQuestionGradeResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:63206 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:52140 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+LLM provider openrouter:nvidia/nemotron-3.5-super-vl:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day","code":429,"metadata":{"headers":{"X-RateLimit
+LLM provider openrouter:google/gemma-4-26b-a4b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day","code":429,"metadata":{"headers":{"X-RateLimit
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day","code":429,"metadata":{"headers":{"X-RateLimit
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_GeneratedAssignmentResponse] (LLMAPIError): Gemini API call failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status
+INFO:     127.0.0.1:59847 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_GeneratedAssignmentResponse] (LLMAPIError): Gemini API call failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status
+Gemini rate limit encountered on attempt 1/2
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_RawRubricResponse] (LLMRateLimitError): Gemini API rate limit exceeded: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this er
+Gemini rate limit encountered on attempt 1/2
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_RawRubricResponse] (LLMRateLimitError): Gemini API rate limit exceeded: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this er
+Gemini rate limit encountered on attempt 1/2
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_RawRubricResponse] (LLMRateLimitError): Gemini API rate limit exceeded: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this er
+INFO:     127.0.0.1:59007 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54605 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+Gemini rate limit encountered on attempt 1/2
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_LLMQuestionGradeResponse] (LLMRateLimitError): Gemini API rate limit exceeded: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this er
+INFO:     127.0.0.1:51059 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61478 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+
+--- Starting ai-engine at 2026-11-01 13:54:51 ---
+
+--- Starting ai-engine at 2026-11-01 13:54:53 ---
+
+--- Starting ai-engine at 2026-11-01 14:53:00 ---
+INFO:     Started server process [21496]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57279 - "GET /health HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+LLM provider openrouter:nvidia/nemotron-3.5-super-vl:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMResponseValidationError): openrouter output failed schema _GeneratedAssignmentResponse: 1 validation error for _GeneratedAssignmentResponse
+questions.1.key_points
+  Input should be a valid list [type=list_type, input_value='Fo
+LLM provider openrouter:google/gemma-4-26b-a4b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-26b-a4b-it:free is temporarily rate-limited upstream. Please retry shortly, o
+Gemini rate limit encountered on attempt 1/2
+LLM provider gemini:gemini-2.5-flash failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): Gemini API rate limit exceeded: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this er
+INFO:     127.0.0.1:59663 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64401 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59699 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK
+LLM provider openrouter:google/gemma-4-31b-it:free failed for generate_structured[_GeneratedAssignmentResponse] (LLMRateLimitError): openrouter rate limit exceeded: {"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or ad
+INFO:     127.0.0.1:51620 - "POST /v1/assignments/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50175 - "POST /v1/grading/grade-submission HTTP/1.1" 200 OK

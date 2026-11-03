@@ -23,3 +23,44 @@
 [2m10:55:21 AM[22m [36m[1m[vite][22m[39m server restarted.
 [2m10:56:00 AM[22m [36m[1m[vite][22m[39m [32m.env changed, restarting server...[39m
 [2m10:56:00 AM[22m [36m[1m[vite][22m[39m server restarted.
+[2m11:33:46 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/App.tsx, /src/components/common/NamePrompt.tsx, /src/pages/common/AuthPage.tsx, /src/pages/teacher/GradingReviewPage.tsx, /src/components/common/NotificationBell.tsx, /src/pages/common/MessagesPage.tsx, /src/components/common/HeaderSearch.tsx, /src/pages/teacher/TeacherOverview.tsx, /src/pages/teacher/CourseDetailPage.tsx, /src/pages/teacher/SubmissionsPage.tsx, /src/pages/teacher/ReviewQueuePage.tsx, /src/pages/student/ResultsPage.tsx, /src/pages/teacher/CoursesPage.tsx, /src/pages/common/LeaderboardPage.tsx, /src/pages/teacher/AssignmentEditor.tsx, /src/pages/teacher/OCRReviewPage.tsx, /src/pages/teacher/LateSubmissionsPage.tsx, /src/components/assignments/QuestionFiles.tsx, /src/pages/student/StudentSubmissionPage.tsx[22m
+[2m11:33:46 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/student/StudentSubmissionPage.tsx[22m
+[2m11:33:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/App.tsx[22m Could not Fast Refresh ("useAppState" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:33:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/App.tsx[22m
+[2m11:33:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/components/assignments/QuestionFiles.tsx[22m Could not Fast Refresh ("useAssignmentFiles" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m11:33:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/teacher/AssignmentEditor.tsx, /src/pages/student/StudentSubmissionPage.tsx, /src/pages/student/AssessmentPage.tsx[22m
+[2m11:34:20 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/student/ResultsPage.tsx[22m
+[2m11:34:30 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css[22m
+[2m11:56:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/student/ResultsPage.tsx[22m
+[2m12:01:11 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/student/StudentOverview.tsx[22m
+[2m12:01:11 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/teacher/TeacherOverview.tsx[22m
+[2m12:01:11 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/styles.css, /src/pages/teacher/StudentPerformance.tsx[22m
+[2m12:01:12 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [33mhmr invalidate [39m[2m/src/pages/teacher/StudentPerformance.tsx[22m Could not Fast Refresh ("pointMarks" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m12:01:12 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/teacher/CourseDetailPage.tsx, /src/pages/student/MyProgressChart.tsx[22m
+
+--- Starting frontend at 2026-11-01 12:27:59 ---
+
+  [32m[1mVITE[22m v7.3.7[39m  [2mready in [0m[1m803[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.48.5.55:[1m5173[22m/[39m
+[2m1:31:36 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/assignments/generate-ai[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:31:38 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/notifications?limit=30[39m
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+[2m1:31:38 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/submissions/f69d5429-de51-4b72-81f3-12ff94821e94/status[39m
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1864:16)
+
+--- Starting frontend at 2026-11-01 13:54:51 ---
+
+--- Starting frontend at 2026-11-01 13:54:53 ---
+
+--- Starting frontend at 2026-11-01 14:53:00 ---
+
+  [32m[1mVITE[22m v7.3.7[39m  [2mready in [0m[1m744[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://10.236.77.232:[1m5173[22m/[39m

@@ -87,6 +87,8 @@ export interface QuestionResult {
   explanation: string;
   strengths: string[];
   areasForImprovement: string[];
+  /** What the answer was missing, on questions that lost marks (shown after the due date). */
+  missingPoints?: string[];
   /** Set when the teacher changed the AI's mark for this question. */
   teacherComment: string | null;
   /** The teacher's expected answer, once released to students. */
@@ -110,6 +112,11 @@ export interface GradingResult {
   solutionsAvailableAt?: string | null;
   /** Bonus marks included in suggestedScore (the total may then exceed maxScore). */
   bonusMarks?: number | null;
+  /** While the exact missing points are withheld (until the due date): when they will appear. */
+  missingPointsAvailableAt?: string | null;
+  /** Accepted late work: the score before the late deduction, and the deduction in percent. */
+  scoreBeforeLatePenalty?: number | null;
+  latePenaltyPercent?: number | null;
 }
 
 export interface Submission {

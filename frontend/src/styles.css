@@ -9762,3 +9762,43 @@ html { -webkit-tap-highlight-color: transparent; }
 .qfile-list .icon-button { width: 24px; height: 24px; margin-left: auto; }
 .qfile-staged { opacity: .85; }
 .qfile-error { margin: 6px 0 0; color: #9B2C2C; font-size: 11px; font-weight: 600; }
+
+/* ---- Student results: why marks were deducted ---- */
+.marks-summary {
+  margin: 14px 0 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.marks-summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.marks-summary-head strong { font-size: 12.5px; }
+.marks-summary-head span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.marks-summary ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.marks-summary li { display: flex; align-items: baseline; gap: 10px; font-size: 11.5px; line-height: 1.45; }
+.marks-summary-minus {
+  flex: 0 0 auto;
+  min-width: 42px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: #FDF1EF;
+  color: #9B2C2C;
+  font-weight: 700;
+  text-align: center;
+}
+.marks-summary-full { margin: 0; color: #2E7D4F; font-size: 11.5px; font-weight: 600; }
+.marks-summary-bonus { margin: 8px 0 0; color: #2E7D4F; font-size: 11px; font-weight: 600; }
+.marks-summary-note { margin: 8px 0 0; color: var(--muted); font-size: 10.5px; }
+.result-deduction {
+  margin: 8px 0 4px;
+  padding: 8px 11px;
+  border-left: 3px solid #C0584C;
+  border-radius: 0 8px 8px 0;
+  background: #FDF4F2;
+  font-size: 11.5px;
+}
+.result-deduction strong { display: block; margin-bottom: 3px; color: #8B2E25; }
+.result-deduction p { margin: 2px 0 0; }
+.result-deduction ul { margin: 2px 0 0; padding-left: 18px; }
+.result-deduction li { margin: 1px 0; }
+.result-deduction-tip { color: var(--muted); }

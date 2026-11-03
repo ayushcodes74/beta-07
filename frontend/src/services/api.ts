@@ -224,6 +224,8 @@ export interface BackendPublishedGrade {
   score_before_late_penalty?: number | null;
   questions?: BackendPublishedQuestion[];
   solutions_available_at?: string | null;
+  /** While the exact missing points are withheld from the student: when they will appear (the due date). */
+  missing_points_available_at?: string | null;
   /** Total bonus marks included in final_score (which may then exceed max_score). */
   bonus_marks?: number | null;
 }
@@ -236,6 +238,8 @@ export interface BackendPublishedQuestion {
   explanation: string;
   strengths: string[];
   areas_for_improvement: string[];
+  /** What the answer was missing, on questions that lost marks. */
+  missing_points?: string[];
   teacher_comment: string | null;
   expected_solution?: string | null;
   bonus_marks?: number | null;
@@ -264,13 +268,17 @@ export function withPublishedGrade(submission: Submission, grade: BackendPublish
         explanation: q.explanation,
         strengths: q.strengths ?? [],
         areasForImprovement: q.areas_for_improvement ?? [],
+        missingPoints: q.missing_points ?? [],
         teacherComment: q.teacher_comment,
         expectedSolution: q.expected_solution ?? null,
         bonusMarks: q.bonus_marks ?? null,
         bonusReason: q.bonus_reason ?? null,
       })),
       solutionsAvailableAt: grade.solutions_available_at ?? null,
+      missingPointsAvailableAt: grade.missing_points_available_at ?? null,
       bonusMarks: grade.bonus_marks ?? null,
+      scoreBeforeLatePenalty: grade.score_before_late_penalty ?? null,
+      latePenaltyPercent: grade.late_penalty_percent ?? null,
     },
   };
 }

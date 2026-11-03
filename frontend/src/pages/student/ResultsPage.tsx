@@ -11,7 +11,84 @@ import { MyProgressChart } from "./MyProgressChart";
 
 const MIN_REASON = 10;
 
-/** Student: flag a published grade for teacher review and follow the request's status. */
+/** Marks with at most 2 decimals and no trailing zeros: 1, 1.5, 0.25. */
+const fmtMarks = (value: number) => String(Math.round(value * 100) / 100);
+const plural = (value: number, word: string) => `${fmtMarks(value)} ${word}${Math.abs(value) === 1 ? "" : "s"}`;
+
+function marksLost(result: QuestionResult): number {
+  if (result.awardedMarks === null) return 0;
+  return Math.max(0, Math.round((result.maxMarks - result.awardedMarks) * 100) / 100);
+}
+
+/** The best available reason a question lost marks: teacher's note, missing points, then improvement tips. */
+function deductionReasons(result: QuestionResult): { source: "teacher" | "missing" | "improve" | null; items: string[] } {
+  if (result.teacherComment) return { source: "teacher", items: [result.teacherComment] };
+  if (result.missingPoints?.length) return { source: "missing", items: result.missingPoints };
+  if (result.areasForImprovement.length) return { source: "improve", items: result.areasForImprovement };
+  return { source: null, items: [] };
+}
+
+/** Summary at the top of a result: where the marks went (per question, late deduction, bonus). */
+function MarksSummary({ grading, totalMarks }: { grading: NonNullable<Submission["grading"]>; totalMarks: number | null }) {
+  const questions = grading.questionResults ?? [];
+  const lostQuestions = questions.filter((q) => marksLost(q) > 0);
+  const before = grading.scoreBeforeLatePenalty;
+  const lateLost = before != null && before > grading.suggestedScore ? Math.round((before - grading.suggestedScore) * 100) / 100 : 0;
+  const bonus = grading.bonusMarks ?? 0;
+  const perQuestion = questions.length > 0 && questions.some((q) => q.awardedMarks !== null);
+  if (!perQuestion && !lateLost) return null;
+  const totalLost = lostQuestions.reduce((sum, q) => sum + marksLost(q), 0) + lateLost;
+
+  return (
+    <div className="marks-summary">
+      <div className="marks-summary-head">
+        <strong>Where your marks went</strong>
+        {totalMarks !== null && (
+          <span>
+            {fmtMarks(grading.suggestedScore)} / {fmtMarks(totalMarks)}
+          </span>
+        )}
+      </div>
+      {totalLost === 0 ? (
+        <p className="marks-summary-full">Full marks: nothing was deducted.</p>
+      ) : (
+        <ul>
+          {lostQuestions.map((q) => {
+            const reason = deductionReasons(q);
+            return (
+              <li key={q.number}>
+                <span className="marks-summary-minus">−{fmtMarks(marksLost(q))}</span>
+                <span>
+                  <b>Question {q.number}</b>
+                  {reason.source === "teacher" && <> · your teacher: {reason.items[0]}</>}
+                  {reason.source === "missing" && <> · missing: {reason.items.join(", ")}</>}
+                  {reason.source === "improve" && <> · {reason.items[0]}</>}
+                </span>
+              </li>
+            );
+          })}
+          {lateLost > 0 && (
+            <li>
+              <span className="marks-summary-minus">−{fmtMarks(lateLost)}</span>
+              <span>
+                <b>Late submission</b>
+                {grading.latePenaltyPercent ? ` · ${fmtMarks(grading.latePenaltyPercent)}% deducted for handing in after the due date` : ""}
+              </span>
+            </li>
+          )}
+        </ul>
+      )}
+      {bonus > 0 && <p className="marks-summary-bonus">+{plural(bonus, "bonus mark")} awarded by your teacher.</p>}
+      {grading.missingPointsAvailableAt && lostQuestions.length > 0 && (
+        <p className="marks-summary-note">
+          The exact points you missed appear after the due date ({formatDate(grading.missingPointsAvailableAt)}),
+          once everyone has handed in.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** One question's mark and the reasons for it; students can ask for this question to be rechecked. */
 function QuestionResultRow({
   result,
@@ -23,6 +100,8 @@ function QuestionResultRow({
   const marks = result.awardedMarks;
   const verdict =
     marks === null ? "unmarked" : marks >= result.maxMarks ? "correct" : marks > 0 ? "partial" : "incorrect";
+  const lost = marksLost(result);
+  const reason = deductionReasons(result);
   return (
     <div className={`answer-check-question answer-check-${verdict}`}>
       <div className="answer-check-question-top">
@@ -40,17 +119,44 @@ function QuestionResultRow({
           <strong>Bonus +{result.bonusMarks}:</strong> {result.bonusReason || "Awarded by your teacher."}
         </p>
       )}
-      {result.teacherComment ? (
-        <p>
-          <strong>Teacher's note:</strong> {result.teacherComment}
-        </p>
+      {/* The AI's explanation argued for its own mark, so it is not shown when the teacher changed the mark. */}
+      {!result.teacherComment && result.explanation && <p>{result.explanation}</p>}
+      {lost > 0 ? (
+        <div className="result-deduction">
+          <strong>Why you lost {plural(lost, "mark")}</strong>
+          {reason.source === "teacher" && <p>Your teacher: {reason.items[0]}</p>}
+          {reason.source === "missing" && (
+            <ul>
+              {reason.items.map((item) => (
+                <li key={item}>Missing: {item}</li>
+              ))}
+            </ul>
+          )}
+          {reason.source === "improve" && (
+            <ul>
+              {reason.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
+          {reason.source === null && <p>See the explanation above.</p>}
+          {reason.source === "missing" && result.areasForImprovement.length > 0 && (
+            <p className="result-deduction-tip">To improve: {result.areasForImprovement.join(" · ")}</p>
+          )}
+        </div>
       ) : (
-        result.explanation && <p>{result.explanation}</p>
+        <>
+          {result.teacherComment && (
+            <p>
+              <strong>Teacher's note:</strong> {result.teacherComment}
+            </p>
+          )}
+          {result.areasForImprovement.length > 0 && (
+            <p className="result-question-improve">To improve: {result.areasForImprovement.join(" · ")}</p>
+          )}
+        </>
       )}
       {result.strengths.length > 0 && <p className="result-question-good">✓ {result.strengths.join(" · ")}</p>}
-      {result.areasForImprovement.length > 0 && (
-        <p className="result-question-improve">To improve: {result.areasForImprovement.join(" · ")}</p>
-      )}
       {result.expectedSolution && (
         <details className="result-question-solution">
           <summary>Show expected solution</summary>
@@ -66,6 +172,7 @@ function QuestionResultRow({
   );
 }
 
+/** Student: flag a published grade for teacher review and follow the request's status. */
 function ReviewRequestBox({
   submissionId,
   latest,
@@ -298,6 +405,10 @@ export function ResultsPage({ submissions: rows }: { submissions: Submission[] }
                       <FormattedText text={item.grading.reasoning} />
                     </div>
                   </div>
+                )}
+
+                {item.grading && (
+                  <MarksSummary grading={item.grading} totalMarks={assignment?.totalMarks ?? item.grading.maxScore ?? null} />
                 )}
 
                 {(item.grading?.questionResults?.length ?? 0) > 0 && (

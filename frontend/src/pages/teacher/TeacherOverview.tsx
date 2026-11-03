@@ -7,6 +7,7 @@ import {
 import { useAppState } from "../../App";
 import { Avatar, Badge, Button, Panel, StatusBadge } from "../../components/ui";
 import { ClassAnalytics } from "./ClassAnalytics";
+import { ClassLearningGaps } from "../../components/gaps/LearningGaps";
 import { useStudentNames } from "../../lib/useStudentNames";
 import { formatDate } from "../../lib/utils";
 import { reviewService, type ReviewQueue } from "../../services/api";
@@ -199,6 +200,7 @@ function RecentSubmissions({ rows }: { rows: Submission[] }) {
 export function TeacherOverview() {
   const navigate = useNavigate();
   const { user, courses: courseList, assignments: assignmentList, submissions } = useAppState();
+  const studentNames = useStudentNames(courseList, user?.role === "teacher");
   const recentSubmissions = [...submissions]
     .sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt))
     .slice(0, 5);
@@ -371,6 +373,7 @@ export function TeacherOverview() {
       </div>
 
       <ClassAnalytics submissions={submissions} assignments={assignmentList} />
+      <ClassLearningGaps submissions={submissions} assignments={assignmentList} courses={courseList} names={studentNames} />
 
       <Panel className="recent-card dashboard-recent">
         <div className="section-heading">

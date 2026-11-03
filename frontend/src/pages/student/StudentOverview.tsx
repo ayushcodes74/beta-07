@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Check, ChevronRight, FileText } from "lucide-reac
 import { useAppState } from "../../App";
 import { Button, Panel, StatusBadge } from "../../components/ui";
 import { formatDate } from "../../lib/utils";
+import { MyLearningGaps } from "../../components/gaps/LearningGaps";
 
 export function StudentOverview() {
   const navigate = useNavigate();
@@ -71,6 +72,8 @@ export function StudentOverview() {
           <small>Handed in for review</small>
         </Panel>
       </div>
+
+      {user && <MyLearningGaps studentId={user.id} submissions={studentRows} assignments={assignmentList} />}
 
       <div className="student-columns">
         <div>

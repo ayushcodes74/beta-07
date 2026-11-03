@@ -1,0 +1,90 @@
+/* Learning gaps panels (student Overview, teacher Overview, student performance dialog). */
+.gaps-card .section-heading { align-items: flex-start; }
+.gaps-body { display: grid; gap: 16px; }
+.gaps-card > .gaps-tiles, .gaps-card > .gaps-columns { margin-bottom: 16px; }
+
+.gaps-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.gaps-tiles > div {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft);
+}
+.gaps-tiles span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.gaps-tiles strong { color: var(--ink); font-size: 21px; font-weight: 650; line-height: 1.2; }
+.gaps-tiles strong small { color: var(--faint); font-size: 12px; font-weight: 600; }
+.gaps-tiles strong.gaps-tile-text { overflow: hidden; font-size: 14px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.gaps-tiles > div > small { color: var(--faint); font-size: 11px; }
+
+.gaps-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.gaps-section { min-width: 0; }
+.gaps-section h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 9px; color: var(--ink); font-size: 13px; font-weight: 650; }
+.gaps-section h3 svg { color: #9B2C2C; }
+.gaps-support { margin-bottom: 10px; }
+.gaps-muted { margin: 0; color: var(--muted); font-size: 12px; }
+.gaps-more { margin-top: 6px; font-size: 11.5px; }
+
+.gaps-concepts, .gaps-questions, .gaps-bars, .gaps-students { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.gaps-concepts li {
+  position: relative; display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 11px; border-left: 3px solid #C0584C; border-radius: 0 8px 8px 0; background: #FDF4F2;
+}
+.gaps-concepts strong { padding-right: 70px; color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.gaps-concepts small { color: var(--muted); font-size: 11px; }
+.gaps-chip {
+  position: absolute; top: 8px; right: 9px; padding: 1px 7px; border-radius: 999px;
+  background: #F6DCD7; color: #8B2E25; font-size: 10px; font-weight: 700;
+}
+
+.gaps-questions li { padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.gaps-question-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.gaps-question-top > span { display: flex; flex-direction: column; min-width: 0; }
+.gaps-question-top strong { color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.gaps-question-top small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.gaps-questions p { margin: 5px 0 0; color: #8B2E25; font-size: 11.5px; line-height: 1.45; }
+.gaps-score {
+  flex: 0 0 auto; padding: 1px 8px; border-radius: 8px; background: #FDF1EF; color: #9B2C2C;
+  font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.gaps-bars li { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 1fr); align-items: center; gap: 12px; border-radius: 6px; outline-offset: 2px; }
+.gaps-bars li:focus-visible { outline: 2px solid var(--forest); }
+.gaps-bar-label { display: flex; flex-direction: column; min-width: 0; }
+.gaps-bar-label strong { overflow: hidden; color: var(--ink); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.gaps-bar-label small { overflow: hidden; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.gaps-bar-track { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gaps-bar-fill { height: 12px; max-width: calc(100% - 48px); border-radius: 0 4px 4px 0; background: #C0584C; }
+.gaps-bar-track b { color: var(--ink); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.gaps-students li { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.gaps-student-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px;
+  border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.gaps-student-row:hover { background: var(--surface-soft); }
+.gaps-student-row:focus-visible { outline: 2px solid var(--forest); outline-offset: -2px; }
+.gaps-student-row > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.gaps-student-row strong { color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.gaps-student-row small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.gaps-chevron { flex: 0 0 auto; color: var(--faint); transition: transform .15s; }
+.gaps-students li.open .gaps-chevron { transform: rotate(90deg); }
+.gaps-student-detail { padding: 4px 12px 12px; border-top: 1px solid var(--line); }
+.gaps-student-detail .gaps-body { margin-top: 10px; }
+
+.gaps-filter select {
+  padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 12px;
+}
+.gaps-hint { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--muted); font-size: 11.5px; }
+
+/* In the student performance dialog. */
+.perf-gaps { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.perf-gaps > h3 { margin: 0 0 10px; color: var(--ink); font-size: 14px; font-weight: 650; }
+
+@media (max-width: 820px) {
+  .gaps-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .gaps-tiles { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gaps-chevron { transition: none; }
+}

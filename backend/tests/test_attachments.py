@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from app.core.config import settings
 from app.database.attachment_repository import SupabaseAttachmentRepository
@@ -265,7 +266,8 @@ def test_grading_payload_carries_the_question_material():
 
 def test_storage_calls_use_the_users_token_and_return_absolute_signed_urls(monkeypatch):
     monkeypatch.setattr(settings, "SUPABASE_URL", "https://proj.supabase.co")
-    monkeypatch.setattr(settings, "SUPABASE_KEY", "anon-key")
+    # The real setting is a SecretStr (a plain str here once hid a crash on every upload).
+    monkeypatch.setattr(settings, "SUPABASE_KEY", SecretStr("anon-key"))
     seen = []
 
     def handler(request: httpx.Request) -> httpx.Response:

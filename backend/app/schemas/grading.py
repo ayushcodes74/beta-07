@@ -164,8 +164,10 @@ class GradePublishRequest(BaseModel):
 class PublishedQuestionResult(BaseModel):
     """Why one question got its mark, as published to the student (snapshot taken at publish time).
 
-    Excludes matched/missing concepts and course evidence. The teacher's expected solution is included
-    only when the teacher chose to share it, and is withheld from students until the due date.
+    Excludes course evidence and the AI's internal concept matching, except ``missing_points``: what the
+    answer lacked on a question that lost marks, so the student can see why marks were deducted. The
+    teacher's expected solution is included only when the teacher chose to share it, and is withheld from
+    students until the due date.
     """
 
     number: int
@@ -175,6 +177,10 @@ class PublishedQuestionResult(BaseModel):
     explanation: str = ""
     strengths: List[str] = Field(default_factory=list)
     areas_for_improvement: List[str] = Field(default_factory=list)
+    missing_points: List[str] = Field(
+        default_factory=list,
+        description="What the answer was missing, on questions that lost marks (why marks were deducted)",
+    )
     teacher_comment: Optional[str] = Field(
         default=None, description="The teacher's note when they changed the AI's mark for this question"
     )
@@ -191,6 +197,10 @@ class PublishedGradeResponse(BaseModel):
     submission_id: UUID
     questions: List[PublishedQuestionResult] = Field(
         default_factory=list, description="Per-question marks, reasons and (when released) expected solutions"
+    )
+    missing_points_available_at: Optional[datetime] = Field(
+        default=None,
+        description="Set while the exact missing points are withheld from the student (until the due date)",
     )
     solutions_available_at: Optional[datetime] = Field(
         default=None,
